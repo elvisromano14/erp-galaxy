@@ -5,7 +5,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 export interface Me {
   user: { id: string; email: string; fullName: string; isSuperAdmin: boolean };
-  companies: { id: string; rif: string; legalName: string; tradeName: string | null }[];
+  companies: { id: string; rif: string; legalName: string; tradeName: string | null; organizationId: string; organizationName: string }[];
+  isOrgAdmin: boolean;
+  canCreateCompanies: boolean;
   company: { id: string; rif: string; legalName: string; tradeName: string | null; features: Record<string, boolean>; isIgtfCollector: boolean; baseCurrencyId: string; valuationCurrencyId: string } | null;
   roles: { code: string; name: string }[];
   permissions: string[];

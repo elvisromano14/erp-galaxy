@@ -8,6 +8,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { PermissionsService } from '../../common/auth/permissions.service';
 import { AuthUser } from '../../common/auth/decorators';
 import { BusinessRuleException, ForbiddenLike } from './auth.errors';
+import { AccessService } from '../organizations/access.service';
 import { env } from '../../config/env';
 
 const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
@@ -28,6 +29,7 @@ export class AuthService {
     private readonly redis: RedisService,
     private readonly audit: AuditService,
     private readonly perms: PermissionsService,
+    private readonly access: AccessService,
   ) {}
 
   // ───────── login ─────────
@@ -66,26 +68,17 @@ export class AuthService {
     };
   }
 
-  private async userCompanies(userId: string, isSuperAdmin: boolean) {
-    const memberships = await this.prisma.userCompany.findMany({ where: { userId, isActive: true } });
-    const ids = isSuperAdmin ? undefined : memberships.map(m => m.companyId);
-    const companies = await this.prisma.company.findMany({
-      where: { isActive: true, ...(ids ? { id: { in: ids } } : {}) },
-      select: { id: true, rif: true, legalName: true, tradeName: true },
-      orderBy: { legalName: 'asc' },
-    });
-    return companies;
+  private userCompanies(userId: string, isSuperAdmin: boolean) {
+    return this.access.visibleCompanies(userId, isSuperAdmin);
   }
 
   // ───────── select-company ─────────
   async selectCompany(user: AuthUser, companyId: string, ctx: Ctx) {
     const dbUser = await this.prisma.user.findUnique({ where: { id: user.userId } });
     if (!dbUser?.isActive) throw new UnauthorizedException({ error: 'UNAUTHORIZED', message: 'Usuario inactivo' });
-    const member = await this.prisma.userCompany.findUnique({ where: { userId_companyId: { userId: user.userId, companyId } } });
-    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
-    if (!company?.isActive || (!dbUser.isSuperAdmin && !member?.isActive)) {
-      throw new ForbiddenLike('No pertenece a la empresa indicada', 'COMPANY_FORBIDDEN');
-    }
+    const via = await this.access.accessTo(user.userId, dbUser.isSuperAdmin, companyId);
+    if (!via) throw new ForbiddenLike('No pertenece a la empresa indicada', 'COMPANY_FORBIDDEN');
+    if (via === 'orgAdmin') await this.access.ensureOrgAdminMembership(user.userId, companyId);
     await this.revokeAccess(user);
     const tokens = await this.issue(user.userId, dbUser.isSuperAdmin, companyId, ctx);
     await this.audit.log('auth', user.userId, 'SELECT_COMPANY', { companyId }, { companyId: null, userId: user.userId });
@@ -107,7 +100,9 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: row.userId } });
     if (!user?.isActive) throw new UnauthorizedException({ error: 'UNAUTHORIZED', message: 'Usuario inactivo' });
     // Dentro de la ventana de gracia el token ya está revocado: se emite otro de la misma familia sin volver a revocarlo.
-    const tokens = await this.issue(user.id, user.isSuperAdmin, row.companyId ?? undefined, ctx, withinGrace ? { id: '', familyId: row.familyId } : row);
+    // Si ya no tiene acceso a la empresa del token (la quitaron o se desactivó), la sesión vuelve a «sin empresa».
+    const stillAllowed = row.companyId ? !!(await this.access.accessTo(user.id, user.isSuperAdmin, row.companyId)) : false;
+    const tokens = await this.issue(user.id, user.isSuperAdmin, stillAllowed ? row.companyId ?? undefined : undefined, ctx, withinGrace ? { id: '', familyId: row.familyId } : row);
     return tokens;
   }
 
@@ -135,9 +130,12 @@ export class AuthService {
         return tx.role.findMany({ where: { id: { in: ur.map(r => r.roleId) } }, select: { code: true, name: true } });
       });
     }
+    const adminOrgs = await this.access.adminOrgIds(dbUser.id);
     return {
       user: { id: dbUser.id, email: dbUser.email, fullName: dbUser.fullName, isSuperAdmin: dbUser.isSuperAdmin },
       companies, company, roles, permissions,
+      isOrgAdmin: adminOrgs.length > 0,
+      canCreateCompanies: dbUser.isSuperAdmin || adminOrgs.length > 0,
     };
   }
 

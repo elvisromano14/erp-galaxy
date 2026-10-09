@@ -17,7 +17,7 @@ type Row = Record<string, any>;
 
 export default function UsersPage() {
   const t = useTranslations();
-  const { can } = useAuth();
+  const { can, me } = useAuth();
   const notice = useNotice();
   const users = useFetch<Row[]>("/users");
   const roles = useFetch<Row[]>(can("security:roles:read") ? "/roles" : null);
@@ -27,6 +27,7 @@ export default function UsersPage() {
     { key: "fullName", header: t("fields.fullName") },
     { key: "email", header: t("fields.email") },
     { key: "roles", header: t("settings.roles"), render: (r) => (r.roles as string[]).join(", ") || "—" },
+    ...(me?.canCreateCompanies ? [{ key: "isOrgAdmin", header: t("settings.orgAdmin"), render: (r: Row) => <BoolBadge value={r.isOrgAdmin} /> }] : []),
     { key: "isActive", header: t("fields.isActive"), render: (r) => <BoolBadge value={r.isActive} /> },
     { key: "actions", header: "", align: "end", render: (r) => can("security:users:update") && <button type="button" className="text-sm text-brand-500 hover:underline" onClick={() => setEditing(r)}>{t("common.edit")}</button> },
   ];
@@ -40,6 +41,7 @@ export default function UsersPage() {
       </Card>
       {editing && (
         <UserForm
+          canSetOrgAdmin={!!me?.canCreateCompanies}
           row={editing === "new" ? undefined : editing}
           roles={(roles.data ?? []).map((r) => ({ code: r.code as string, name: r.name as string }))}
           onClose={() => setEditing(null)}
@@ -50,9 +52,9 @@ export default function UsersPage() {
   );
 }
 
-function UserForm({ row, roles, onClose, onSaved }: { row?: Row; roles: { code: string; name: string }[]; onClose: () => void; onSaved: () => void }) {
+function UserForm({ row, roles, canSetOrgAdmin, onClose, onSaved }: { row?: Row; canSetOrgAdmin: boolean; roles: { code: string; name: string }[]; onClose: () => void; onSaved: () => void }) {
   const t = useTranslations();
-  const [f, setF] = useState({ email: row?.email ?? "", fullName: row?.fullName ?? "", password: "", isActive: row?.isActive ?? true, roleCodes: (row?.roles as string[]) ?? ["VENDEDOR"] });
+  const [f, setF] = useState({ email: row?.email ?? "", fullName: row?.fullName ?? "", password: "", isActive: row?.isActive ?? true, isOrgAdmin: !!row?.isOrgAdmin, roleCodes: (row?.roles as string[]) ?? ["VENDEDOR"] });
   const [error, setError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
   const toggle = (code: string) => setF((s) => ({ ...s, roleCodes: s.roleCodes.includes(code) ? s.roleCodes.filter((c) => c !== code) : [...s.roleCodes, code] }));
@@ -62,7 +64,7 @@ function UserForm({ row, roles, onClose, onSaved }: { row?: Row; roles: { code: 
     setBusy(true);
     setError(null);
     try {
-      if (row) await patch(`/users/${row.id}`, { fullName: f.fullName, isActive: f.isActive, roleCodes: f.roleCodes });
+      if (row) await patch(`/users/${row.id}`, { fullName: f.fullName, isActive: f.isActive, roleCodes: f.roleCodes, ...(canSetOrgAdmin ? { isOrgAdmin: f.isOrgAdmin } : {}) });
       else await post("/users", { email: f.email, fullName: f.fullName, ...(f.password ? { password: f.password } : {}), roleCodes: f.roleCodes });
       onSaved();
     } catch (err) {
@@ -87,6 +89,7 @@ function UserForm({ row, roles, onClose, onSaved }: { row?: Row; roles: { code: 
               {roles.map((r) => <CheckField key={r.code} label={r.name} checked={f.roleCodes.includes(r.code)} onChange={() => toggle(r.code)} />)}
             </div>
           </div>
+          {row && canSetOrgAdmin && <CheckField label={t("settings.orgAdmin")} hint={t("settings.orgAdminHint")} checked={f.isOrgAdmin} onChange={(v) => setF({ ...f, isOrgAdmin: v })} />}
           {row && <CheckField label={t("fields.isActive")} checked={f.isActive} onChange={(v) => setF({ ...f, isActive: v })} />}
         </div>
         <div className="mt-6 flex justify-end gap-3">

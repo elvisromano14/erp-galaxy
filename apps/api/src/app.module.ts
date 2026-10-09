@@ -11,6 +11,7 @@ import { IdempotencyInterceptor, ResponseWrapInterceptor, TenantInterceptor } fr
 import { RequestContextMiddleware } from './common/http/request-context.middleware';
 import { HealthModule } from './modules/health/health.module';
 import { CompaniesModule } from './modules/companies/companies.module';
+import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { CatalogsModule } from './modules/catalogs/catalogs.module';
 import { ProductsModule } from './modules/products/products.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
@@ -28,7 +29,7 @@ import { PurchasesModule } from './modules/purchases/purchases.module';
       },
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: env.THROTTLE_DEFAULT_PER_MIN }]),
-    DbModule, AuthModule, HealthModule, CompaniesModule, CatalogsModule, ProductsModule, InventoryModule, PurchasesModule,
+    DbModule, OrganizationsModule, AuthModule, HealthModule, CompaniesModule, CatalogsModule, ProductsModule, InventoryModule, PurchasesModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

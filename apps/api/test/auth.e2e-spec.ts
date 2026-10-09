@@ -63,7 +63,7 @@ describe('Auth y seguridad', () => {
 
   it('usuario multiempresa debe seleccionar empresa; no puede elegir una ajena', async () => {
     const a = await createTenant(ctx, 'A');
-    const b = await createTenant(ctx, 'B');
+    const b = await createTenant(ctx, 'B', a.organizationId); // mismo cliente
     const api = client(ctx, a.token);
     // un usuario de A agregado a B
     await client(ctx, b.token).post('/users', { email: a.adminEmail, fullName: 'Admin', roleCodes: ['VENDEDOR'] });

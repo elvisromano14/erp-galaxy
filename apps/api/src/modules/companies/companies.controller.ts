@@ -9,10 +9,11 @@ import { ZBody } from '../../common/http/zod.decorators';
 
 const features = z.object({ lots: z.boolean(), serials: z.boolean(), expiry: z.boolean(), offline: z.boolean() }).partial();
 const createCompany = z.object({
+  organizationId: z.string().uuid().optional(),
   rif: z.string().min(5), legalName: z.string().min(2), tradeName: z.string().optional(), fiscalAddress: z.string().optional(),
   baseCurrencyCode: z.string().length(3).optional(), valuationCurrencyCode: z.string().length(3).optional(),
   isSpecialTaxpayer: z.boolean().optional(), isVatWithholdingAgent: z.boolean().optional(), isIgtfCollector: z.boolean().optional(),
-  admin: z.object({ email: z.string().email(), fullName: z.string().min(2), password: z.string().min(10) }).optional(),
+  admin: z.object({ email: z.string().email(), fullName: z.string().min(2), password: z.string().min(10).optional() }).optional(),
 });
 const updateCompany = z.object({
   legalName: z.string().min(2).optional(), tradeName: z.string().nullable().optional(), fiscalAddress: z.string().nullable().optional(),
@@ -20,7 +21,7 @@ const updateCompany = z.object({
   features: features.optional(),
 }).strict();
 const createUser = z.object({ email: z.string().email(), fullName: z.string().min(2), password: z.string().min(10).optional(), roleCodes: z.array(z.string()).min(1) });
-const updateUser = z.object({ fullName: z.string().min(2).optional(), isActive: z.boolean().optional(), roleCodes: z.array(z.string()).optional() }).strict();
+const updateUser = z.object({ fullName: z.string().min(2).optional(), isActive: z.boolean().optional(), roleCodes: z.array(z.string()).optional(), isOrgAdmin: z.boolean().optional() }).strict();
 const createRole = z.object({ code: z.string().min(2).max(30), name: z.string().min(2), permissions: z.array(z.string()) });
 const updateRole = z.object({ name: z.string().min(2).optional(), permissions: z.array(z.string()).optional() }).strict();
 
@@ -29,16 +30,16 @@ const updateRole = z.object({ name: z.string().min(2).optional(), permissions: z
 export class CompaniesController {
   constructor(private readonly svc: CompaniesService) {}
 
-  /** Alta de empresas: solo superadministrador de la plataforma. */
+  /** Alta de empresa: administrador global (indica el cliente) o administrador de cliente (solo en su cliente). */
   @Post() @AllowNoCompany()
   create(@CurrentUser() u: AuthUser, @ZBody(createCompany) b: z.infer<typeof createCompany>) {
-    if (!u.isSuperAdmin) throw new ForbiddenException({ error: 'FORBIDDEN', message: 'Solo el superadministrador puede crear empresas' });
-    return this.svc.create(b);
+    return this.svc.create(b, u);
   }
 
-  @Get() @RequirePermissions('security:companies:read')
+  /** Solo las empresas visibles para el usuario; nunca las de otros clientes. */
+  @Get() @AllowNoCompany()
   list(@CurrentUser() u: AuthUser) {
-    return u.isSuperAdmin ? this.svc.listAll() : this.svc.current().then(c => [c]);
+    return this.svc.listVisible(u);
   }
 
   @Get('current') @RequirePermissions('security:companies:read')
@@ -56,7 +57,7 @@ export class UsersController {
   @Post() @RequirePermissions('security:users:create')
   create(@ZBody(createUser) b: z.infer<typeof createUser>) { return this.svc.createUser(b); }
   @Patch(':id') @RequirePermissions('security:users:update')
-  update(@Param('id', new ZodPipe(uuid)) id: string, @ZBody(updateUser) b: z.infer<typeof updateUser>) { return this.svc.updateUser(id, b); }
+  update(@CurrentUser() u: AuthUser, @Param('id', new ZodPipe(uuid)) id: string, @ZBody(updateUser) b: z.infer<typeof updateUser>) { return this.svc.updateUser(id, b, u); }
 }
 
 @ApiTags('roles') @ApiBearerAuth()

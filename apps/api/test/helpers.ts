@@ -51,18 +51,31 @@ export async function bootstrap(): Promise<Ctx> {
   return { app, prisma, http, super: sup.body.data.accessToken, close: async () => { await app.close(); } };
 }
 
-export interface Tenant { companyId: string; adminEmail: string; token: string; rif: string }
+export interface Tenant { companyId: string; adminEmail: string; token: string; rif: string; organizationId: string }
 
-/** Crea una empresa (con admin) y devuelve el token del admin ya con la empresa seleccionada. */
-export async function createTenant(ctx: Ctx, name = 'Empresa'): Promise<Tenant> {
+/** Crea un cliente (organización) con su administrador. */
+export async function createOrg(ctx: Ctx, name = 'Cliente', adminEmail?: string) {
+  const email = adminEmail ?? `orgadmin-${Math.random().toString(36).slice(2, 8)}@test.local`;
+  const res = await ctx.http.post('/api/v1/organizations').set('Authorization', `Bearer ${ctx.super}`)
+    .send({ name, admin: { email, fullName: `Admin ${name}`, password: PASSWORD } });
+  if (res.status !== 201) throw new Error(`createOrg: ${res.status} ${JSON.stringify(res.body)}`);
+  return { organizationId: res.body.data.id as string, adminEmail: email };
+}
+
+/**
+ * Crea una empresa (con administrador propio) y devuelve el token de ese admin con la empresa seleccionada.
+ * Si no se indica `organizationId`, se crea un cliente nuevo para ella.
+ */
+export async function createTenant(ctx: Ctx, name = 'Empresa', organizationId?: string): Promise<Tenant> {
+  const orgId = organizationId ?? (await createOrg(ctx, `Cliente de ${name}`)).organizationId;
   const rif = uniqueRif();
   const adminEmail = `admin-${Math.random().toString(36).slice(2, 8)}@test.local`;
   const res = await ctx.http.post('/api/v1/companies').set('Authorization', `Bearer ${ctx.super}`)
-    .send({ rif, legalName: `${name} C.A.`, admin: { email: adminEmail, fullName: 'Admin', password: PASSWORD } });
+    .send({ organizationId: orgId, rif, legalName: `${name} C.A.`, admin: { email: adminEmail, fullName: 'Admin', password: PASSWORD } });
   if (res.status !== 201) throw new Error(`createTenant: ${res.status} ${JSON.stringify(res.body)}`);
   const login = await ctx.http.post('/api/v1/auth/login').send({ email: adminEmail, password: PASSWORD });
   if (login.status !== 200) throw new Error(`login tenant: ${login.status} ${JSON.stringify(login.body)}`);
-  return { companyId: res.body.data.id, adminEmail, token: login.body.data.accessToken, rif };
+  return { companyId: res.body.data.id, adminEmail, token: login.body.data.accessToken, rif, organizationId: orgId };
 }
 
 export const auth = (t: string) => ({ Authorization: `Bearer ${t}` });

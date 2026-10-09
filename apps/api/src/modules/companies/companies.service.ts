@@ -6,13 +6,16 @@ import { PermissionsService } from '../../common/auth/permissions.service';
 import { ALL_PERMISSIONS, ROLE_TEMPLATES } from '../../common/auth/permissions';
 import { BusinessRuleException, ConflictError, NotFoundError } from '../../common/errors/errors';
 import { hashPassword, assertStrongPassword } from '../auth/auth.service';
+import { AccessService } from '../organizations/access.service';
+import { Actor, OrganizationsService } from '../organizations/organizations.service';
 import { DEFAULT_OPERATION_TYPES, DEFAULT_PAYMENT_METHODS, DEFAULT_REASONS, DEFAULT_TAXES, DEFAULT_UNITS } from './company-defaults';
 
 export interface CreateCompanyInput {
+  organizationId?: string;
   rif: string; legalName: string; tradeName?: string; fiscalAddress?: string;
   baseCurrencyCode?: string; valuationCurrencyCode?: string;
   isSpecialTaxpayer?: boolean; isVatWithholdingAgent?: boolean; isIgtfCollector?: boolean;
-  admin?: { email: string; fullName: string; password: string };
+  admin?: { email: string; fullName: string; password?: string };
 }
 
 @Injectable()
@@ -21,6 +24,8 @@ export class CompaniesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly perms: PermissionsService,
+    private readonly access: AccessService,
+    private readonly orgs: OrganizationsService,
   ) {}
 
   /** Asegura el catálogo global de permisos (idempotente). */
@@ -35,7 +40,29 @@ export class CompaniesService {
     }
   }
 
-  async create(input: CreateCompanyInput) {
+  /** Resuelve el cliente de la nueva empresa según quién la crea. */
+  private async resolveOrganization(actor: Actor, requested?: string): Promise<string> {
+    if (actor.isSuperAdmin) {
+      if (!requested) throw new BusinessRuleException('Indique el cliente (organizationId)', 'ORGANIZATION_REQUIRED', [{ field: 'organizationId', code: 'REQUIRED' }]);
+      const org = await this.prisma.organization.findUnique({ where: { id: requested } });
+      if (!org?.isActive) throw new BusinessRuleException('Cliente inexistente o inactivo', 'ORGANIZATION_NOT_FOUND');
+      return requested;
+    }
+    const mine = await this.access.adminOrgIds(actor.userId);
+    if (!mine.length) throw new BusinessRuleException('Solo un administrador de cliente puede crear empresas', 'FORBIDDEN_ORGANIZATION');
+    const id = requested ?? (mine.length === 1 ? mine[0] : undefined);
+    if (!id) throw new BusinessRuleException('Indique el cliente (organizationId)', 'ORGANIZATION_REQUIRED', [{ field: 'organizationId', code: 'REQUIRED' }]);
+    if (!mine.includes(id)) throw new BusinessRuleException('No tiene permisos sobre ese cliente', 'FORBIDDEN_ORGANIZATION');
+    return id;
+  }
+
+  /** Empresas que el usuario puede ver (nunca las de otros clientes). */
+  listVisible(actor: Actor) {
+    return this.access.visibleCompanies(actor.userId, actor.isSuperAdmin);
+  }
+
+  async create(input: CreateCompanyInput, actor: Actor) {
+    const organizationId = await this.resolveOrganization(actor, input.organizationId);
     if (!isValidRif(input.rif)) throw new BusinessRuleException('RIF inválido', 'INVALID_RIF', [{ field: 'rif', code: 'INVALID_RIF' }]);
     const rif = formatRif(input.rif);
     const exists = await this.prisma.company.findUnique({ where: { rif } });
@@ -45,37 +72,31 @@ export class CompaniesService {
       this.prisma.currency.findUnique({ where: { code: input.valuationCurrencyCode ?? 'USD' } }),
     ]);
     if (!base || !valuation) throw new BusinessRuleException('Moneda base o de valoración inexistente', 'CURRENCY_NOT_FOUND');
-    if (input.admin) assertStrongPassword(input.admin.password);
 
+    // Se valida/crea el administrador ANTES de crear la empresa para no dejar empresas huérfanas si falla.
+    const adminUserId = input.admin ? await this.orgs.addUser(organizationId, input.admin, false) : undefined;
     await this.syncPermissionCatalog();
     const company = await this.prisma.company.create({
       data: {
-        rif, legalName: input.legalName, tradeName: input.tradeName, fiscalAddress: input.fiscalAddress,
+        organizationId, rif, legalName: input.legalName, tradeName: input.tradeName, fiscalAddress: input.fiscalAddress,
         baseCurrencyId: base.id, valuationCurrencyId: valuation.id,
         isSpecialTaxpayer: input.isSpecialTaxpayer ?? false,
         isVatWithholdingAgent: input.isVatWithholdingAgent ?? false,
         isIgtfCollector: input.isIgtfCollector ?? false,
       },
     });
-    let adminUserId: string | undefined;
     await this.prisma.runWithTenant(company.id, async tx => {
       await this.provision(tx, company.id, valuation.id);
-      if (input.admin) {
-        const email = input.admin.email.toLowerCase();
-        let user = await tx.user.findUnique({ where: { email } });
-        if (!user) {
-          user = await tx.user.create({ data: { email, fullName: input.admin.fullName, passwordHash: await hashPassword(input.admin.password) } });
-        }
-        adminUserId = user.id;
-        await tx.userCompany.upsert({
-          where: { userId_companyId: { userId: user.id, companyId: company.id } },
-          update: { isActive: true }, create: { userId: user.id, companyId: company.id },
-        });
-        const adminRole = await tx.role.findUniqueOrThrow({ where: { companyId_code: { companyId: company.id, code: 'ADMIN' } } });
-        await tx.userRole.create({ data: { userId: user.id, companyId: company.id, roleId: adminRole.id } });
-      }
+      // El creador (si no es el administrador global) queda como ADMIN de la nueva empresa.
+      const adminRole = await tx.role.findUniqueOrThrow({ where: { companyId_code: { companyId: company.id, code: 'ADMIN' } } });
+      const grant = async (userId: string) => {
+        await tx.userCompany.upsert({ where: { userId_companyId: { userId, companyId: company.id } }, update: { isActive: true }, create: { userId, companyId: company.id } });
+        await tx.userRole.upsert({ where: { userId_companyId_roleId: { userId, companyId: company.id, roleId: adminRole.id } }, update: {}, create: { userId, companyId: company.id, roleId: adminRole.id } });
+      };
+      if (!actor.isSuperAdmin) await grant(actor.userId);
+      if (adminUserId) await grant(adminUserId);
     });
-    await this.audit.log('company', company.id, 'CREATE', { rif, legalName: company.legalName }, { companyId: null });
+    await this.audit.log('company', company.id, 'CREATE', { rif, legalName: company.legalName, organizationId }, { companyId: null });
     return { ...company, adminUserId };
   }
 
@@ -140,32 +161,32 @@ export class CompaniesService {
     const userRoles = await this.prisma.tx.userRole.findMany({ where: { companyId } });
     const roles = await this.prisma.tx.role.findMany({ where: { companyId } });
     const roleById = new Map(roles.map(r => [r.id, r]));
+    const company = await this.current();
+    const orgAdmins = new Set((await this.prisma.userOrganization.findMany({ where: { organizationId: company.organizationId, isAdmin: true } })).map(x => x.userId));
     return users.map(u => ({
-      id: u.id, email: u.email, fullName: u.fullName, isActive: u.isActive && !!members.find(m => m.userId === u.id)?.isActive,
+      id: u.id, email: u.email, fullName: u.fullName, isOrgAdmin: orgAdmins.has(u.id), isActive: u.isActive && !!members.find(m => m.userId === u.id)?.isActive,
       roles: userRoles.filter(r => r.userId === u.id).map(r => roleById.get(r.roleId)?.code).filter(Boolean),
     }));
   }
 
   async createUser(input: { email: string; fullName: string; password?: string; roleCodes: string[] }) {
     const companyId = this.prisma.companyId;
-    const tx = this.prisma.tx;
+    const company = await this.current();
     const email = input.email.toLowerCase();
-    let user = await this.prisma.user.findUnique({ where: { email } });
-    if (user) {
-      const member = await this.prisma.userCompany.findUnique({ where: { userId_companyId: { userId: user.id, companyId } } });
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      const member = await this.prisma.userCompany.findUnique({ where: { userId_companyId: { userId: existing.id, companyId } } });
       if (member) throw new ConflictError('El usuario ya pertenece a esta empresa', 'UNIQUE_VIOLATION');
-    } else {
-      if (!input.password) throw new BusinessRuleException('Se requiere contraseña para un usuario nuevo', 'PASSWORD_REQUIRED');
-      assertStrongPassword(input.password);
-      user = await this.prisma.user.create({ data: { email, fullName: input.fullName, passwordHash: await hashPassword(input.password) } });
     }
-    await this.prisma.userCompany.create({ data: { userId: user.id, companyId } });
-    await this.setRoles(user.id, input.roleCodes);
-    await this.audit.log('user', user.id, 'CREATE', { email, roles: input.roleCodes });
-    return { id: user.id, email: user.email, fullName: user.fullName, roles: input.roleCodes };
+    // Crea o vincula al usuario dentro del MISMO cliente (un usuario de otro cliente no puede asignarse aquí).
+    const userId = await this.orgs.addUser(company.organizationId, input, false);
+    await this.prisma.userCompany.upsert({ where: { userId_companyId: { userId, companyId } }, update: { isActive: true }, create: { userId, companyId } });
+    await this.setRoles(userId, input.roleCodes);
+    await this.audit.log('user', userId, 'CREATE', { email, roles: input.roleCodes });
+    return { id: userId, email, fullName: input.fullName, roles: input.roleCodes };
   }
 
-  async updateUser(userId: string, data: { fullName?: string; isActive?: boolean; roleCodes?: string[] }) {
+  async updateUser(userId: string, data: { fullName?: string; isActive?: boolean; roleCodes?: string[]; isOrgAdmin?: boolean }, actor: Actor) {
     const companyId = this.prisma.companyId;
     const member = await this.prisma.userCompany.findUnique({ where: { userId_companyId: { userId, companyId } } });
     if (!member) throw new NotFoundError('Usuario', userId);
@@ -173,6 +194,12 @@ export class CompaniesService {
     if (data.isActive !== undefined) {
       await this.prisma.userCompany.update({ where: { userId_companyId: { userId, companyId } }, data: { isActive: data.isActive } });
       if (!data.isActive) await this.prisma.refreshToken.updateMany({ where: { userId, companyId, revokedAt: null }, data: { revokedAt: new Date() } });
+    }
+    if (data.isOrgAdmin !== undefined) {
+      const company = await this.current();
+      await this.orgs.assertCanManage(actor, company.organizationId);
+      if (userId === actor.userId && !data.isOrgAdmin) throw new BusinessRuleException('No puede quitarse a sí mismo la administración del cliente', 'SELF_DEMOTION');
+      await this.prisma.userOrganization.updateMany({ where: { userId, organizationId: company.organizationId }, data: { isAdmin: data.isOrgAdmin } });
     }
     if (data.roleCodes) await this.setRoles(userId, data.roleCodes);
     await this.perms.invalidate(companyId, userId);

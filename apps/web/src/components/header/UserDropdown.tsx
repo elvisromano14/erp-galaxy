@@ -52,6 +52,7 @@ export default function UserDropdown() {
                     className={cn("flex items-center gap-3 rounded-lg px-3 py-2 text-theme-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5", c.id === me.company?.id && "bg-brand-50 text-brand-500 dark:bg-brand-500/10")}
                   >
                     {c.tradeName ?? c.legalName}
+                    {new Set(me.companies.map((x) => x.organizationName)).size > 1 && <span className="ms-auto text-theme-xs text-gray-400">{c.organizationName}</span>}
                   </DropdownItem>
                 </li>
               ))}

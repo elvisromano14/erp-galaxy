@@ -5,6 +5,8 @@ export interface NavLeaf {
   /** Permiso requerido (por defecto, ninguno). */
   perm?: string;
   feature?: string;
+  /** Visible solo si el usuario puede crear empresas (administrador global o de cliente). */
+  flag?: "canCreateCompanies" | "superAdmin";
 }
 export interface NavSection {
   key: string;
@@ -57,6 +59,8 @@ export const NAV: NavSection[] = [
     icon: "settings",
     items: [
       { key: "company", path: "/settings/company", perm: "security:companies:read" },
+      { key: "companies", path: "/settings/companies", flag: "canCreateCompanies" },
+      { key: "organizations", path: "/settings/organizations", flag: "superAdmin" },
       { key: "users", path: "/settings/users", perm: "security:users:read" },
       { key: "roles", path: "/settings/roles", perm: "security:roles:read" },
     ],

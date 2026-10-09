@@ -18,14 +18,17 @@ Usuarios de **desarrollo** (contraseña de semilla `Admin12345!`, cambiar `SEED_
 
 | Usuario | Rol |
 |---|---|
-| `admin@demo.local` | ADMIN de «Repuestos Demo, C.A.» |
-| `superadmin@erp.local` | Superadministrador de plataforma (crea empresas: `POST /companies`) |
+| `admin@demo.local` | **Administrador global**: ve todas las empresas de todos los clientes y crea clientes/empresas |
+| `superadmin@erp.local` | Otro administrador global (sin empresa propia) |
+| `admin.ktsu@demo.local` | Administrador del cliente «KTSU-JAC»: ve solo KTSU y JAC; puede crear empresas en su cliente |
+| `admin.sinocars@demo.local` | Administrador del cliente «Sinocars»: ve solo SIN0CARS y ELECTRICOS DEL SUR |
+| `admin.ayagba@demo.local` | Administrador del cliente «Ayagba»: ve solo Ayagba Glam |
 
 ## Pruebas
 
 ```bash
 pnpm --filter @erp/domain test       # 11 pruebas unitarias (totales, IVA, IGTF, costeo, RIF)
-cd apps/api && npx jest --config jest.e2e.config.js   # 44 pruebas e2e contra PostgreSQL/Redis reales (BD `minierp_test`, se recrea sola)
+cd apps/api && npx jest --config jest.e2e.config.js   # 53 pruebas e2e contra PostgreSQL/Redis reales (BD `minierp_test`, se recrea sola)
 ```
 
 Las e2e cubren: autenticación (bloqueo, rotación y reutilización de refresh, revocación), aislamiento multiempresa (RLS + FK compuestas),
@@ -36,6 +39,7 @@ lotes FEFO, períodos, idempotencia y el flujo completo de compras.
 
 | Fase | Alcance implementado |
 |---|---|
+| Clientes | Modelo cliente → empresas → usuarios: cada administrador de cliente ve y crea solo las empresas de su cliente; el administrador global ve todas; un usuario normal solo las que se le asignan (ver `avances.md`) |
 | S0 Fundación | Monorepo, API con config validada, Pino, health, Swagger, errores estándar, JWT (access 15 min + refresh rotativo con detección de robo), RBAC por permisos, auditoría, numeración sin huecos, idempotencia, **RLS obligatorio** + roles `erp_migrator`/`erp_app`, shell web con sesión BFF (cookie `httpOnly`) |
 | S1 Catálogos | Empresa (datos fiscales, feature flags), usuarios/roles, monedas, **factor cambiario** (historial inmutable), impuestos con vigencia, depósitos, instancias, unidades, productos (OEM, códigos de barras, precios con historial), listas de precio |
 | S2 Terceros | Proveedores, clientes (RIF validado), zonas, vendedores, instrumentos de pago, bancos y cuentas, tipos de operación, motivos |

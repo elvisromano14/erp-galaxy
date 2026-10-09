@@ -147,7 +147,7 @@ export const del = <T = unknown>(path: string) => api<T>(path, { method: "DELETE
 // ───────── sesión (BFF) ─────────
 export interface SessionResponse {
   user: { id: string; email: string; fullName: string; isSuperAdmin: boolean };
-  companies: { id: string; rif: string; legalName: string; tradeName: string | null }[];
+  companies: { id: string; rif: string; legalName: string; tradeName: string | null; organizationId: string; organizationName: string }[];
   companyId: string | null;
   requiresCompanySelection: boolean;
   accessToken: string;

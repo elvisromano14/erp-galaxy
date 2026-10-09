@@ -5,3 +5,6 @@ dist
 .turbo
 .next
 coverage
+
+# Bitácora local de avances (no se versiona)
+avances.md

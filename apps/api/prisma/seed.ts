@@ -43,34 +43,56 @@ async function main() {
   console.log('✔ Globales listos (monedas, bancos, permisos, superadmin@erp.local)');
 
   if (process.env.SEED_DEMO) {
-    const exists = await prisma.company.findUnique({ where: { rif: 'J-12345678-4' } });
-    if (!exists) {
-      const company = await companies.create({
-        rif: 'J-12345678-4', legalName: 'Repuestos Demo, C.A.', tradeName: 'Repuestos Demo', fiscalAddress: 'Caracas, Venezuela',
-        isIgtfCollector: true, admin: { email: 'admin@demo.local', fullName: 'Admin Demo', password: pwd },
-      });
-      const usd = await prisma.currency.findUniqueOrThrow({ where: { code: 'USD' } });
-      await prisma.exchangeRate.create({ data: { currencyId: usd.id, rate: '36.52', date: new Date(new Date().toISOString().slice(0, 10)), source: 'MANUAL' } });
-      await prisma.runWithTenant(company.id, async tx => {
+    const { isValidRif } = await import('@erp/domain');
+    const rif = (base: string) => { for (let d = 0; d < 10; d++) { const r = `J-${base}-${d}`; if (isValidRif(r)) return r; } throw new Error('rif'); };
+    const org = async (name: string) => (await prisma.organization.findFirst({ where: { name } })) ?? prisma.organization.create({ data: { name } });
+    const user = async (email: string, fullName: string, superAdmin = false) => {
+      const u = await prisma.user.upsert({ where: { email }, update: superAdmin ? { isSuperAdmin: true } : {}, create: { email, fullName, passwordHash: await hashPassword(pwd), isSuperAdmin: superAdmin } });
+      return u;
+    };
+    const makeCompany = async (organizationId: string, actor: { userId: string; isSuperAdmin: boolean }, r: string, legalName: string) => {
+      const found = await prisma.company.findUnique({ where: { rif: r } });
+      return found ?? (await companies.create({ organizationId, rif: r, legalName, isIgtfCollector: true }, actor));
+    };
+
+    // Administrador global (el dueño de la plataforma): ve todas las empresas de todos los clientes.
+    const globalAdmin = await user('admin@demo.local', 'Admin Global', true);
+    const galaxy = await org('Galaxy (demo)');
+    const demo = await makeCompany(galaxy.id, { userId: globalAdmin.id, isSuperAdmin: true }, 'J-12345678-4', 'Repuestos Demo, C.A.');
+    const usd = await prisma.currency.findUniqueOrThrow({ where: { code: 'USD' } });
+    const today = new Date(new Date().toISOString().slice(0, 10));
+    if (!(await prisma.exchangeRate.findFirst({ where: { currencyId: usd.id, date: today } }))) {
+      await prisma.exchangeRate.create({ data: { currencyId: usd.id, rate: '36.52', date: today, source: 'MANUAL' } });
+    }
+    if (!(await prisma.runWithTenant(demo.id, tx => tx.product.count()))) {
+      await prisma.runWithTenant(demo.id, async tx => {
         const unit = await tx.unit.findFirstOrThrow({ where: { code: 'UND' } });
         const iva = await tx.tax.findFirstOrThrow({ where: { code: 'IVA_GENERAL' } });
-        const cat = await tx.category.create({ data: { companyId: company.id, code: 'FRENOS', name: 'Frenos' } });
+        const cat = await tx.category.create({ data: { companyId: demo.id, code: 'FRENOS', name: 'Frenos' } });
         const list = await tx.priceList.findFirstOrThrow({ where: { isDefault: true } });
-        const products = [
-          { sku: 'PAS-001', name: 'Pastillas de freno delanteras', oem: '04465-0K290' },
-          { sku: 'DIS-001', name: 'Disco de freno ventilado', oem: '43512-0K080' },
-          { sku: 'FIL-001', name: 'Filtro de aceite', oem: '90915-YZZE1' },
-        ];
-        for (const p of products) {
-          const prod = await tx.product.create({ data: { companyId: company.id, sku: p.sku, name: p.name, categoryId: cat.id, unitId: unit.id, taxId: iva.id } });
-          await tx.productReference.create({ data: { companyId: company.id, productId: prod.id, refType: 'OEM', code: p.oem } });
-          await tx.productPrice.create({ data: { companyId: company.id, productId: prod.id, priceListId: list.id, price: '25' } });
+        for (const p of [{ sku: 'PAS-001', name: 'Pastillas de freno delanteras', oem: '04465-0K290' }, { sku: 'DIS-001', name: 'Disco de freno ventilado', oem: '43512-0K080' }, { sku: 'FIL-001', name: 'Filtro de aceite', oem: '90915-YZZE1' }]) {
+          const prod = await tx.product.create({ data: { companyId: demo.id, sku: p.sku, name: p.name, categoryId: cat.id, unitId: unit.id, taxId: iva.id } });
+          await tx.productReference.create({ data: { companyId: demo.id, productId: prod.id, refType: 'OEM', code: p.oem } });
+          await tx.productPrice.create({ data: { companyId: demo.id, productId: prod.id, priceListId: list.id, price: '25' } });
         }
-        await tx.supplier.create({ data: { companyId: company.id, rif: 'J-98765432-4', legalName: 'Importadora Auto Partes, C.A.', creditDays: 15 } });
-        await tx.customer.create({ data: { companyId: company.id, rif: 'J-31234567-5', legalName: 'Taller El Mecánico, C.A.', creditDays: 7 } });
+        await tx.supplier.create({ data: { companyId: demo.id, rif: rif('98765432'), legalName: 'Importadora Auto Partes, C.A.', creditDays: 15 } });
+        await tx.customer.create({ data: { companyId: demo.id, rif: rif('31234567'), legalName: 'Taller El Mecánico, C.A.', creditDays: 7 } });
       });
-      console.log('✔ Empresa demo creada: admin@demo.local (J-12345678-4)');
-    } else console.log('• Empresa demo ya existe');
+    }
+
+    // Clientes de ejemplo: cada administrador de cliente solo ve (y crea) las empresas de SU cliente.
+    const clients: { name: string; admin: [string, string]; companies: [string, string][] }[] = [
+      { name: 'Cliente KTSU-JAC', admin: ['admin.ktsu@demo.local', 'Admin KTSU/JAC'], companies: [['20000001', 'KTSU'], ['20000002', 'JAC']] },
+      { name: 'Cliente Sinocars', admin: ['admin.sinocars@demo.local', 'Admin Sinocars'], companies: [['20000003', 'SIN0CARS'], ['20000004', 'ELECTRICOS DEL SUR']] },
+      { name: 'Cliente Ayagba', admin: ['admin.ayagba@demo.local', 'Admin Ayagba'], companies: [['20000005', 'Ayagba Glam']] },
+    ];
+    for (const c of clients) {
+      const o = await org(c.name);
+      const admin = await user(c.admin[0], c.admin[1]);
+      await prisma.userOrganization.upsert({ where: { userId_organizationId: { userId: admin.id, organizationId: o.id } }, update: { isAdmin: true }, create: { userId: admin.id, organizationId: o.id, isAdmin: true } });
+      for (const [base, name] of c.companies) await makeCompany(o.id, { userId: admin.id, isSuperAdmin: false }, rif(base), name);
+    }
+    console.log('✔ Demo: admin@demo.local (administrador global) y 3 clientes con sus administradores');
   }
   console.log(`  Contraseña de semilla: ${pwd === 'Admin12345!' ? 'Admin12345! (solo desarrollo)' : '(SEED_PASSWORD)'}`);
   await app.close();

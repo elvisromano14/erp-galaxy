@@ -21,15 +21,15 @@ const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
   const t = useTranslations("sidebar");
-  const { can, feature } = useAuth();
+  const { can, feature, me } = useAuth();
   const [opened, setOpened] = useState<string | null>(null);
 
   const sections = useMemo(
     () =>
-      NAV.map((s) => ({ ...s, items: s.items.filter((i) => (!i.perm || can(i.perm)) && (!i.feature || feature(i.feature))) })).filter(
+      NAV.map((s) => ({ ...s, items: s.items.filter((i) => (!i.perm || can(i.perm)) && (!i.feature || feature(i.feature)) && (!i.flag || (i.flag === "superAdmin" ? !!me?.user.isSuperAdmin : !!me?.canCreateCompanies))) })).filter(
         (s) => s.items.length > 0,
       ),
-    [can, feature],
+    [can, feature, me],
   );
 
   const isActive = (path: string) => pathname === path || pathname.startsWith(`${path}/`);
