@@ -11,7 +11,7 @@ export const INVENTORY_DOCS = ['transfers', 'charges', 'discharges', 'adjustment
 export const SALES_DOCS = ['quotes', 'budgets', 'orders'] as const;
 export const PURCHASE_DOCS = ['quotes', 'orders', 'delivery-notes', 'delivery-note-returns', 'invoices', 'returns'] as const;
 
-export const REPORT_CATEGORIES = ['inventory', 'categories', 'suppliers', 'purchases', 'customers', 'sellers'] as const;
+export const REPORT_CATEGORIES = ['inventory', 'categories', 'suppliers', 'purchases', 'customers', 'sellers', 'sales'] as const;
 const build = (module: string, resource: string, actions: string[]) => actions.map(a => `${module}:${resource}:${a}`);
 
 export const ALL_PERMISSIONS: string[] = [
@@ -31,7 +31,13 @@ export const ALL_PERMISSIONS: string[] = [
   ...PURCHASE_DOCS.flatMap(r => build('purchases', r, DOC)),
   ...SALES_DOCS.flatMap(r => build('sales', r, DOC)),
   ...build('sales', 'documents', ['read-all']),
+  'sales:orders:credit-override',
   ...build('payables', 'entries', ['read']),
+  ...build('treasury', 'payments', ['read', 'create', 'cancel']),
+  ...build('treasury', 'receipts', ['read', 'create', 'cancel']),
+  ...build('treasury', 'receivables', ['read', 'create']),
+  ...build('treasury', 'movements', ['read', 'create']),
+  ...build('treasury', 'reconciliations', ['read', 'create']),
   ...REPORT_CATEGORIES.flatMap(c => build('reports', c, ['read'])),
 ];
 
@@ -63,7 +69,7 @@ export const ROLE_TEMPLATES: Record<string, { name: string; permissions: string[
     name: 'Compras',
     permissions: [
       ...readCatalogs, 'inventory:stock:read', 'inventory:kardex:read', 'payables:entries:read',
-      ...PURCHASE_DOCS.flatMap(r => build('purchases', r, DOC)),
+      ...PURCHASE_DOCS.flatMap(r => build('purchases', r, DOC)), 'treasury:payments:read',
       'admin:suppliers:create', 'admin:suppliers:update',
       'reports:suppliers:read', 'reports:purchases:read', 'reports:inventory:read', 'reports:categories:read',
     ],

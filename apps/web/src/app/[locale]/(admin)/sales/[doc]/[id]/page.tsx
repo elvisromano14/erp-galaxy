@@ -282,6 +282,7 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
       }
       if (["SENT", "ACCEPTED"].includes(status) && can(P("cancel"))) add("cx", <Button variant="outline" size="sm" disabled={busy} onClick={() => setDialog("cancel")}>{t("common.cancelDocument")}</Button>);
     } else {
+      if (status === "DRAFT" && error?.code === "CREDIT_LIMIT_EXCEEDED" && can("sales:orders:credit-override")) add("ovr", <Button variant="danger" size="sm" disabled={busy} onClick={() => action(`${meta.api}/:id/confirm`, t("purchases.confirmedOk"), { save: true, body: { overrideCredit: true } })}>{t("sales.confirmOverCredit")}</Button>);
       if (status === "DRAFT" && can(P("confirm"))) add("conf", <Button size="sm" disabled={busy} onClick={() => setDialog("confirm")}>{t("common.confirmDocument")}</Button>);
       if (T === "BUDGET" && status === "CONFIRMED" && can("sales:orders:create")) add("toord", <Button size="sm" disabled={busy} onClick={() => action(`${meta.api}/:id/convert-to-order`, t("purchases.convertedOk"), { navigateTo: (d) => ["orders", d.id] })}>{t("sales.convertToOrder")}</Button>);
       if (status === "CONFIRMED" && can(P("cancel"))) add("cx", <Button variant="outline" size="sm" disabled={busy} onClick={() => setDialog("cancel")}>{t("common.cancelDocument")}</Button>);

@@ -120,4 +120,85 @@ describe('Ventas: cotización → presupuesto → pedido', () => {
     // el vendedor no puede ver ni crear documentos de compras
     expect((await v1.get('/purchases/orders')).status).toBe(403);
   });
+
+  it('las reservas bloquean descargos que se comerían lo apartado', async () => {
+    const p = await withStock('S-LOCK', 10, '10');
+    const o = (await api.post('/sales/orders', doc([{ productId: p, quantity: '8' }], { reservesStock: true }))).body.data.id;
+    await api.post(`/sales/orders/${o}/confirm`);
+    const dis = async (q: string) => {
+      const d = await api.post('/inventory/discharges', { warehouseId: b.w1, lines: [{ productId: p, quantity: q }] });
+      return api.post(`/inventory/discharges/${d.body.data.id}/confirm`);
+    };
+    const bad = await dis('5'); // quedarían 5 < 8 reservados
+    expect(bad.status).toBe(422); expect(bad.body.error).toBe('STOCK_RESERVED');
+    expect((await dis('2')).status).toBe(201); // quedan 8 = reservado: permitido
+    await api.post(`/sales/orders/${o}/cancel`, { reason: 'libera' });
+    expect((await dis('8')).status).toBe(201);
+  });
+
+  it('límite de crédito: bloquea pedidos a crédito por encima del límite salvo autorización', async () => {
+    const cid = (await api.post('/customers', { rif: uniqueRif('V'), legalName: 'Cliente Limitado', creditLimit: '1000', creditDays: 15 })).body.data.id;
+    const p = await b.product('S-CRED');
+    // cada pedido: 10 × 20 USD × 1,16 = 232 USD = 9.280 Bs (tasa 40) → un pedido ya excede 1.000 Bs
+    const mk = async (cust: string) => (await api.post('/sales/orders', { customerId: cust, currencyId: b.ves, paymentCondition: 'CREDIT', lines: [{ productId: p, quantity: '10', unitPrice: '60' }] })).body.data.id;
+    const o1 = await mk(cid); // 600 + IVA = 696 Bs
+    expect((await api.post(`/sales/orders/${o1}/confirm`)).status).toBe(201);
+    const o2 = await mk(cid); // 696 + 696 = 1.392 > 1.000
+    const ex = await api.post(`/sales/orders/${o2}/confirm`);
+    expect(ex.status).toBe(422); expect(ex.body.error).toBe('CREDIT_LIMIT_EXCEEDED');
+    expect((await api.post(`/sales/orders/${o2}/confirm`, { overrideCredit: true })).status).toBe(201); // admin tiene el permiso
+    // un pedido de contado no se valida; un cliente sin límite (0) tampoco
+    const cash = (await api.post('/sales/orders', { customerId: cid, currencyId: b.ves, lines: [{ productId: p, quantity: '50', unitPrice: '60' }] })).body.data.id;
+    expect((await api.post(`/sales/orders/${cash}/confirm`)).status).toBe(201);
+    // un vendedor sin el permiso no puede forzar
+    const email = `v-${Math.random().toString(36).slice(2, 7)}@test.local`;
+    await api.post('/users', { email, fullName: 'Vend', password: PASSWORD, roleCodes: ['VENDEDOR'] });
+    const tok = (await ctx.http.post('/api/v1/auth/login').send({ email, password: PASSWORD })).body.data.accessToken;
+    const v = client(ctx, tok);
+    const o3 = (await v.post('/sales/orders', { customerId: cid, currencyId: b.ves, paymentCondition: 'CREDIT', lines: [{ productId: p, quantity: '10', unitPrice: '60' }] })).body.data.id;
+    const forced = await v.post(`/sales/orders/${o3}/confirm`, { overrideCredit: true });
+    expect(forced.status).toBe(422); expect(forced.body.error).toBe('CREDIT_LIMIT_EXCEEDED');
+  });
+
+  it('reportes de ventas: por cliente, por producto, reservas, efectividad y desempeño', async () => {
+    const t2 = await createTenant(ctx, 'RepVentas'); const a2 = client(ctx, t2.token); const b2 = await seedBasics(a2);
+    await a2.post('/exchange-rates', { currencyId: b2.usd, rate: '40', date: today() });
+    const seller = (await a2.post('/sellers', { code: 'V1', name: 'Vendedor Uno', commissionRate: '5', monthlyGoal: '1000' })).body.data.id;
+    const c1 = (await a2.post('/customers', { rif: uniqueRif('V'), legalName: 'Cliente A' })).body.data.id;
+    const c2 = (await a2.post('/customers', { rif: uniqueRif('V'), legalName: 'Cliente B' })).body.data.id;
+    const p = await b2.product('RS-1');
+    const ch = await a2.post('/inventory/charges', { warehouseId: b2.w1, lines: [{ productId: p, quantity: '50', unitCost: '1' }] });
+    await a2.post(`/inventory/charges/${ch.body.data.id}/confirm`);
+    const order = async (cust: string, qty: string, extra: object = {}) => {
+      const rr = await a2.post('/sales/orders', { customerId: cust, sellerId: seller, warehouseId: b2.w1, currencyId: b2.ves, lines: [{ productId: p, quantity: qty, unitPrice: '10' }], ...extra }); if (rr.status !== 201) throw new Error(JSON.stringify(rr.body)); const o = rr.body.data.id;
+      expect((await a2.post(`/sales/orders/${o}/confirm`)).status).toBe(201);
+    };
+    await order(c1, '10', { reservesStock: true }); // 100 + IVA = 116
+    await order(c1, '5');                           // 58
+    await order(c2, '20');                          // 232
+    const q = (await a2.post('/sales/quotes', { customerId: c1, sellerId: seller, currencyId: b2.ves, lines: [{ productId: p, quantity: '1', unitPrice: '10' }] })).body.data.id;
+    await a2.post(`/sales/quotes/${q}/send`); await a2.post(`/sales/quotes/${q}/accept`); await a2.post(`/sales/quotes/${q}/convert-to-order`);
+
+    const rows = (r: any) => r.body.data.rows as Record<string, any>[];
+    const byC = await a2.get('/reports/sales/by-customer');
+    expect(byC.status).toBe(200);
+    const A = rows(byC).find(r => r.customer === 'Cliente A')!; const B = rows(byC).find(r => r.customer === 'Cliente B')!;
+    expect(A.orders).toBe(2); expect(Number(A.total_base)).toBe(174); expect(Number(B.total_base)).toBe(232);
+    const byP = rows(await a2.get('/reports/sales/by-product'));
+    expect(byP).toHaveLength(1); expect(Number(byP[0].qty)).toBe(35); expect(Number(byP[0].net_base)).toBe(350);
+    const rs = rows(await a2.get('/reports/sales/reserved-stock'));
+    expect(rs).toHaveLength(1); expect(Number(rs[0].reserved)).toBe(10); expect(Number(rs[0].available)).toBe(40);
+    const eff = rows(await a2.get('/reports/sales/quotes-conversion'))[0];
+    expect(eff).toMatchObject({ quotes: 1, accepted: 1, converted: 1 }); expect(Number(eff.conversion_pct)).toBe(100);
+    const perf = rows(await a2.get('/reports/sellers/performance')).find(r => r.code === 'V1')!;
+    expect(perf.orders).toBe(3); expect(Number(perf.total_base)).toBe(406); expect(Number(perf.commission)).toBe(20.3); expect(Number(perf.goal_pct)).toBeCloseTo(40.6, 1);
+    const docs = rows(await a2.get('/reports/sales/documents?docType=QUOTE'));
+    expect(docs).toHaveLength(1); expect(docs[0].doc_type).toBe('Cotización');
+    expect((await a2.get('/reports/sales/by-customer?format=xlsx')).status).toBe(200);
+    // el vendedor (sin permiso de reportes de ventas) no accede
+    const email = `r-${Math.random().toString(36).slice(2, 7)}@test.local`;
+    await a2.post('/users', { email, fullName: 'Vendedor R', password: PASSWORD, roleCodes: ['VENDEDOR'] });
+    const tok = (await ctx.http.post('/api/v1/auth/login').send({ email, password: PASSWORD })).body.data.accessToken;
+    expect((await client(ctx, tok).get('/reports/sales/by-customer')).status).toBe(403);
+  });
 });

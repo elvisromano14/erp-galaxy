@@ -8,6 +8,7 @@ import { SequenceService } from '../../common/db/sequence.service';
 import { BusinessRuleException, ConflictError, NotFoundError } from '../../common/errors/errors';
 import { Paged } from '../../common/http/paged';
 import { ExchangeRatesService } from '../catalogs/exchange-rates';
+import { ReceivablesService } from '../treasury/receivables.service';
 import { caracasToday } from '../inventory/inventory-docs.service';
 import { SalesDocInput, SalesDocType, salesListSchema, SALES_ROUTES, Viewer } from './sales.types';
 
@@ -23,6 +24,7 @@ export class SalesService {
     private readonly audit: AuditService,
     private readonly seq: SequenceService,
     private readonly rates: ExchangeRatesService,
+    private readonly receivables: ReceivablesService,
   ) {}
 
   private entity(t: SalesDocType) { return `sales_${t.toLowerCase()}`; }
@@ -418,7 +420,7 @@ export class SalesService {
 
   // ═════════════════════════ confirmar / anular ═════════════════════════
 
-  async confirm(docType: 'BUDGET' | 'ORDER', id: string, v: Viewer) {
+  async confirm(docType: 'BUDGET' | 'ORDER', id: string, v: Viewer, overrideCredit = false) {
     const tx = this.prisma.tx;
     const doc = await this.find(docType, id, v, true);
     if (doc.status !== 'DRAFT') throw new BusinessRuleException(`El documento ya está ${doc.status}`, 'INVALID_STATE');
@@ -432,8 +434,9 @@ export class SalesService {
       paymentCondition: doc.paymentCondition as 'CASH' | 'CREDIT', creditDays: doc.creditDays, parentId: link?.parentId ?? null,
       lines: lines.map(l => ({ productId: l.productId, quantity: l.quantity.toString(), parentLineId: linkLines.find(x => x.childLineId === l.id)?.parentLineId ?? null })),
     } as unknown as SalesDocInput;
-    await this.validateHeader(docType, shell);
+    const customer = await this.validateHeader(docType, shell);
     await this.validateParent(docType, shell, id);
+    if (docType === 'ORDER' && doc.paymentCondition === 'CREDIT') await this.checkCredit(customer, doc, v, overrideCredit);
 
     const number = await this.seq.next(this.route(docType).seq);
     if (doc.reservesStock) await this.reserve(doc, 1);
@@ -443,6 +446,26 @@ export class SalesService {
     });
     await this.audit.log(this.entity(docType), id, 'CONFIRM', { number });
     return this.get(docType, id, v);
+  }
+
+  /**
+   * Límite de crédito (en moneda base): Σ pedidos a crédito confirmados + cuentas por cobrar abiertas del cliente + este pedido.
+   * `creditLimit = 0` = sin límite. (Cuando exista facturación, el pedido facturado dejará de contarse como pedido y pasará a CxC.)
+   */
+  private async checkCredit(customer: { id: string; creditLimit: { toString(): string } }, doc: { id: string; totalBase: { toString(): string } }, v: Viewer, override: boolean) {
+    const limit = D(customer.creditLimit.toString());
+    if (limit.lte(0)) return;
+    const [row] = await this.prisma.tx.$queryRaw<{ s: string }[]>`
+      SELECT COALESCE(SUM(total_base), 0)::text AS s FROM sales_documents
+      WHERE company_id = ${this.prisma.companyId}::uuid AND customer_id = ${customer.id}::uuid AND doc_type = 'ORDER'
+        AND status = 'CONFIRMED' AND payment_condition = 'CREDIT' AND id <> ${doc.id}::uuid`;
+    const exposure = D(row.s).plus(D(doc.totalBase.toString())).plus(await this.receivables.exposureBase(customer.id));
+    if (exposure.lte(limit)) return;
+    if (override && v.creditOverride) return;
+    throw new BusinessRuleException(
+      `El pedido excede el límite de crédito del cliente (límite ${limit.toFixed(2)}, exposición ${exposure.toFixed(2)})`, 'CREDIT_LIMIT_EXCEEDED',
+      [{ code: 'CREDIT_LIMIT_EXCEEDED', message: exposure.toFixed(4) }],
+    );
   }
 
   async cancel(docType: SalesDocType, id: string, reason: string, v: Viewer) {

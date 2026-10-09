@@ -24,6 +24,7 @@ export const NAV: NavSection[] = [
       admin("products"), admin("categories"), admin("units"), admin("warehouses"),
       admin("suppliers"), admin("customers"), admin("zones"), admin("sellers"),
       admin("price-lists"), admin("taxes"), admin("currencies"), admin("exchange-rates"),
+      { key: "price-update", path: "/admin/price-update", perm: "admin:products:update" },
       admin("payment-methods"), admin("bank-accounts"), admin("banks"), admin("movement-reasons"), admin("operation-types"),
     ],
   },
@@ -65,6 +66,16 @@ export const NAV: NavSection[] = [
     ],
   },
   {
+    key: "treasury",
+    icon: "cart",
+    items: [
+      { key: "receivables", path: "/treasury/receivables", perm: "treasury:receivables:read" },
+      { key: "receipts", path: "/treasury/receipts", perm: "treasury:receipts:read" },
+      { key: "payments", path: "/treasury/payments", perm: "treasury:payments:read" },
+      { key: "accounts", path: "/treasury/accounts", perm: "treasury:movements:read" },
+    ],
+  },
+  {
     key: "reports",
     icon: "report",
     items: [
@@ -74,6 +85,7 @@ export const NAV: NavSection[] = [
       { key: "report-purchases", path: "/reports/purchases", perm: "reports:purchases:read" },
       { key: "report-customers", path: "/reports/customers", perm: "reports:customers:read" },
       { key: "report-sellers", path: "/reports/sellers", perm: "reports:sellers:read" },
+      { key: "report-sales", path: "/reports/sales", perm: "reports:sales:read" },
     ],
   },
   {

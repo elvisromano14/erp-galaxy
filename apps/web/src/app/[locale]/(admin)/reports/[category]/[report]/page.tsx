@@ -131,6 +131,13 @@ export default function ReportPage() {
                 {values.supplierId && <button className="mt-1 text-xs text-brand-500" onClick={() => (set("supplierId", ""), setLabels((l) => ({ ...l, supplierId: "" })))}>{t("common.clear")}</button>}
               </div>
             )}
+            {has("customerId") && (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">{t("fields.customer")} {req("customerId") && <span className="text-error-500">*</span>}</label>
+                <AsyncPicker resource="/customers" value={labels.customerId ?? ""} labelFn={(r) => `${r.rif} — ${r.legalName}`} placeholder={t("common.all")} onPick={(r) => (set("customerId", r.id), setLabels((l) => ({ ...l, customerId: `${r.rif} — ${r.legalName}` })))} />
+                {values.customerId && <button className="mt-1 text-xs text-brand-500" onClick={() => (set("customerId", ""), setLabels((l) => ({ ...l, customerId: "" })))}>{t("common.clear")}</button>}
+              </div>
+            )}
             {has("productId") && (
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">{t("fields.product")} {req("productId") && <span className="text-error-500">*</span>}</label>
@@ -138,10 +145,10 @@ export default function ReportPage() {
                 {values.productId && <button className="mt-1 text-xs text-brand-500" onClick={() => (set("productId", ""), setLabels((l) => ({ ...l, productId: "" })))}>{t("common.clear")}</button>}
               </div>
             )}
-            {has("docType") && <SelectField label={t("fields.docType")} value={String(values.docType ?? "")} onChange={(v) => set("docType", v)} options={DOC_TYPES.map((d) => ({ value: d, label: t(`docTypes.${d}`) }))} placeholder={t("common.all")} />}
+            {has("docType") && <SelectField label={t("fields.docType")} value={String(values.docType ?? "")} onChange={(v) => set("docType", v)} options={(category === "sales" ? ["QUOTE", "BUDGET", "ORDER"] : DOC_TYPES).map((d) => ({ value: d, label: category === "sales" ? t(`sales.docTypes.${d}`) : t(`docTypes.${d}`) }))} placeholder={t("common.all")} />}
             {has("status") && (
               <SelectField label={t("fields.status")} value={String(values.status ?? "")} onChange={(v) => set("status", v)} placeholder={t("common.all")}
-                options={(report === "serials" ? ["IN_STOCK", "SOLD", "RETURNED", "SCRAPPED"] : PURCHASE_STATUSES).map((s) => ({ value: s, label: report === "serials" ? t(`serialStatus.${s}`) : t(`status.${s}`) }))} />
+                options={(report === "serials" ? ["IN_STOCK", "SOLD", "RETURNED", "SCRAPPED"] : category === "sales" ? ["DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED", "CONFIRMED", "CONVERTED", "CANCELLED"] : PURCHASE_STATUSES).map((s) => ({ value: s, label: report === "serials" ? t(`serialStatus.${s}`) : t(`status.${s}`) }))} />
             )}
             {has("search") && <TextField label={t("fields.search")} value={String(values.search ?? "")} onChange={(v) => set("search", v)} />}
             {has("onlyWithStock") && <CheckField label={t("reports.onlyWithStock")} checked={!!values.onlyWithStock} onChange={(v) => set("onlyWithStock", v)} />}

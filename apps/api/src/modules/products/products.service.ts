@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { decimalStr, paginationQuery, uuid } from '@erp/contracts';
+import { D, Decimal, round } from '@erp/domain';
 import { PrismaService } from '../../common/db/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { BusinessRuleException, NotFoundError, ValidationError } from '../../common/errors/errors';
 import { Paged } from '../../common/http/paged';
+import { ExchangeRatesService } from '../catalogs/exchange-rates';
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const barcode = z.string().trim().min(1).max(64);
@@ -35,11 +37,25 @@ export const listProductsSchema = paginationQuery.extend({
   trackingMode: z.enum(['NONE', 'LOT', 'SERIAL']).optional(),
   categoryId: uuid.optional(), isActive: z.coerce.boolean().optional(), isService: z.coerce.boolean().optional(), includeDeleted: z.coerce.boolean().optional(),
 });
+export const bulkPriceSchema = z.object({
+  priceListId: uuid,
+  mode: z.enum(['PERCENT', 'MARGIN', 'SET']),
+  /** PERCENT: variación en % (puede ser negativa) · MARGIN: margen sobre costo en % · SET: precio fijo. */
+  value: decimalStr,
+  sourcePriceListId: uuid.optional(),
+  categoryId: uuid.optional(),
+  productIds: z.array(uuid).max(5000).optional(),
+  validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  decimals: z.number().int().min(0).max(4).default(2),
+  dryRun: z.boolean().default(true),
+}).refine(v => v.mode !== 'SET' || Number(v.value) >= 0, { message: 'El precio fijo no puede ser negativo', path: ['value'] })
+  .refine(v => v.mode === 'SET' || Number(v.value) > -100, { message: 'La variación debe ser mayor que -100 %', path: ['value'] });
+
 export const addPriceSchema = price;
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly rates: ExchangeRatesService) {}
 
   private async assertFeatures(d: { trackingMode?: string; hasExpiry?: boolean; isService?: boolean }) {
     const company = await this.prisma.company.findUniqueOrThrow({ where: { id: this.prisma.companyId } });
@@ -173,6 +189,61 @@ export class ProductsService {
     });
     await this.audit.log('product_price', row.id, previous ? 'UPDATE' : 'CREATE', { productId, ...p, previous: previous?.price.toString() });
     return row;
+  }
+
+  /**
+   * Actualización masiva de precios de una lista (S14). `dryRun` (por omisión) solo calcula la vista previa.
+   *  PERCENT: precio vigente × (1 + valor %) · MARGIN: costo promedio × (1 + margen %) en la moneda de la lista · SET: precio fijo.
+   * Productos sin base de cálculo (sin precio vigente / sin costo) se omiten y se informan.
+   */
+  async bulkPrices(input: z.infer<typeof bulkPriceSchema>) {
+    const tx = this.prisma.tx;
+    const companyId = this.prisma.companyId;
+    const list = await tx.priceList.findFirst({ where: { id: input.priceListId, deletedAt: null } });
+    if (!list) throw new BusinessRuleException('Lista de precios inexistente', 'PRICE_LIST_NOT_FOUND');
+    const validFrom = new Date(input.validFrom ?? new Date().toISOString().slice(0, 10));
+    const products = await tx.product.findMany({
+      where: { deletedAt: null, isActive: true, isService: false, ...(input.categoryId ? { categoryId: input.categoryId } : {}), ...(input.productIds?.length ? { id: { in: input.productIds } } : {}) },
+      select: { id: true, sku: true, name: true }, orderBy: { sku: 'asc' }, take: 5001,
+    });
+    if (products.length > 5000) throw new BusinessRuleException('Demasiados productos (máximo 5000); filtre por instancia', 'TOO_MANY_PRODUCTS');
+    if (!products.length) throw new BusinessRuleException('Ningún producto coincide con el filtro', 'NO_PRODUCTS');
+    const ids = products.map(p => p.id);
+    // precio vigente (a la fecha de vigencia) por producto en la lista base
+    const baseListId = input.sourcePriceListId ?? list.id;
+    const current = new Map<string, Decimal>();
+    for (const r of await tx.productPrice.findMany({ where: { productId: { in: ids }, priceListId: baseListId, validFrom: { lte: validFrom } }, orderBy: [{ validFrom: 'asc' }, { createdAt: 'asc' }] })) current.set(r.productId, D(r.price.toString()));
+    const own = new Map<string, Decimal>();
+    for (const r of await tx.productPrice.findMany({ where: { productId: { in: ids }, priceListId: list.id, validFrom: { lte: validFrom } }, orderBy: [{ validFrom: 'asc' }, { createdAt: 'asc' }] })) own.set(r.productId, D(r.price.toString()));
+
+    let costFactor = D(1);
+    const costs = new Map<string, Decimal>();
+    if (input.mode === 'MARGIN') {
+      const company = await tx.company.findUniqueOrThrow({ where: { id: companyId } });
+      for (const c of await tx.productCost.findMany({ where: { productId: { in: ids } } })) costs.set(c.productId, D(c.avgCost.toString()));
+      if (company.valuationCurrencyId !== list.currencyId) {
+        const [rv, rl] = await Promise.all([this.rates.rateFor(company.valuationCurrencyId, validFrom), this.rates.rateFor(list.currencyId, validFrom)]);
+        if (!rv || !rl) throw new BusinessRuleException('Falta la tasa de cambio para convertir el costo a la moneda de la lista', 'RATE_NOT_FOUND');
+        costFactor = D(rv.rate).div(D(rl.rate));
+      }
+    }
+    const factor = D(1).plus(D(input.value).div(100));
+    const rows: { productId: string; sku: string; name: string; oldPrice: string | null; newPrice: string | null; skipped?: string }[] = [];
+    for (const p of products) {
+      let next: Decimal | null = null; let skipped: string | undefined;
+      if (input.mode === 'SET') next = D(input.value);
+      else if (input.mode === 'PERCENT') { const base = current.get(p.id); if (base === undefined) skipped = 'SIN_PRECIO_BASE'; else next = base.mul(factor); }
+      else { const c = costs.get(p.id); if (!c || c.lte(0)) skipped = 'SIN_COSTO'; else next = c.mul(costFactor).mul(factor); }
+      if (next) { next = round(next, input.decimals); if (next.isNegative()) { next = null; skipped = 'PRECIO_NEGATIVO'; } }
+      const old = own.get(p.id);
+      rows.push({ productId: p.id, sku: p.sku, name: p.name, oldPrice: old?.toString() ?? null, newPrice: next?.toString() ?? null, ...(skipped ? { skipped } : {}) });
+    }
+    const changes = rows.filter(r => r.newPrice !== null && r.newPrice !== r.oldPrice);
+    if (!input.dryRun) {
+      for (const r of changes) await this.addPrice(r.productId, { priceListId: list.id, price: r.newPrice!, validFrom: validFrom.toISOString().slice(0, 10) });
+      await this.audit.log('price_list', list.id, 'BULK_UPDATE', { mode: input.mode, value: input.value, changed: changes.length });
+    }
+    return { dryRun: input.dryRun, priceListId: list.id, validFrom: validFrom.toISOString().slice(0, 10), total: rows.length, changed: changes.length, skipped: rows.filter(r => r.skipped).length, rows };
   }
 
   async priceHistory(productId: string) {

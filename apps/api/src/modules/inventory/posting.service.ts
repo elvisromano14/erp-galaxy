@@ -90,8 +90,8 @@ export class PostingService {
       INSERT INTO inventory_stock (company_id, product_id, warehouse_id)
       SELECT ${companyId}::uuid, p, w FROM unnest(${pairs.map(x => x[0])}::uuid[], ${pairs.map(x => x[1])}::uuid[]) AS t(p, w)
       ON CONFLICT (company_id, product_id, warehouse_id) DO NOTHING`;
-    const stockRows = await tx.$queryRaw<{ product_id: string; warehouse_id: string; quantity: Prisma.Decimal }[]>`
-      SELECT s.product_id, s.warehouse_id, s.quantity FROM inventory_stock s
+    const stockRows = await tx.$queryRaw<{ product_id: string; warehouse_id: string; quantity: Prisma.Decimal; reserved_qty: Prisma.Decimal }[]>`
+      SELECT s.product_id, s.warehouse_id, s.quantity, s.reserved_qty FROM inventory_stock s
       JOIN unnest(${pairs.map(x => x[0])}::uuid[], ${pairs.map(x => x[1])}::uuid[]) AS t(p, w) ON t.p = s.product_id AND t.w = s.warehouse_id
       WHERE s.company_id = ${companyId}::uuid
       ORDER BY s.product_id, s.warehouse_id FOR UPDATE OF s`;
@@ -103,6 +103,7 @@ export class PostingService {
     for (const r of costRows) cost.set(r.product_id, { qty: ZERO, avgCost: D(r.avg_cost.toString()) });
     for (const t of totals) cost.get(t.product_id)!.qty = D(t.q.toString());
     const whQty = new Map(stockRows.map(r => [`${r.product_id}|${r.warehouse_id}`, D(r.quantity.toString())]));
+    const reservedQty = new Map(stockRows.map(r => [`${r.product_id}|${r.warehouse_id}`, D(r.reserved_qty.toString())]));
     const costPending = new Set<string>();
 
     // 3) procesamiento en memoria + lotes
@@ -151,6 +152,13 @@ export class PostingService {
         cost.set(m.productId, newState);
         whQty.set(key, whNew);
       };
+      /** Las salidas no pueden comerse lo reservado por pedidos/presupuestos (las reservas ya lo apartaron). */
+      const assertAvailable = (resulting: Decimal) => {
+        const reserved = reservedQty.get(key) ?? ZERO;
+        if (!wh.allowNegativeStock && reserved.gt(0) && resulting.lt(reserved) && !resulting.isNegative()) {
+          throw fail('STOCK_RESERVED', `La existencia de ${product.sku} en ${wh.code} está reservada por pedidos o presupuestos (reservado ${reserved.toString()})`);
+        }
+      };
       const assertStock = (resulting: Decimal) => {
         if (resulting.isNegative() && !wh.allowNegativeStock) {
           throw fail('INSUFFICIENT_STOCK', `Stock insuficiente para el producto ${product.sku} en el depósito ${wh.code}`);
@@ -183,6 +191,7 @@ export class PostingService {
           const q = nos ? D(nos.length) : D(m.quantity!);
           const base = whQty.get(key)!;
           assertStock(base.minus(q));
+          assertAvailable(base.minus(q));
           if (nos) {
             const cur = await loadSerials(m.productId, nos);
             cur.forEach((c, idx) => {

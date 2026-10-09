@@ -13,7 +13,7 @@ const bool = z.union([z.boolean(), z.enum(['true', 'false']).transform(v => v ==
 /** Filtros que puede usar un reporte (todos opcionales; cada reporte declara cuáles aplican). */
 export const filterSchema = z.object({
   dateFrom: date.optional(), dateTo: date.optional(), asOf: date.optional(),
-  warehouseId: uuid.optional(), categoryId: uuid.optional(), supplierId: uuid.optional(), productId: uuid.optional(),
+  warehouseId: uuid.optional(), categoryId: uuid.optional(), supplierId: uuid.optional(), customerId: uuid.optional(), productId: uuid.optional(),
   priceListId: uuid.optional(), status: z.string().max(60).optional(), search: z.string().trim().max(100).optional(),
   onlyWithStock: bool.optional(), docType: z.string().max(40).optional(),
 });
@@ -33,7 +33,7 @@ export interface ReportDef {
 }
 
 export const CATEGORIES: Record<string, string> = {
-  inventory: 'Inventario', categories: 'Instancias', suppliers: 'Proveedores', purchases: 'Compras', customers: 'Clientes', sellers: 'Vendedores',
+  inventory: 'Inventario', categories: 'Instancias', suppliers: 'Proveedores', purchases: 'Compras', customers: 'Clientes', sellers: 'Vendedores', sales: 'Ventas',
 };
 
 const cid = (c: ReportCtx) => Prisma.sql`${c.companyId}::uuid`;
@@ -367,7 +367,7 @@ export const REPORTS: ReportDef[] = [
     },
   },
   {
-    category: 'suppliers', id: 'statement', title: 'Estado de cuenta de proveedor', description: 'Facturas y devoluciones con saldo acumulado en Bs (los pagos se incorporan con el módulo de pagos).',
+    category: 'suppliers', id: 'statement', title: 'Estado de cuenta de proveedor', description: 'Facturas y devoluciones con saldo acumulado en Bs incluidos los pagos aplicados (al valor en Bs del documento que cancelan).',
     filters: ['supplierId', 'dateFrom', 'dateTo'], required: ['supplierId'],
     columns: [col('doc_date', 'Fecha', 'date'), col('type', 'Tipo'), col('number', 'Documento'), col('supplier_doc', 'Factura prov.'), col('currency', 'Moneda'),
       col('amount', 'Monto', 'money'), col('debit_bs', 'Cargo Bs', 'money'), col('credit_bs', 'Abono Bs', 'money'), col('balance_bs', 'Saldo Bs', 'money')],
@@ -380,8 +380,19 @@ export const REPORTS: ReportDef[] = [
         WHERE e.company_id = ${cid(c)} AND e.supplier_id = ${c.f.supplierId}::uuid AND e.status <> 'CANCELLED'
           ${when(c.f.dateFrom, Prisma.sql`AND d.doc_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND d.doc_date <= ${c.f.dateTo}::date`)}
         ORDER BY d.doc_date, d.created_at`);
+      const pays = await raw<Row>(c.tx, Prisma.sql`
+        SELECT p.payment_date AS doc_date, 'PAYMENT' AS type, p.number, p.reference AS supplier_doc, cu.code AS currency, p.amount::text AS amount,
+               round(GREATEST(-SUM(a.amount * e.exchange_rate), 0), 4)::text AS debit_bs, round(GREATEST(SUM(a.amount * e.exchange_rate), 0), 4)::text AS credit_bs, p.created_at
+        FROM supplier_payments p JOIN currencies cu ON cu.id = p.currency_id
+        JOIN supplier_payment_applications a ON a.payment_id = p.id AND a.company_id = p.company_id
+        JOIN payable_entries e ON e.id = a.payable_entry_id AND e.company_id = a.company_id
+        WHERE p.company_id = ${cid(c)} AND p.supplier_id = ${c.f.supplierId}::uuid AND p.status = 'CONFIRMED'
+          ${when(c.f.dateFrom, Prisma.sql`AND p.payment_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND p.payment_date <= ${c.f.dateTo}::date`)}
+        GROUP BY p.id, cu.code ORDER BY p.payment_date, p.created_at`);
+      const all = [...rows, ...pays].sort((a, b) => String(a.doc_date instanceof Date ? a.doc_date.toISOString() : a.doc_date).localeCompare(String(b.doc_date instanceof Date ? b.doc_date.toISOString() : b.doc_date)));
       let bal = D(0);
-      const out = rows.map(r => { bal = bal.plus(D(String(r.debit_bs))).minus(D(String(r.credit_bs))); return { ...r, type: r.type === 'INVOICE' ? 'Factura' : 'Devolución', balance_bs: bal.toFixed(4) }; });
+      const label: Record<string, string> = { INVOICE: 'Factura', RETURN: 'Devolución', PAYMENT: 'Pago' };
+      const out = all.map(({ created_at: _c, ...r }) => { bal = bal.plus(D(String(r.debit_bs))).minus(D(String(r.credit_bs))); return { ...r, type: label[String(r.type)] ?? r.type, balance_bs: bal.toFixed(4) }; });
       return { rows: out, totals: { debit_bs: sum(out, 'debit_bs'), credit_bs: sum(out, 'credit_bs'), balance_bs: bal.toFixed(4) } };
     },
   },
@@ -531,6 +542,217 @@ export const REPORTS: ReportDef[] = [
         FROM sellers s LEFT JOIN zones z ON z.id = s.zone_id AND z.company_id = s.company_id
         WHERE s.company_id = ${cid(c)} AND s.deleted_at IS NULL ORDER BY s.name`);
       return { rows };
+    },
+  },
+
+  // ════════════════════════ VENTAS ════════════════════════
+  {
+    category: 'sales', id: 'documents', title: 'Relación de documentos de venta', description: 'Cotizaciones, presupuestos y pedidos del período (filtre por tipo y estado).',
+    filters: ['dateFrom', 'dateTo', 'docType', 'status', 'search'],
+    columns: [col('doc_type', 'Tipo'), col('number', 'Número'), col('doc_date', 'Fecha', 'date'), col('customer', 'Cliente'), col('seller', 'Vendedor'), col('status', 'Estado'),
+      col('currency', 'Moneda'), col('total', 'Total', 'money'), col('total_base', 'Total Bs', 'money')],
+    async run(c) {
+      const rows = await raw(c.tx, Prisma.sql`
+        SELECT CASE d.doc_type WHEN 'QUOTE' THEN 'Cotización' WHEN 'BUDGET' THEN 'Presupuesto' WHEN 'ORDER' THEN 'Pedido' ELSE d.doc_type END AS doc_type,
+               COALESCE(d.number, 'Borrador') AS number, d.doc_date::text AS doc_date, cu.legal_name AS customer, s.name AS seller, d.status,
+               cr.code AS currency, d.total::text AS total, d.total_base::text AS total_base
+        FROM sales_documents d
+        JOIN customers cu ON cu.id = d.customer_id AND cu.company_id = d.company_id
+        LEFT JOIN sellers s ON s.id = d.seller_id AND s.company_id = d.company_id
+        JOIN currencies cr ON cr.id = d.currency_id
+        WHERE d.company_id = ${cid(c)}
+          ${when(c.f.docType, Prisma.sql`AND d.doc_type = ${c.f.docType}`)}
+          ${when(c.f.status, Prisma.sql`AND d.status = ${c.f.status}`)}
+          ${when(c.f.dateFrom, Prisma.sql`AND d.doc_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND d.doc_date <= ${c.f.dateTo}::date`)}
+          ${when(c.f.search, Prisma.sql`AND (d.number ILIKE ${'%' + c.f.search + '%'} OR cu.legal_name ILIKE ${'%' + c.f.search + '%'})`)}
+        ORDER BY d.doc_date DESC, d.created_at DESC`);
+      return { rows, totals: { total_base: sum(rows, 'total_base') } };
+    },
+  },
+  {
+    category: 'sales', id: 'by-customer', title: 'Ventas por cliente', description: 'Pedidos confirmados por cliente en el período, en Bs.',
+    filters: ['dateFrom', 'dateTo'],
+    columns: [col('rif', 'RIF'), col('customer', 'Cliente'), col('orders', 'Pedidos', 'int'), col('total_base', 'Total Bs', 'money'), col('avg_ticket', 'Ticket promedio Bs', 'money'), col('share_pct', 'Participación', 'pct'), col('last_order', 'Último pedido', 'date')],
+    async run(c) {
+      const rows = await raw<Row>(c.tx, Prisma.sql`
+        SELECT cu.rif, cu.legal_name AS customer, COUNT(*)::int AS orders, SUM(d.total_base)::text AS total_base,
+               round(AVG(d.total_base), 2)::text AS avg_ticket, MAX(d.doc_date)::text AS last_order
+        FROM sales_documents d JOIN customers cu ON cu.id = d.customer_id AND cu.company_id = d.company_id
+        WHERE d.company_id = ${cid(c)} AND d.doc_type = 'ORDER' AND d.status = 'CONFIRMED'
+          ${when(c.f.dateFrom, Prisma.sql`AND d.doc_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND d.doc_date <= ${c.f.dateTo}::date`)}
+        GROUP BY cu.id, cu.rif, cu.legal_name ORDER BY SUM(d.total_base) DESC`);
+      const total = rows.reduce((a, r) => a + Number(r.total_base), 0);
+      return { rows: rows.map(r => ({ ...r, share_pct: total > 0 ? ((Number(r.total_base) / total) * 100).toFixed(2) : '0' })), totals: { orders: rows.reduce((a, r) => a + Number(r.orders), 0), total_base: total.toFixed(2) } };
+    },
+  },
+  {
+    category: 'sales', id: 'by-product', title: 'Ventas por producto', description: 'Cantidades y monto de pedidos confirmados por producto (monto en Bs a la tasa del documento, sin IVA).',
+    filters: ['dateFrom', 'dateTo', 'categoryId', 'productId'],
+    columns: [col('sku', 'SKU'), col('name', 'Producto'), col('category', 'Instancia'), col('qty', 'Cantidad', 'qty'), col('net_base', 'Monto Bs', 'money'), col('orders', 'Pedidos', 'int')],
+    async run(c) {
+      const rows = await raw(c.tx, Prisma.sql`
+        SELECT p.sku, p.name, cat.name AS category, SUM(l.quantity)::text AS qty, round(SUM(l.net * d.exchange_rate), 2)::text AS net_base, COUNT(DISTINCT d.id)::int AS orders
+        FROM sales_document_lines l
+        JOIN sales_documents d ON d.id = l.document_id AND d.company_id = l.company_id AND d.doc_type = 'ORDER' AND d.status = 'CONFIRMED'
+        JOIN products p ON p.id = l.product_id AND p.company_id = l.company_id
+        LEFT JOIN categories cat ON cat.id = p.category_id AND cat.company_id = p.company_id
+        WHERE l.company_id = ${cid(c)}
+          ${when(c.f.productId, Prisma.sql`AND p.id = ${c.f.productId}::uuid`)} ${when(c.f.categoryId, Prisma.sql`AND p.category_id = ${c.f.categoryId}::uuid`)}
+          ${when(c.f.dateFrom, Prisma.sql`AND d.doc_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND d.doc_date <= ${c.f.dateTo}::date`)}
+        GROUP BY p.id, p.sku, p.name, cat.name ORDER BY SUM(l.net * d.exchange_rate) DESC`);
+      return { rows, totals: { net_base: sum(rows, 'net_base') } };
+    },
+  },
+  {
+    category: 'sales', id: 'quotes-conversion', title: 'Efectividad de cotizaciones', description: 'Cotizaciones por estado y tasa de aceptación y de conversión a pedido.',
+    filters: ['dateFrom', 'dateTo'],
+    columns: [col('seller', 'Vendedor'), col('quotes', 'Emitidas', 'int'), col('accepted', 'Aceptadas', 'int'), col('rejected', 'Rechazadas', 'int'), col('expired', 'Vencidas', 'int'),
+      col('converted', 'Convertidas a pedido', 'int'), col('acceptance_pct', '% aceptación', 'pct'), col('conversion_pct', '% conversión', 'pct')],
+    async run(c) {
+      const rows = await raw<Row>(c.tx, Prisma.sql`
+        SELECT COALESCE(s.name, 'Sin vendedor') AS seller, COUNT(*)::int AS quotes,
+               COUNT(*) FILTER (WHERE q.status = 'ACCEPTED')::int AS accepted, COUNT(*) FILTER (WHERE q.status = 'REJECTED')::int AS rejected,
+               COUNT(*) FILTER (WHERE q.status = 'EXPIRED')::int AS expired,
+               COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM document_links k JOIN sales_documents o ON o.id = k.child_id AND o.company_id = k.company_id
+                                              WHERE k.parent_id = q.id AND k.company_id = q.company_id AND o.status <> 'CANCELLED' AND o.doc_type IN ('ORDER','BUDGET')))::int AS converted
+        FROM sales_documents q LEFT JOIN sellers s ON s.id = q.seller_id AND s.company_id = q.company_id
+        WHERE q.company_id = ${cid(c)} AND q.doc_type = 'QUOTE' AND q.status <> 'DRAFT' AND q.status <> 'CANCELLED'
+          ${when(c.f.dateFrom, Prisma.sql`AND q.doc_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND q.doc_date <= ${c.f.dateTo}::date`)}
+        GROUP BY s.id, s.name ORDER BY COUNT(*) DESC`);
+      const pct = (a: unknown, b: unknown) => (Number(b) > 0 ? ((Number(a) / Number(b)) * 100).toFixed(2) : '0');
+      return { rows: rows.map(r => ({ ...r, acceptance_pct: pct(r.accepted, r.quotes), conversion_pct: pct(r.converted, r.quotes) })) };
+    },
+  },
+  {
+    category: 'sales', id: 'reserved-stock', title: 'Existencias reservadas', description: 'Cantidad apartada por presupuestos y pedidos confirmados, por producto y depósito.',
+    filters: ['warehouseId', 'productId'],
+    columns: [col('sku', 'SKU'), col('name', 'Producto'), col('warehouse', 'Depósito'), col('stock', 'Existencia', 'qty'), col('reserved', 'Reservado', 'qty'), col('available', 'Disponible', 'qty')],
+    async run(c) {
+      const rows = await raw(c.tx, Prisma.sql`
+        SELECT p.sku, p.name, w.code AS warehouse, s.quantity::text AS stock, s.reserved_qty::text AS reserved, (s.quantity - s.reserved_qty)::text AS available
+        FROM inventory_stock s JOIN products p ON p.id = s.product_id AND p.company_id = s.company_id
+        JOIN warehouses w ON w.id = s.warehouse_id AND w.company_id = s.company_id
+        WHERE s.company_id = ${cid(c)} AND s.reserved_qty > 0
+          ${when(c.f.warehouseId, Prisma.sql`AND s.warehouse_id = ${c.f.warehouseId}::uuid`)} ${when(c.f.productId, Prisma.sql`AND s.product_id = ${c.f.productId}::uuid`)}
+        ORDER BY p.sku, w.code`);
+      return { rows, totals: { reserved: sum(rows, 'reserved') } };
+    },
+  },
+  {
+    category: 'sellers', id: 'performance', title: 'Desempeño de vendedores', description: 'Pedidos confirmados por vendedor, comisión estimada y cumplimiento de la meta mensual (meta × meses del período).',
+    filters: ['dateFrom', 'dateTo'],
+    columns: [col('code', 'Código'), col('seller', 'Vendedor'), col('orders', 'Pedidos', 'int'), col('total_base', 'Ventas Bs', 'money'), col('commission_pct', 'Comisión %', 'pct'),
+      col('commission', 'Comisión Bs', 'money'), col('goal', 'Meta Bs', 'money'), col('goal_pct', '% de meta', 'pct')],
+    async run(c) {
+      const rows = await raw<Row>(c.tx, Prisma.sql`
+        SELECT s.code, s.name AS seller, COUNT(d.id)::int AS orders, COALESCE(SUM(d.total_base), 0)::text AS total_base,
+               s.commission_rate::text AS commission_pct, round(COALESCE(SUM(d.total_base), 0) * s.commission_rate / 100, 2)::text AS commission,
+               s.monthly_goal::text AS monthly_goal
+        FROM sellers s
+        LEFT JOIN sales_documents d ON d.seller_id = s.id AND d.company_id = s.company_id AND d.doc_type = 'ORDER' AND d.status = 'CONFIRMED'
+          ${when(c.f.dateFrom, Prisma.sql`AND d.doc_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND d.doc_date <= ${c.f.dateTo}::date`)}
+        WHERE s.company_id = ${cid(c)} AND s.deleted_at IS NULL
+        GROUP BY s.id, s.code, s.name, s.commission_rate, s.monthly_goal ORDER BY COALESCE(SUM(d.total_base), 0) DESC`);
+      // meses del período (mín. 1) para escalar la meta mensual
+      let months = 1;
+      if (c.f.dateFrom && c.f.dateTo) {
+        const a = new Date(c.f.dateFrom), b = new Date(c.f.dateTo);
+        months = Math.max(1, (b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth() + 1);
+      }
+      return {
+        rows: rows.map(r => {
+          const goal = r.monthly_goal == null ? null : (Number(r.monthly_goal) * months).toFixed(2);
+          return { ...r, goal, goal_pct: goal && Number(goal) > 0 ? ((Number(r.total_base) / Number(goal)) * 100).toFixed(2) : null };
+        }),
+        totals: { orders: rows.reduce((a, r) => a + Number(r.orders), 0), total_base: sum(rows, 'total_base'), commission: sum(rows, 'commission') },
+      };
+    },
+  },
+  {
+    category: 'customers', id: 'credit-exposure', title: 'Exposición de crédito', description: 'Pedidos a crédito confirmados más cuentas por cobrar abiertas por cliente, frente a su límite (0 = sin límite).',
+    filters: [],
+    columns: [col('rif', 'RIF'), col('customer', 'Cliente'), col('credit_limit', 'Límite Bs', 'money'), col('orders_bs', 'Pedidos Bs', 'money'), col('receivable_bs', 'CxC Bs', 'money'),
+      col('exposure', 'Exposición Bs', 'money'), col('available', 'Disponible Bs', 'money'), col('used_pct', '% usado', 'pct')],
+    async run(c) {
+      const rows = await raw<Row>(c.tx, Prisma.sql`
+        SELECT cu.rif, cu.legal_name AS customer, cu.credit_limit::text AS credit_limit,
+               COALESCE((SELECT SUM(d.total_base) FROM sales_documents d WHERE d.company_id = cu.company_id AND d.customer_id = cu.id AND d.doc_type = 'ORDER' AND d.status = 'CONFIRMED' AND d.payment_condition = 'CREDIT'), 0)::text AS orders_bs,
+               COALESCE((SELECT SUM(e.balance * e.exchange_rate) FROM receivable_entries e WHERE e.company_id = cu.company_id AND e.customer_id = cu.id AND e.status IN ('OPEN', 'PARTIALLY_PAID')), 0)::text AS receivable_bs
+        FROM customers cu WHERE cu.company_id = ${cid(c)} AND cu.deleted_at IS NULL ORDER BY cu.legal_name`);
+      const out = rows.filter(r => Number(r.orders_bs) !== 0 || Number(r.receivable_bs) !== 0).map(r => {
+        const lim = Number(r.credit_limit), ex = Number(r.orders_bs) + Number(r.receivable_bs);
+        return { ...r, exposure: ex.toFixed(4), available: lim > 0 ? (lim - ex).toFixed(2) : null, used_pct: lim > 0 ? ((ex / lim) * 100).toFixed(2) : null };
+      }).sort((a, b) => Number(b.exposure) - Number(a.exposure));
+      return { rows: out, totals: { orders_bs: sum(out, 'orders_bs'), receivable_bs: sum(out, 'receivable_bs'), exposure: sum(out, 'exposure') } };
+    },
+  },
+  {
+    category: 'customers', id: 'receivables', title: 'Cuentas por cobrar', description: 'Documentos con saldo abierto. Importes en moneda del documento y en Bs a la tasa del documento.',
+    filters: ['customerId', 'asOf'],
+    columns: [col('customer', 'Cliente'), col('document_no', 'Documento'), col('type', 'Tipo'), col('issue_date', 'Emisión', 'date'), col('due_date', 'Vence', 'date'), col('currency', 'Moneda'),
+      col('amount', 'Monto', 'money'), col('balance', 'Saldo', 'money'), col('balance_bs', 'Saldo Bs', 'money'), col('days_overdue', 'Días vencido', 'int')],
+    async run(c) {
+      const asOf = c.f.asOf ?? c.today;
+      const rows = await raw(c.tx, Prisma.sql`
+        SELECT cu.legal_name AS customer, e.document_no, CASE e.entry_type WHEN 'OPENING' THEN 'Saldo inicial' WHEN 'INVOICE' THEN 'Factura' WHEN 'CREDIT_NOTE' THEN 'Nota de crédito' ELSE 'Nota de débito' END AS type,
+               e.issue_date, e.due_date, cr.code AS currency, e.amount::text AS amount, e.balance::text AS balance, round(e.balance * e.exchange_rate, 4)::text AS balance_bs,
+               GREATEST((${asOf}::date - e.due_date), 0) AS days_overdue
+        FROM receivable_entries e JOIN customers cu ON cu.id = e.customer_id AND cu.company_id = e.company_id JOIN currencies cr ON cr.id = e.currency_id
+        WHERE e.company_id = ${cid(c)} AND e.status IN ('OPEN', 'PARTIALLY_PAID') AND e.balance <> 0 AND e.issue_date <= ${asOf}::date
+          ${when(c.f.customerId, Prisma.sql`AND e.customer_id = ${c.f.customerId}::uuid`)}
+        ORDER BY cu.legal_name, e.due_date`);
+      return { rows, totals: { balance_bs: sum(rows, 'balance_bs') } };
+    },
+  },
+  {
+    category: 'customers', id: 'aging', title: 'Análisis de vencimiento (CxC)', description: 'Saldos por cliente en tramos de antigüedad, en Bs a la tasa de cada documento.',
+    filters: ['customerId', 'asOf'],
+    columns: [col('customer', 'Cliente'), col('current', 'Por vencer', 'money'), col('d1_30', '1–30', 'money'), col('d31_60', '31–60', 'money'), col('d61_90', '61–90', 'money'), col('d90', '+90', 'money'), col('total', 'Total', 'money')],
+    async run(c) {
+      const asOf = c.f.asOf ?? c.today;
+      const rows = await raw(c.tx, Prisma.sql`
+        WITH x AS (SELECT cu.legal_name AS customer, e.balance * e.exchange_rate AS bs, (${asOf}::date - e.due_date) AS late
+          FROM receivable_entries e JOIN customers cu ON cu.id = e.customer_id AND cu.company_id = e.company_id
+          WHERE e.company_id = ${cid(c)} AND e.status IN ('OPEN', 'PARTIALLY_PAID') AND e.balance <> 0 AND e.issue_date <= ${asOf}::date
+            ${when(c.f.customerId, Prisma.sql`AND e.customer_id = ${c.f.customerId}::uuid`)})
+        SELECT customer,
+          round(COALESCE(SUM(bs) FILTER (WHERE late <= 0), 0), 4)::text AS current,
+          round(COALESCE(SUM(bs) FILTER (WHERE late BETWEEN 1 AND 30), 0), 4)::text AS d1_30,
+          round(COALESCE(SUM(bs) FILTER (WHERE late BETWEEN 31 AND 60), 0), 4)::text AS d31_60,
+          round(COALESCE(SUM(bs) FILTER (WHERE late BETWEEN 61 AND 90), 0), 4)::text AS d61_90,
+          round(COALESCE(SUM(bs) FILTER (WHERE late > 90), 0), 4)::text AS d90,
+          round(COALESCE(SUM(bs), 0), 4)::text AS total
+        FROM x GROUP BY customer ORDER BY customer`);
+      return { rows, totals: { current: sum(rows, 'current'), d1_30: sum(rows, 'd1_30'), d31_60: sum(rows, 'd31_60'), d61_90: sum(rows, 'd61_90'), d90: sum(rows, 'd90'), total: sum(rows, 'total') } };
+    },
+  },
+  {
+    category: 'customers', id: 'statement', title: 'Estado de cuenta de cliente', description: 'Documentos y cobros con saldo acumulado en Bs (los cobros al valor en Bs del documento que cancelan).',
+    filters: ['customerId', 'dateFrom', 'dateTo'], required: ['customerId'],
+    columns: [col('doc_date', 'Fecha', 'date'), col('type', 'Tipo'), col('number', 'Documento'), col('reference', 'Referencia'), col('currency', 'Moneda'),
+      col('amount', 'Monto', 'money'), col('debit_bs', 'Cargo Bs', 'money'), col('credit_bs', 'Abono Bs', 'money'), col('balance_bs', 'Saldo Bs', 'money')],
+    async run(c) {
+      const docs = await raw<Row>(c.tx, Prisma.sql`
+        SELECT e.issue_date AS doc_date, e.entry_type AS type, e.document_no AS number, '' AS reference, cu.code AS currency, e.amount::text AS amount,
+               round(GREATEST(e.amount, 0) * e.exchange_rate, 4)::text AS debit_bs, round(GREATEST(-e.amount, 0) * e.exchange_rate, 4)::text AS credit_bs, e.created_at
+        FROM receivable_entries e JOIN currencies cu ON cu.id = e.currency_id
+        WHERE e.company_id = ${cid(c)} AND e.customer_id = ${c.f.customerId}::uuid AND e.status <> 'CANCELLED'
+          ${when(c.f.dateFrom, Prisma.sql`AND e.issue_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND e.issue_date <= ${c.f.dateTo}::date`)}`);
+      const pays = await raw<Row>(c.tx, Prisma.sql`
+        SELECT r.receipt_date AS doc_date, 'RECEIPT' AS type, r.number, COALESCE(r.reference, '') AS reference, cu.code AS currency, r.amount::text AS amount,
+               round(GREATEST(-SUM(a.amount * e.exchange_rate), 0), 4)::text AS debit_bs, round(GREATEST(SUM(a.amount * e.exchange_rate), 0), 4)::text AS credit_bs, r.created_at
+        FROM customer_receipts r JOIN currencies cu ON cu.id = r.currency_id
+        JOIN customer_receipt_applications a ON a.receipt_id = r.id AND a.company_id = r.company_id
+        JOIN receivable_entries e ON e.id = a.receivable_entry_id AND e.company_id = a.company_id
+        WHERE r.company_id = ${cid(c)} AND r.customer_id = ${c.f.customerId}::uuid AND r.status = 'CONFIRMED'
+          ${when(c.f.dateFrom, Prisma.sql`AND r.receipt_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND r.receipt_date <= ${c.f.dateTo}::date`)}
+        GROUP BY r.id, cu.code`);
+      const key = (r: Row) => `${r.doc_date instanceof Date ? r.doc_date.toISOString().slice(0, 10) : String(r.doc_date)}|${r.created_at instanceof Date ? r.created_at.toISOString() : ''}`;
+      const all = [...docs, ...pays].sort((a, b) => key(a).localeCompare(key(b)));
+      let bal = D(0);
+      const label: Record<string, string> = { OPENING: 'Saldo inicial', INVOICE: 'Factura', CREDIT_NOTE: 'Nota de crédito', DEBIT_NOTE: 'Nota de débito', RECEIPT: 'Cobro' };
+      const out = all.map(({ created_at: _c, ...r }) => { bal = bal.plus(D(String(r.debit_bs))).minus(D(String(r.credit_bs))); return { ...r, type: label[String(r.type)] ?? r.type, balance_bs: bal.toFixed(4) }; });
+      return { rows: out, totals: { debit_bs: sum(out, 'debit_bs'), credit_bs: sum(out, 'credit_bs'), balance_bs: bal.toFixed(4) } };
     },
   },
 ];

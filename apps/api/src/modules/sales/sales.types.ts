@@ -50,4 +50,5 @@ export const salesCancelSchema = z.object({ reason: z.string().trim().min(3, 'El
 export type SalesDocInput = z.infer<typeof salesDocSchema>;
 export type SalesLineInput = z.infer<typeof salesLineSchema>;
 /** Quién consulta: `all` = puede ver documentos de todos los vendedores. */
-export interface Viewer { userId: string; all: boolean }
+export interface Viewer { userId: string; all: boolean; /** puede confirmar por encima del límite de crédito */ creditOverride?: boolean }
+export const confirmSchema = z.object({ overrideCredit: z.boolean().optional() }).default({});

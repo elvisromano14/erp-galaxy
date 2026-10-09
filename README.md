@@ -28,7 +28,7 @@ Usuarios de **desarrollo** (contraseña de semilla `Admin12345!`, cambiar `SEED_
 
 ```bash
 pnpm --filter @erp/domain test       # 11 pruebas unitarias (totales, IVA, IGTF, costeo, RIF)
-cd apps/api && npx jest --config jest.e2e.config.js   # 85 pruebas e2e contra PostgreSQL/Redis reales (BD `minierp_test`, se recrea sola)
+cd apps/api && npx jest --config jest.e2e.config.js   # 109 pruebas e2e contra PostgreSQL/Redis reales (BD `minierp_test`, se recrea sola)
 ```
 
 Las e2e cubren: autenticación (bloqueo, rotación y reutilización de refresh, revocación), aislamiento multiempresa (RLS + FK compuestas),
@@ -44,6 +44,7 @@ lotes FEFO, períodos, idempotencia y el flujo completo de compras.
 | S1 Catálogos | Empresa (datos fiscales, feature flags), usuarios/roles, monedas, **factor cambiario** (historial inmutable), impuestos con vigencia, depósitos, instancias, unidades, productos (OEM, códigos de barras, precios con historial), listas de precio |
 | S2 Terceros | Proveedores, clientes (RIF validado), zonas, vendedores, instrumentos de pago, bancos y cuentas, tipos de operación, motivos |
 | S3–S4 Inventario | Kardex, existencias, **costo promedio ponderado**, cargos, descargos, traslados, ajustes (hoja de conteo), ajuste de costo, **lotes con vencimiento (FEFO)** tras flag, stock negativo configurable, **períodos de inventario**, valorización actual/histórica |
+| S11/S13 Tesorería | Pagos a proveedores, libro bancario inmutable, transferencias, conciliación; CxC (saldos iniciales) y cobros a clientes; alertas operativas; actualización masiva de precios |
 | S7 Ventas I | Cotización → presupuesto → pedido de venta con precio por lista, reserva opcional de existencias y visibilidad por vendedor (sin facturación fiscal: S9–S10) |
 | S5 Compras | Cotización → orden → nota de entrega → compra, devoluciones (al costo original), anulaciones con reversos, cuentas por pagar, trazabilidad por `document_links` |
 

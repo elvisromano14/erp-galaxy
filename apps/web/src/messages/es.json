@@ -61,7 +61,8 @@
       "purchases": "Compras",
       "settings": "Configuración",
       "reports": "Reportes",
-      "sales": "Ventas"
+      "sales": "Ventas",
+      "treasury": "Tesorería"
     },
     "items": {
       "products": "Productos",
@@ -109,10 +110,16 @@
       "report-purchases": "Compras",
       "report-customers": "Clientes",
       "report-sellers": "Vendedores",
+      "report-sales": "Ventas",
       "import": "Importar datos",
       "sales-quotes": "Cotizaciones de venta",
       "sales-budgets": "Presupuestos",
-      "sales-orders": "Pedidos"
+      "sales-orders": "Pedidos",
+      "payments": "Pagos a proveedores",
+      "accounts": "Bancos y cajas",
+      "price-update": "Actualizar precios",
+      "receivables": "Cuentas por cobrar",
+      "receipts": "Cobros a clientes"
     }
   },
   "header": {
@@ -158,7 +165,19 @@
     "inventoryValue": "Inventario valorizado",
     "openOrders": "Órdenes de compra abiertas",
     "belowMin": "Productos por debajo del mínimo",
-    "noneBelowMin": "Ningún producto está por debajo del mínimo."
+    "noneBelowMin": "Ningún producto está por debajo del mínimo.",
+    "salesOrders": "Pedidos de venta confirmados",
+    "alertsTitle": "Alertas",
+    "alertAmount": "Monto en Bs",
+    "alerts": {
+      "LOW_STOCK": "{count} producto(s) bajo el mínimo de existencia",
+      "EXPIRING_LOTS": "{count} lote(s) vencidos o por vencer (30 días)",
+      "PAYABLES_OVERDUE": "{count} cuenta(s) por pagar vencida(s)",
+      "PAYABLES_DUE_SOON": "{count} cuenta(s) por pagar vencen en 7 días",
+      "QUOTES_EXPIRING": "{count} cotización(es) de venta vencen en 3 días o menos",
+      "BANK_UNRECONCILED": "{count} movimiento(s) bancarios con más de 30 días sin conciliar",
+      "RECEIVABLES_OVERDUE": "{count} cuenta(s) por cobrar vencida(s)"
+    }
   },
   "status": {
     "DRAFT": "Borrador",
@@ -353,7 +372,10 @@
     },
     "entryType": {
       "INVOICE": "Factura",
-      "RETURN": "Devolución"
+      "RETURN": "Devolución",
+      "OPENING": "Saldo inicial",
+      "CREDIT_NOTE": "Nota de crédito",
+      "DEBIT_NOTE": "Nota de débito"
     }
   },
   "products": {
@@ -570,7 +592,8 @@
       "suppliers": "Proveedores",
       "purchases": "Compras",
       "customers": "Clientes",
-      "sellers": "Vendedores"
+      "sellers": "Vendedores",
+      "sales": "Ventas"
     }
   },
   "import": {
@@ -628,6 +651,7 @@
     "reservesHint": "Aparta la cantidad en el depósito al confirmar",
     "reservedNotice": "Existencias reservadas en el depósito para este documento.",
     "convertToBudget": "Convertir en presupuesto",
+    "confirmOverCredit": "Confirmar autorizando exceso de crédito",
     "convertToOrder": "Convertir en pedido",
     "docTypes": {
       "QUOTE": "Cotización de venta",
@@ -643,6 +667,113 @@
       "QUOTE": "La cotización quedará anulada.",
       "BUDGET": "El presupuesto quedará anulado y se libera la reserva.",
       "ORDER": "El pedido quedará anulado y se libera la reserva."
+    }
+  },
+  "treasury": {
+    "searchHint": "Buscar por número o referencia…",
+    "reference": "Referencia",
+    "method": "Instrumento de pago",
+    "account": "Cuenta bancaria o caja",
+    "accountHint": "Debe ser de la misma moneda del pago",
+    "newPayment": "Nuevo pago a proveedor",
+    "payment": "Pago",
+    "paid": "Pago registrado",
+    "cancelled": "Pago anulado",
+    "cancelMessage": "Se restituyen los saldos de las cuentas por pagar y se contra-asienta el movimiento bancario.",
+    "openPayables": "Cuentas por pagar abiertas",
+    "pickSupplier": "Seleccione un proveedor para ver sus cuentas por pagar.",
+    "noOpen": "El proveedor no tiene cuentas por pagar abiertas.",
+    "toPay": "A pagar",
+    "payAll": "Todo",
+    "total": "Total del pago",
+    "convertNotice": "El total se calcula al guardar con la tasa del día de cada moneda.",
+    "registerPayment": "Registrar pago",
+    "applications": "Cuentas aplicadas",
+    "balanceNow": "Saldo actual",
+    "number": "Número",
+    "bookBalance": "Saldo en libros",
+    "reconciledBalance": "Saldo conciliado",
+    "pending": "Sin conciliar",
+    "transfer": "Transferencia",
+    "newMovement": "Nuevo movimiento",
+    "kind": "Tipo",
+    "from": "Cuenta origen",
+    "to": "Cuenta destino",
+    "amountOut": "Monto que sale",
+    "amountIn": "Monto que entra",
+    "adjustHint": "Con signo: negativo resta",
+    "runningBalance": "Saldo",
+    "onlyPending": "Solo sin conciliar",
+    "reconcile": "Conciliar",
+    "reconcileSelected": "Conciliar seleccionados ({count})",
+    "reconcileHint": "Se concilian {count} movimientos. El saldo del extracto debe cuadrar con lo conciliado.",
+    "statementDate": "Fecha del extracto",
+    "statementBalance": "Saldo del extracto",
+    "selectedSum": "Suma de lo seleccionado",
+    "reconciled": "Conciliación registrada",
+    "kinds": {
+      "DEPOSIT": "Depósito",
+      "WITHDRAWAL": "Retiro",
+      "FEE": "Comisión",
+      "ADJUSTMENT": "Ajuste",
+      "TRANSFER_IN": "Transferencia (entrada)",
+      "TRANSFER_OUT": "Transferencia (salida)",
+      "SUPPLIER_PAYMENT": "Pago a proveedor",
+      "CUSTOMER_RECEIPT": "Cobro a cliente",
+      "REVERSAL": "Reverso"
+    },
+    "newReceipt": "Nuevo cobro a cliente",
+    "receipt": "Cobro",
+    "received": "Cobro registrado",
+    "pickCustomer": "Seleccione un cliente para ver sus cuentas por cobrar.",
+    "registerReceipt": "Registrar cobro",
+    "toCollect": "A cobrar",
+    "cancelReceiptMessage": "Se restituyen los saldos de las cuentas por cobrar y se contra-asienta el ingreso bancario.",
+    "openReceivables": "Cuentas por cobrar abiertas",
+    "openingBalance": "Saldo inicial",
+    "openingHint": "Cargue deudas existentes del cliente (migración). Las facturas crearán sus propias cuentas por cobrar.",
+    "documentNo": "Número de documento",
+    "issueDate": "Emisión",
+    "dueHint": "Vacío = emisión + días de crédito del cliente",
+    "signHint": "Positivo = el cliente debe; negativo = saldo a favor",
+    "searchDoc": "Buscar por número de documento…",
+    "onlyOpen": "Solo con saldo",
+    "cancelOpeningMessage": "El saldo inicial quedará anulado (no debe tener cobros aplicados)."
+  },
+  "priceUpdate": {
+    "subtitle": "Cambie los precios de una lista por porcentaje, margen sobre costo o precio fijo. Siempre se muestra una vista previa antes de aplicar.",
+    "mode": "Método",
+    "modes": {
+      "PERCENT": "Porcentaje sobre el precio vigente",
+      "MARGIN": "Margen sobre el costo promedio",
+      "SET": "Precio fijo"
+    },
+    "value": {
+      "PERCENT": "Variación %",
+      "MARGIN": "Margen %",
+      "SET": "Precio"
+    },
+    "percentHint": "Negativo para bajar precios",
+    "source": "Precio base de otra lista",
+    "sourceHint": "Vacío = el precio vigente de esta misma lista",
+    "allProducts": "Vacío = todos los productos",
+    "validFrom": "Vigente desde",
+    "decimals": "Decimales",
+    "preview": "Vista previa",
+    "apply": "Aplicar cambios",
+    "previewTitle": "Vista previa (aún no se ha guardado nada)",
+    "resultTitle": "Cambios aplicados",
+    "summary": "{total} productos evaluados · {changed} cambian · {skipped} omitidos",
+    "firstRows": "Se muestran las primeras {count} filas.",
+    "confirmTitle": "¿Aplicar la actualización de precios?",
+    "confirmMessage": "Se actualizarán {count} precios. Cada cambio queda en el historial de precios y la auditoría.",
+    "applied": "{count} precios actualizados",
+    "old": "Precio actual",
+    "new": "Precio nuevo",
+    "skipped": {
+      "SIN_PRECIO_BASE": "Sin precio base",
+      "SIN_COSTO": "Sin costo",
+      "PRECIO_NEGATIVO": "Precio negativo"
     }
   }
 }

@@ -966,3 +966,156 @@ model SalesDocumentLine {
   @@index([companyId, documentId])
   @@map("sales_document_lines")
 }
+
+/// Libro de movimientos bancarios: solo inserción. Saldo = apertura + Σ monto.
+model BankMovement {
+  id            String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId     String   @map("company_id") @db.Uuid
+  bankAccountId String   @map("bank_account_id") @db.Uuid
+  movementDate  DateTime @map("movement_date") @db.Date
+  kind          String
+  amount        Decimal  @db.Decimal(18, 4)
+  reference     String?
+  description   String?
+  sourceType    String?  @map("source_type")
+  sourceId      String?  @map("source_id") @db.Uuid
+  reversalOf    String?  @map("reversal_of") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  createdBy     String?  @map("created_by") @db.Uuid
+
+  @@unique([companyId, id])
+  @@index([companyId, bankAccountId, movementDate, createdAt])
+  @@map("bank_movements")
+}
+
+model SupplierPayment {
+  id              String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId       String    @map("company_id") @db.Uuid
+  number          String
+  status          String    @default("CONFIRMED")
+  supplierId      String    @map("supplier_id") @db.Uuid
+  paymentDate     DateTime  @map("payment_date") @db.Date
+  paymentMethodId String    @map("payment_method_id") @db.Uuid
+  bankAccountId   String?   @map("bank_account_id") @db.Uuid
+  currencyId      String    @map("currency_id") @db.Uuid
+  exchangeRate    Decimal   @default(1) @map("exchange_rate") @db.Decimal(18, 8)
+  amount          Decimal   @db.Decimal(18, 4)
+  reference       String?
+  notes           String?
+  cancelledAt     DateTime? @map("cancelled_at") @db.Timestamptz
+  cancelledBy     String?   @map("cancelled_by") @db.Uuid
+  cancelReason    String?   @map("cancel_reason")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  createdBy       String?   @map("created_by") @db.Uuid
+
+  @@unique([companyId, id])
+  @@unique([companyId, number])
+  @@index([companyId, supplierId, paymentDate])
+  @@map("supplier_payments")
+}
+
+model SupplierPaymentApplication {
+  id             String  @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId      String  @map("company_id") @db.Uuid
+  paymentId      String  @map("payment_id") @db.Uuid
+  payableEntryId String  @map("payable_entry_id") @db.Uuid
+  amount         Decimal @db.Decimal(18, 4)
+  amountPayment  Decimal @map("amount_payment") @db.Decimal(18, 4)
+
+  @@unique([companyId, paymentId, payableEntryId])
+  @@index([companyId, payableEntryId])
+  @@map("supplier_payment_applications")
+}
+
+model BankReconciliation {
+  id               String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId        String   @map("company_id") @db.Uuid
+  bankAccountId    String   @map("bank_account_id") @db.Uuid
+  statementDate    DateTime @map("statement_date") @db.Date
+  statementBalance Decimal  @map("statement_balance") @db.Decimal(18, 4)
+  bookBalance      Decimal  @map("book_balance") @db.Decimal(18, 4)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  createdBy        String?  @map("created_by") @db.Uuid
+  notes            String?
+
+  @@unique([companyId, id])
+  @@index([companyId, bankAccountId, statementDate])
+  @@map("bank_reconciliations")
+}
+
+model BankReconciliationItem {
+  companyId        String @map("company_id") @db.Uuid
+  reconciliationId String @map("reconciliation_id") @db.Uuid
+  movementId       String @map("movement_id") @db.Uuid
+
+  @@id([companyId, movementId])
+  @@index([companyId, reconciliationId])
+  @@map("bank_reconciliation_items")
+}
+
+/// Cuentas por cobrar: las facturas/notas (S9–S10) crean sus asientos aquí; hoy se cargan saldos iniciales (OPENING).
+model ReceivableEntry {
+  id           String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId    String   @map("company_id") @db.Uuid
+  customerId   String   @map("customer_id") @db.Uuid
+  entryType    String   @map("entry_type") // OPENING | INVOICE | CREDIT_NOTE | DEBIT_NOTE
+  sourceType   String?  @map("source_type")
+  sourceId     String?  @map("source_id") @db.Uuid
+  documentNo   String   @map("document_no")
+  issueDate    DateTime @map("issue_date") @db.Date
+  dueDate      DateTime @map("due_date") @db.Date
+  currencyId   String   @map("currency_id") @db.Uuid
+  exchangeRate Decimal  @default(1) @map("exchange_rate") @db.Decimal(18, 8)
+  amount       Decimal  @db.Decimal(18, 4) // negativo en notas de crédito
+  balance      Decimal  @db.Decimal(18, 4)
+  status       String   @default("OPEN")
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  createdBy    String?  @map("created_by") @db.Uuid
+
+  @@unique([companyId, id])
+  @@index([companyId, customerId, status])
+  @@map("receivable_entries")
+}
+
+model CustomerReceipt {
+  id              String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId       String    @map("company_id") @db.Uuid
+  number          String
+  status          String    @default("CONFIRMED")
+  customerId      String    @map("customer_id") @db.Uuid
+  receiptDate     DateTime  @map("receipt_date") @db.Date
+  paymentMethodId String    @map("payment_method_id") @db.Uuid
+  bankAccountId   String?   @map("bank_account_id") @db.Uuid
+  currencyId      String    @map("currency_id") @db.Uuid
+  exchangeRate    Decimal   @default(1) @map("exchange_rate") @db.Decimal(18, 8)
+  amount          Decimal   @db.Decimal(18, 4)
+  reference       String?
+  notes           String?
+  cancelledAt     DateTime? @map("cancelled_at") @db.Timestamptz
+  cancelledBy     String?   @map("cancelled_by") @db.Uuid
+  cancelReason    String?   @map("cancel_reason")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  createdBy       String?   @map("created_by") @db.Uuid
+
+  @@unique([companyId, id])
+  @@unique([companyId, number])
+  @@index([companyId, customerId, receiptDate])
+  @@map("customer_receipts")
+}
+
+model CustomerReceiptApplication {
+  id                String  @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId         String  @map("company_id") @db.Uuid
+  receiptId         String  @map("receipt_id") @db.Uuid
+  receivableEntryId String  @map("receivable_entry_id") @db.Uuid
+  amount            Decimal @db.Decimal(18, 4)
+  amountReceipt     Decimal @map("amount_receipt") @db.Decimal(18, 4)
+
+  @@unique([companyId, receiptId, receivableEntryId])
+  @@index([companyId, receivableEntryId])
+  @@map("customer_receipt_applications")
+}

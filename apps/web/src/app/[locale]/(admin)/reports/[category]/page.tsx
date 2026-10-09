@@ -7,7 +7,7 @@ import { notFound, useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 type Def = { category: string; id: string; title: string; description: string; required: string[] };
-const CATEGORIES = ["inventory", "categories", "suppliers", "purchases", "customers", "sellers"];
+const CATEGORIES = ["inventory", "categories", "suppliers", "purchases", "customers", "sellers", "sales"];
 
 export default function ReportCategoryPage() {
   const { category } = useParams<{ category: string }>();

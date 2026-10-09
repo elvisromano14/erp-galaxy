@@ -161,4 +161,29 @@ describe('Importación de datos (Excel / CSV)', () => {
     const r = await ctx.http.post('/api/v1/imports/opening-stock').set(auth(other.token)).attach('file', csv(['sku', 'deposito', 'costo_unitario', 'cantidad'], [['IMP-001', 'PRINCIPAL', '1', '1']]), 'o.csv');
     expect(r.body.data.rows[0].errors.join()).toContain('«IMP-001» no existe');
   });
+
+  it('precios por lista y saldos iniciales de cuentas por cobrar', async () => {
+    const list = (await api.post('/price-lists', { code: 'MAYOR', name: 'Mayorista', currencyId: b.usd })).body.data.id;
+    const p1 = await b.product('IMP-P1'); await b.product('IMP-P2');
+    const bad = (await upload('prices', csv(['sku', 'lista', 'precio'], [['IMP-P1', 'MAYOR', '12,5'], ['NOEXISTE', 'MAYOR', '3'], ['IMP-P2', 'OTRA', 'x']]), 'p.csv')).body.data;
+    expect(bad.summary).toMatchObject({ total: 3, errors: 2 });
+    const ok = await upload('prices', csv(['sku', 'lista', 'precio', 'vigente_desde'], [['IMP-P1', 'MAYOR', '12,5', ''], ['IMP-P2', 'MAYOR', '7', '2026-01-01']]), 'p.csv', '?mode=commit');
+    expect(ok.body.data.result.created).toBe(2);
+    expect(Number((await api.get(`/products/${p1}`)).body.data.prices.find((x: any) => x.priceListId === list).price)).toBe(12.5);
+    const again = await upload('prices', csv(['sku', 'lista', 'precio'], [['IMP-P1', 'MAYOR', '13']]), 'p.csv', '?mode=commit');
+    expect(again.body.data.result.updated).toBe(1); // mismo día: actualiza
+
+    const rif = uniqueRif('V');
+    const cid = (await api.post('/customers', { rif, legalName: 'Cliente Saldos', creditDays: 20 })).body.data.id;
+    const f = csv(['rif', 'documento', 'emision', 'moneda', 'monto', 'tasa'], [[rif, 'F-100', '2026-01-10', 'VES', '1.500,00', ''], [rif, 'F-101', '2026-01-12', 'USD', '100', ''], [rif, 'F-100', '2026-01-10', 'VES', '5', '']]);
+    const v = (await upload('receivables-opening', f, 'r.csv')).body.data;
+    expect(v.summary).toMatchObject({ total: 3, errors: 2 }); // USD sin tasa y documento repetido
+    const good = csv(['rif', 'documento', 'emision', 'moneda', 'monto', 'tasa'], [[rif, 'F-100', '2026-01-10', 'VES', '1.500,00', ''], [rif, 'F-101', '2026-01-12', 'USD', '100', '40']]);
+    expect((await upload('receivables-opening', good, 'r.csv', '?mode=commit')).body.data.result.created).toBe(2);
+    const open = (await api.get(`/treasury/receivables/open?customerId=${cid}`)).body.data as any[];
+    expect(open.map(e => Number(e.balance)).sort((a, b2) => a - b2)).toEqual([100, 1500]);
+    expect(open.find(e => e.documentNo === 'F-100').dueDate.slice(0, 10)).toBe('2026-01-30'); // emisión + 20 días de crédito
+    // reimportar el mismo documento es un error (no duplica deuda)
+    expect((await upload('receivables-opening', good, 'r.csv')).body.data.summary.errors).toBe(2);
+  });
 });

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { uuid } from '@erp/contracts';
 import { RequirePermissions } from '../../common/auth/decorators';
 import { ZodPipe } from '../../common/http/zod.pipe';
-import { addPriceSchema, createProductSchema, listProductsSchema, ProductsService, updateProductSchema } from './products.service';
+import { addPriceSchema, bulkPriceSchema, createProductSchema, listProductsSchema, ProductsService, updateProductSchema } from './products.service';
 import { ZBody, ZQuery } from '../../common/http/zod.decorators';
 
 const id = new ZodPipe(uuid);
@@ -16,6 +16,9 @@ export class ProductsController {
 
   @Get() @RequirePermissions('admin:products:read')
   list(@ZQuery(listProductsSchema) q: z.infer<typeof listProductsSchema>) { return this.svc.list(q); }
+
+  @Post('prices/bulk') @RequirePermissions('admin:products:update', 'admin:price-lists:update')
+  bulkPrices(@ZBody(bulkPriceSchema) b: z.infer<typeof bulkPriceSchema>) { return this.svc.bulkPrices(b); }
 
   @Get(':id') @RequirePermissions('admin:products:read')
   get(@Param('id', id) pid: string) { return this.svc.get(pid); }

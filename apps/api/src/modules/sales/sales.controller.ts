@@ -8,15 +8,15 @@ import { ZodPipe } from '../../common/http/zod.pipe';
 import { ZBody, ZQuery } from '../../common/http/zod.decorators';
 import { SalesService } from './sales.service';
 import {
-  SalesRoute, SALES_ROUTES, salesCancelSchema, salesDocSchema, salesDocUpdateSchema, salesListSchema, Viewer,
+  SalesRoute, SALES_ROUTES, salesCancelSchema, salesDocSchema, salesDocUpdateSchema, salesListSchema, confirmSchema, Viewer,
 } from './sales.types';
 
 const id = new ZodPipe(uuid);
 
 async function viewerOf(perms: PermissionsService, u: AuthUser): Promise<Viewer> {
-  if (u.isSuperAdmin) return { userId: u.userId, all: true };
+  if (u.isSuperAdmin) return { userId: u.userId, all: true, creditOverride: true };
   const have = await perms.forUser(u.userId, u.companyId!);
-  return { userId: u.userId, all: have.includes('sales:documents:read-all') };
+  return { userId: u.userId, all: have.includes('sales:documents:read-all'), creditOverride: have.includes('sales:orders:credit-override') };
 }
 
 /** Un controlador por tipo de documento; los vendedores sin `sales:documents:read-all` solo ven los suyos. */
@@ -72,12 +72,12 @@ export class SalesActionsController {
   async quoteToOrder(@CurrentUser() u: AuthUser, @Param('id', id) did: string) { return this.svc.convert('QUOTE', 'ORDER', did, await viewerOf(this.perms, u)); }
 
   @Post('budgets/:id/confirm') @RequirePermissions('sales:budgets:confirm')
-  async confirmBudget(@CurrentUser() u: AuthUser, @Param('id', id) did: string) { return this.svc.confirm('BUDGET', did, await viewerOf(this.perms, u)); }
+  async confirmBudget(@CurrentUser() u: AuthUser, @Param('id', id) did: string, @ZBody(confirmSchema) b: z.infer<typeof confirmSchema>) { return this.svc.confirm('BUDGET', did, await viewerOf(this.perms, u), b.overrideCredit); }
   @Post('budgets/:id/convert-to-order') @RequirePermissions('sales:orders:create')
   async budgetToOrder(@CurrentUser() u: AuthUser, @Param('id', id) did: string) { return this.svc.convert('BUDGET', 'ORDER', did, await viewerOf(this.perms, u)); }
 
   @Post('orders/:id/confirm') @RequirePermissions('sales:orders:confirm')
-  async confirmOrder(@CurrentUser() u: AuthUser, @Param('id', id) did: string) { return this.svc.confirm('ORDER', did, await viewerOf(this.perms, u)); }
+  async confirmOrder(@CurrentUser() u: AuthUser, @Param('id', id) did: string, @ZBody(confirmSchema) b: z.infer<typeof confirmSchema>) { return this.svc.confirm('ORDER', did, await viewerOf(this.perms, u), b.overrideCredit); }
 }
 
 export const SalesControllers: Type<unknown>[] = [SalesActionsController, ...SALES_ROUTES.map(makeController)];

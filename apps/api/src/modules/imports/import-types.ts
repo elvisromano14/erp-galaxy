@@ -306,5 +306,95 @@ const openingStock: ImportTypeDef = {
   },
 };
 
-export const IMPORT_TYPES: ImportTypeDef[] = [categories, products, thirdParty('suppliers'), thirdParty('customers'), openingStock];
+// ═══════════════════════════ LISTAS DE PRECIOS ═══════════════════════════
+const prices: ImportTypeDef = {
+  key: 'prices', title: 'Precios por lista', description: 'Precio de cada producto en una lista de precios (en la moneda de la lista). Si ya hay precio para esa fecha se actualiza; cada cambio queda en el historial.',
+  permission: 'admin:products:update', supportsExisting: false,
+  columns: [
+    c('sku', 'sku', 'SKU de un producto existente', 'PAS-001', true), c('lista', 'lista', 'Código de la lista de precios existente', 'MAYORISTA', true),
+    c('precio', 'precio', 'Precio en la moneda de la lista', '25,50', true), c('vigente_desde', 'vigente_desde', 'Fecha AAAA-MM-DD (por defecto hoy)', ''),
+  ],
+  async plan(ctx, rows) {
+    const { tx } = ctx;
+    const [prods, lists] = await Promise.all([tx.product.findMany({ where: { deletedAt: null }, select: { id: true, sku: true } }), tx.priceList.findMany({ where: { deletedAt: null }, select: { id: true, code: true } })]);
+    const prodBy = new Map(prods.map(x => [x.sku.toLowerCase(), x.id])); const listBy = new Map(lists.map(x => [x.code.toLowerCase(), x.id]));
+    const seen = new Map<string, number>();
+    return rows.map(r => {
+      const p: Planned = { row: r.row, action: 'create', errors: [], warnings: [], data: {}, label: `${v(r, 'sku')} @ ${v(r, 'lista')}` };
+      const productId = prodBy.get(v(r, 'sku').toLowerCase()); const priceListId = listBy.get(v(r, 'lista').toLowerCase());
+      if (!v(r, 'sku')) p.errors.push('El SKU es obligatorio'); else if (!productId) p.errors.push(`El producto «${v(r, 'sku')}» no existe (impórtelo antes)`);
+      if (!v(r, 'lista')) p.errors.push('La lista es obligatoria'); else if (!priceListId) p.errors.push(`La lista de precios «${v(r, 'lista')}» no existe`);
+      const price = parseDecimal(v(r, 'precio')); if (price === null || Number(price) < 0) p.errors.push('precio no es un número válido');
+      const validFrom = v(r, 'vigente_desde') || ctx.today;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(validFrom)) p.errors.push('vigente_desde debe ser AAAA-MM-DD');
+      if (productId && priceListId) dup(seen, `${productId}|${priceListId}|${validFrom}`, r.row, p, 'Producto/lista/fecha');
+      p.data = { productId, priceListId, price, validFrom };
+      return p;
+    });
+  },
+  async apply(ctx, planned) {
+    const { tx, companyId } = ctx;
+    let created = 0, updated = 0;
+    for (const p of planned) {
+      const { productId, priceListId, price, validFrom } = p.data;
+      const where = { companyId_productId_priceListId_validFrom: { companyId, productId, priceListId, validFrom: new Date(validFrom) } };
+      const prev = await tx.productPrice.findUnique({ where });
+      await tx.productPrice.upsert({ where, update: { price, createdBy: ctx.userId }, create: { companyId, productId, priceListId, price, validFrom: new Date(validFrom), createdBy: ctx.userId } });
+      prev ? updated++ : created++;
+    }
+    return { created, updated };
+  },
+};
+
+// ═══════════════════════════ SALDOS INICIALES DE CUENTAS POR COBRAR ═══════════════════════════
+const openingReceivables: ImportTypeDef = {
+  key: 'receivables-opening', title: 'Saldos iniciales de cuentas por cobrar', description: 'Deudas existentes de clientes (migración). Una fila por documento; monto negativo = saldo a favor del cliente.',
+  permission: 'treasury:receivables:create', supportsExisting: false,
+  columns: [
+    c('rif', 'rif', 'RIF de un cliente existente', 'J-12345678-9', true), c('documento', 'documento', 'Número del documento adeudado', 'F-0001234', true),
+    c('emision', 'emision', 'Fecha de emisión AAAA-MM-DD', '2026-01-15', true), c('vencimiento', 'vencimiento', 'AAAA-MM-DD (por defecto emisión + días de crédito del cliente)', ''),
+    c('moneda', 'moneda', 'Código de moneda (por defecto VES)', 'VES'), c('monto', 'monto', 'Saldo pendiente (en la moneda indicada)', '1500,00', true),
+    c('tasa', 'tasa', 'Tasa de cambio del documento (obligatoria si la moneda no es VES)', ''), c('notas', 'notas', 'Observación opcional', ''),
+  ],
+  async plan(ctx, rows) {
+    const { tx } = ctx;
+    const [customers, currencies, existing] = await Promise.all([
+      tx.customer.findMany({ where: { deletedAt: null }, select: { id: true, rif: true, creditDays: true } }), ctx.prisma.currency.findMany(),
+      tx.receivableEntry.findMany({ where: { entryType: 'OPENING', status: { not: 'CANCELLED' } }, select: { customerId: true, documentNo: true } }),
+    ]);
+    const custBy = new Map(customers.map(x => [formatRif(x.rif), x])); const curBy = new Map(currencies.map(x => [x.code.toLowerCase(), x]));
+    const has = new Set(existing.map(e => `${e.customerId}|${e.documentNo.toLowerCase()}`)); const seen = new Map<string, number>();
+    const day = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+    return rows.map(r => {
+      const p: Planned = { row: r.row, action: 'create', errors: [], warnings: [], data: {}, label: `${v(r, 'rif')} ${v(r, 'documento')}` };
+      const rif = v(r, 'rif');
+      const cust = rif ? custBy.get(isValidRif(rif) ? formatRif(rif) : rif) : undefined;
+      if (!rif) p.errors.push('El RIF es obligatorio'); else if (!cust) p.errors.push(`El cliente con RIF «${rif}» no existe (impórtelo antes)`);
+      if (!v(r, 'documento')) p.errors.push('El documento es obligatorio');
+      if (!day(v(r, 'emision'))) p.errors.push('emision debe ser AAAA-MM-DD');
+      if (v(r, 'vencimiento') && !day(v(r, 'vencimiento'))) p.errors.push('vencimiento debe ser AAAA-MM-DD');
+      const cur = curBy.get((v(r, 'moneda') || 'VES').toLowerCase()); if (!cur) p.errors.push(`La moneda «${v(r, 'moneda')}» no existe`);
+      const amount = parseDecimal(v(r, 'monto')); if (amount === null || Number(amount) === 0) p.errors.push('monto no es un número válido (distinto de cero)');
+      let rate = '1';
+      if (cur && cur.code !== 'VES') { const t = parseDecimal(v(r, 'tasa')); if (t === null || Number(t) <= 0) p.errors.push('La tasa es obligatoria y positiva para monedas distintas de VES'); else rate = t; }
+      if (cust && v(r, 'documento')) { dup(seen, `${cust.id}|${v(r, 'documento').toLowerCase()}`, r.row, p, 'Documento'); if (has.has(`${cust.id}|${v(r, 'documento').toLowerCase()}`)) p.errors.push('Ya existe un saldo inicial con ese documento para el cliente'); }
+      let due = v(r, 'vencimiento');
+      if (!due && cust && day(v(r, 'emision'))) due = new Date(new Date(v(r, 'emision')).getTime() + cust.creditDays * 86_400_000).toISOString().slice(0, 10);
+      if (due && day(v(r, 'emision')) && due < v(r, 'emision')) p.errors.push('El vencimiento no puede ser anterior a la emisión');
+      p.data = { customerId: cust?.id, documentNo: v(r, 'documento'), issueDate: v(r, 'emision'), dueDate: due, currencyId: cur?.id, exchangeRate: rate, amount, notes: v(r, 'notas') || null };
+      return p;
+    });
+  },
+  async apply(ctx, planned) {
+    for (const p of planned) {
+      const d = p.data;
+      await ctx.tx.receivableEntry.create({
+        data: { companyId: ctx.companyId, customerId: d.customerId, entryType: 'OPENING', documentNo: d.documentNo, issueDate: new Date(d.issueDate), dueDate: new Date(d.dueDate), currencyId: d.currencyId, exchangeRate: d.exchangeRate, amount: d.amount, balance: d.amount, status: 'OPEN', notes: d.notes, createdBy: ctx.userId },
+      });
+    }
+    return { created: planned.length, updated: 0 };
+  },
+};
+
+export const IMPORT_TYPES: ImportTypeDef[] = [categories, products, thirdParty('suppliers'), thirdParty('customers'), openingStock, prices, openingReceivables];
 export const findImportType = (key: string) => IMPORT_TYPES.find(t => t.key === key);

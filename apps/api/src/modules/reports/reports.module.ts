@@ -17,7 +17,7 @@ export const EXPORT_ROW_CAP = 50000;
 const MIME = { csv: 'text/csv; charset=utf-8', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pdf: 'application/pdf' } as const;
 
 const FILTER_LABEL: Record<FilterKey, string> = {
-  dateFrom: 'Desde', dateTo: 'Hasta', asOf: 'Al', warehouseId: 'Depósito', categoryId: 'Instancia', supplierId: 'Proveedor', productId: 'Producto',
+  dateFrom: 'Desde', dateTo: 'Hasta', asOf: 'Al', warehouseId: 'Depósito', categoryId: 'Instancia', supplierId: 'Proveedor', customerId: 'Cliente', productId: 'Producto',
   priceListId: 'Lista', status: 'Estado', search: 'Búsqueda', onlyWithStock: 'Solo con existencia', docType: 'Tipo de documento',
 };
 
