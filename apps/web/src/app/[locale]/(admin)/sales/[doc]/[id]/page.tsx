@@ -18,6 +18,8 @@ import { fmtDate, fmtDateTime, fmtMoney, fmtNumber, fmtQty, todayCaracas } from 
 import { notFound, useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
+import { salesDocSchema } from "@/components/erp/doc-schemas";
+import { useDocForm } from "@/components/erp/useDocForm";
 
 type Row = Record<string, any>;
 
@@ -43,11 +45,10 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
   const currencies = useOptions("/currencies", (r) => r.code);
   const priceLists = useFetch<Row[]>("/price-lists", { limit: 100 });
 
-  const [h, setH] = useState({
+  const { h, setH, lines, setLines, errorOf, lineIssues, check } = useDocForm<{ [k: string]: any }>({
     customerId: "", customerDisplay: "", customerPriceListId: "", sellerId: "", warehouseId: "", priceListId: "", currencyId: "", exchangeRate: "",
     docDate: todayCaracas(), validUntil: "", paymentCondition: "CASH", creditDays: "0", reservesStock: false, notes: "", parentId: "",
-  });
-  const [lines, setLines] = useState<Line[]>([{ _key: newKey() }]);
+  }, salesDocSchema(meta.type));
   const [version, setVersion] = useState<number | undefined>();
   const [error, setError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
@@ -134,7 +135,7 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
     { key: "total", header: t("fields.total"), kind: "readonly", align: "end", format: (l) => { const c = live?.byKey.get(l._key); return c && l.unitPrice ? fmtMoney(c.total.toString()) : "—"; } },
   ];
 
-  const fe = (field: string) => error?.details.find((d) => d.field === field)?.message ?? null;
+  const fe = (field: string) => errorOf(field) ?? error?.details.find((d) => d.field === field)?.message ?? null;
 
   function body() {
     const v = (s?: string) => (s && s.trim() !== "" ? s.trim() : undefined);
@@ -153,6 +154,7 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
   const go = (slug: string, docId: string) => router.push(`/sales/${slug}/${docId}`);
 
   async function saveDraft() {
+    if (!(await check())) return;
     setBusy(true); setError(null);
     try {
       if (isNew) { const r = await post<Row>(meta.api, body()); notice.success(t("common.saved")); router.replace(`/sales/${meta.slug}/${r.data.id}`); }
@@ -165,6 +167,7 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
     try {
       let target = id;
       if (opts.save && !readOnly) {
+        if (!(await check())) { setBusy(false); setDialog(null); setPayModal(false); return; }
         if (isNew) target = (await post<Row>(meta.api, body())).data.id;
         else await patch(`${meta.api}/${id}`, body());
       }
@@ -233,6 +236,7 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
         </div>
       </Card>
 
+      {lineIssues().length > 0 && <p className="mb-3 rounded-lg bg-error-50 p-3 text-sm text-error-700 dark:bg-error-500/15 dark:text-error-500">{lineIssues().join(" · ")}</p>}
       <Card title={t("common.lines")}>
         <LinesEditor
           columns={columns} lines={lines} onChange={setLines} readOnly={readOnly}

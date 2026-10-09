@@ -37,7 +37,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
    * Ejecuta `fn` dentro de una transacción con `app.company_id` fijado (RLS).
    * Si ya hay una transacción de petición para la misma empresa, la reutiliza.
    */
-  async runWithTenant<T>(companyId: string, fn: (tx: Tx) => Promise<T>, extra: Partial<RequestStore> = {}): Promise<T> {
+  async runWithTenant<T>(companyId: string, fn: (tx: Tx) => Promise<T>, extra: Partial<RequestStore> = {}, timeoutMs = 60_000): Promise<T> {
     const current = getStore();
     if (current.tx && current.companyId === companyId) return fn(current.tx);
     return this.$transaction(
@@ -45,7 +45,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         await tx.$executeRaw`SELECT set_config('app.company_id', ${companyId}, true)`;
         return als.run({ ...current, ...extra, tx, companyId }, () => fn(tx));
       },
-      { timeout: 60_000, maxWait: 10_000 },
+      { timeout: timeoutMs, maxWait: 10_000 },
     );
   }
 }

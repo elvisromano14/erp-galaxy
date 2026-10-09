@@ -18,6 +18,8 @@ import { fmtDate, fmtDateTime, fmtMoney, fmtNumber, fmtQty, todayCaracas } from 
 import { notFound, useParams, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
+import { purchaseDocSchema } from "@/components/erp/doc-schemas";
+import { useDocForm } from "@/components/erp/useDocForm";
 
 type Row = Record<string, any>;
 
@@ -47,11 +49,10 @@ function Editor({ meta, id }: { meta: PurchaseDocMeta; id: string }) {
   const taxes = useOptions("/taxes", (r) => `${r.name} (${fmtNumber(r.rate)}%)`);
   const currencies = useOptions("/currencies", (r) => r.code);
 
-  const [h, setH] = useState({
+  const { h, setH, lines, setLines, errorOf, lineIssues, check } = useDocForm<{ [k: string]: any }>({
     supplierId: "", supplierDisplay: "", warehouseId: "", currencyId: "", exchangeRate: "", docDate: todayCaracas(), expiresAt: "",
     paymentCondition: "CASH", creditDays: "0", supplierDocNo: "", supplierControlNo: "", notes: "", parentId: "",
-  });
-  const [lines, setLines] = useState<Line[]>([{ _key: newKey() }]);
+  }, purchaseDocSchema(meta.type));
   const [version, setVersion] = useState<number | undefined>();
   const [error, setError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
@@ -156,7 +157,7 @@ function Editor({ meta, id }: { meta: PurchaseDocMeta; id: string }) {
     { key: "total", header: t("fields.total"), kind: "readonly", align: "end", format: (l) => { const c = live?.byKey.get(l._key); return c ? fmtMoney(c.total.toString()) : "—"; } },
   ];
 
-  const fe = (field: string) => error?.details.find((d) => d.field === field)?.message ?? null;
+  const fe = (field: string) => errorOf(field) ?? error?.details.find((d) => d.field === field)?.message ?? null;
 
   function body() {
     const v = (s?: string) => (s && s.trim() !== "" ? s.trim() : undefined);
@@ -178,6 +179,7 @@ function Editor({ meta, id }: { meta: PurchaseDocMeta; id: string }) {
   const go = (slug: string, docId: string) => router.push(`/purchases/${slug}/${docId}`);
 
   async function saveDraft(): Promise<string | null> {
+    if (!(await check())) return null;
     setBusy(true);
     setError(null);
     try {
@@ -206,6 +208,7 @@ function Editor({ meta, id }: { meta: PurchaseDocMeta; id: string }) {
     try {
       let target = id;
       if (opts.save && !readOnly) {
+        if (!(await check())) { setBusy(false); setDialog(null); return; }
         if (isNew) target = (await post<Row>(meta.api, body())).data.id;
         else await patch(`${meta.api}/${id}`, body());
       }
@@ -310,6 +313,7 @@ function Editor({ meta, id }: { meta: PurchaseDocMeta; id: string }) {
         </div>
       </Card>
 
+      {lineIssues().length > 0 && <p className="mb-3 rounded-lg bg-error-50 p-3 text-sm text-error-700 dark:bg-error-500/15 dark:text-error-500">{lineIssues().join(" · ")}</p>}
       <Card title={t("common.lines")}>
         <LinesEditor
           columns={columns}

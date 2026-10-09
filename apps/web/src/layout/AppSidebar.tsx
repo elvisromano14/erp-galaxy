@@ -27,7 +27,7 @@ const AppSidebar: React.FC = () => {
 
   const sections = useMemo(
     () =>
-      NAV.map((s) => ({ ...s, items: s.items.filter((i) => (!i.perm || can(i.perm)) && (!i.feature || feature(i.feature)) && (!i.flag || (i.flag === "superAdmin" ? !!me?.user.isSuperAdmin : !!me?.canCreateCompanies))) })).filter(
+      NAV.map((s) => ({ ...s, items: s.items.filter((i) => (!i.perm || can(i.perm)) && (!i.anyPerm || i.anyPerm.some((p) => can(p))) && (!i.feature || feature(i.feature)) && (!i.flag || (i.flag === "superAdmin" ? !!me?.user.isSuperAdmin : !!me?.canCreateCompanies))) })).filter(
         (s) => s.items.length > 0,
       ),
     [can, feature, me],

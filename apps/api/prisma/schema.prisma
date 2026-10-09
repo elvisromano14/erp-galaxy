@@ -1192,3 +1192,31 @@ model Withholding {
   @@index([companyId, direction, kind, period])
   @@map("withholdings")
 }
+
+/// Exportación de un reporte pesado procesada en segundo plano (cola `reports` de BullMQ).
+model ReportJob {
+  id         String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId  String    @map("company_id") @db.Uuid
+  userId     String?   @map("user_id") @db.Uuid
+  category   String
+  report     String
+  format     String
+  delimiter  String    @default(";")
+  filters    Json      @default("{}")
+  status     String    @default("QUEUED") // QUEUED | RUNNING | DONE | FAILED | EXPIRED
+  error      String?
+  rowCount   Int?      @map("row_count")
+  truncated  Boolean   @default(false)
+  filename   String?
+  mime       String?
+  sizeBytes  Int?      @map("size_bytes")
+  file       Bytes?
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  startedAt  DateTime? @map("started_at") @db.Timestamptz
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz
+  expiresAt  DateTime? @map("expires_at") @db.Timestamptz
+
+  @@unique([companyId, id])
+  @@index([companyId, userId, createdAt])
+  @@map("report_jobs")
+}

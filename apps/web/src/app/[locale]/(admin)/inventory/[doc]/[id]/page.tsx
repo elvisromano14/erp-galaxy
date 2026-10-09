@@ -17,6 +17,8 @@ import { fmtDate, fmtDateTime, fmtQty } from "@/lib/format";
 import { notFound, useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
+import { inventoryDocSchema } from "@/components/erp/doc-schemas";
+import { useDocForm } from "@/components/erp/useDocForm";
 
 type Row = Record<string, any>;
 
@@ -35,8 +37,7 @@ function Editor({ meta, id }: { meta: InvDocMeta; id: string }) {
   const isNew = id === "new";
   const P = (a: string) => `${meta.permission}:${a}`;
   const loaded = useFetch<Row>(isNew ? null : `${meta.api}/${id}`);
-  const [header, setHeader] = useState({ warehouseId: "", toWarehouseId: "", reasonId: "", notes: "" });
-  const [lines, setLines] = useState<Line[]>([{ _key: newKey() }]);
+  const { h: header, setH: setHeader, lines, setLines, errorOf, lineIssues, check } = useDocForm<{ [k: string]: any }>({ warehouseId: "", toWarehouseId: "", reasonId: "", notes: "" }, inventoryDocSchema(meta.type));
   const [version, setVersion] = useState<number | undefined>();
   const [error, setError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
@@ -80,7 +81,7 @@ function Editor({ meta, id }: { meta: InvDocMeta; id: string }) {
         ...(status === "CONFIRMED" ? [{ key: "difference", header: t("inventory.difference"), kind: "readonly" as const, align: "end" as const, format: (l: Line) => fmtQty(l.difference) }] : [])]
     : [product, { key: "newAvgCost", header: t("inventory.newAvgCost"), kind: "decimal", align: "end", className: "w-40" }];
 
-  const fe = (field: string) => error?.details.find((d) => d.field === field)?.message ?? null;
+  const fe = (field: string) => errorOf(field) ?? error?.details.find((d) => d.field === field)?.message ?? null;
 
   function body() {
     const c = (s: string) => (s.trim() === "" ? undefined : s.trim());
@@ -99,6 +100,7 @@ function Editor({ meta, id }: { meta: InvDocMeta; id: string }) {
   }
 
   async function save(): Promise<string | null> {
+    if (!(await check())) return null;
     setBusy(true);
     setError(null);
     try {
@@ -126,6 +128,7 @@ function Editor({ meta, id }: { meta: InvDocMeta; id: string }) {
     try {
       let target = id;
       if (kind === "confirm" && !readOnly) {
+        if (!(await check())) { setBusy(false); setDialog(null); return; }
         const saved = await (async () => {
           try {
             if (isNew) return (await post<Row>(meta.api, body())).data.id as string;
@@ -200,6 +203,7 @@ function Editor({ meta, id }: { meta: InvDocMeta; id: string }) {
         </div>
       </Card>
 
+      {lineIssues().length > 0 && <p className="mb-3 rounded-lg bg-error-50 p-3 text-sm text-error-700 dark:bg-error-500/15 dark:text-error-500">{lineIssues().join(" · ")}</p>}
       <Card title={t("common.lines")}>
         <LinesEditor columns={columns} lines={lines} onChange={setLines} readOnly={readOnly} onProductPick={() => ({ serialsText: "", quantity: "" })} />
         {meta.type === "COST_ADJUSTMENT" && !readOnly && <p className="mt-3 text-xs text-gray-500">{t("inventory.costAdjHint")}</p>}

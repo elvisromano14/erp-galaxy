@@ -126,7 +126,8 @@
       "withholdings": "Retenciones",
       "sales-debit-notes": "Notas de débito",
       "report-fiscal": "Fiscal",
-      "payables-list": "Cuentas por pagar"
+      "payables-list": "Cuentas por pagar",
+      "report-jobs": "Mis exportaciones"
     }
   },
   "header": {
@@ -191,7 +192,7 @@
     "SENT": "Enviada",
     "ACCEPTED": "Aceptada",
     "REJECTED": "Rechazada",
-    "EXPIRED": "Vencida",
+    "EXPIRED": "Vencido",
     "CONFIRMED": "Confirmado",
     "PARTIALLY_FULFILLED": "Parcialmente recibida",
     "FULFILLED": "Recibida",
@@ -203,7 +204,11 @@
     "PARTIALLY_PAID": "Pago parcial",
     "PAID": "Pagado",
     "CONVERTED": "Convertido",
-    "PARTIALLY_INVOICED": "Facturado parcial"
+    "PARTIALLY_INVOICED": "Facturado parcial",
+    "QUEUED": "En cola",
+    "RUNNING": "Generando",
+    "DONE": "Listo",
+    "FAILED": "Falló"
   },
   "docTypes": {
     "TRANSFER": "Traslado",
@@ -604,7 +609,16 @@
       "sellers": "Vendedores",
       "sales": "Ventas",
       "fiscal": "Fiscal"
-    }
+    },
+    "background": "En segundo plano…",
+    "queued": "Exportación en cola: la verá lista en «Mis exportaciones».",
+    "report": "Reporte",
+    "format": "Formato",
+    "rowsCol": "Filas",
+    "size": "Tamaño",
+    "download": "Descargar",
+    "expired": "El archivo venció",
+    "jobsSubtitle": "Exportaciones generadas en segundo plano. Los archivos se conservan unos días."
   },
   "import": {
     "title": "Importar datos",

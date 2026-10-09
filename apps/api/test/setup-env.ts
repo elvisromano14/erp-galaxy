@@ -7,3 +7,7 @@ process.env.JWT_ACCESS_SECRET = 'test_access_secret_test_access_secret_test_acce
 process.env.JWT_REFRESH_SECRET = 'test_refresh_secret_test_refresh_secret_test_refresh_secret_12';
 process.env.THROTTLE_LOGIN_PER_MIN = '100000';
 process.env.THROTTLE_DEFAULT_PER_MIN = '100000';
+process.env.WORKER_ENABLED = 'true';
+process.env.QUEUE_PREFIX = 'erp-test';
+process.env.FX_SYNC_ENABLED = 'false';
+process.env.JOBS_ENABLED = 'false';

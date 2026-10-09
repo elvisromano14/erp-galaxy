@@ -11,7 +11,10 @@
     "db:reset": "bash scripts/db-reset.sh",
     "test": "jest --runInBand",
     "test:e2e": "jest --runInBand --config jest.e2e.config.js",
-    "db:migrate": "bash -c 'set -a; . ./.env; set +a; DATABASE_URL=$MIGRATION_DATABASE_URL prisma migrate deploy'"
+    "db:migrate": "bash -c 'set -a; . ./.env; set +a; DATABASE_URL=$MIGRATION_DATABASE_URL prisma migrate deploy'",
+    "openapi:export": "ts-node --transpile-only scripts/export-openapi.ts",
+    "worker": "ts-node --transpile-only src/worker.ts",
+    "start:worker": "node dist/worker.js"
   },
   "dependencies": {
     "@erp/contracts": "workspace:*",
@@ -25,6 +28,7 @@
     "@nestjs/throttler": "^6.4.0",
     "@prisma/client": "6.19.3",
     "argon2": "^0.45.1",
+    "bullmq": "^6.3.11",
     "decimal.js": "^10.4.3",
     "dotenv": "^16.6.1",
     "exceljs": "^4.4.0",

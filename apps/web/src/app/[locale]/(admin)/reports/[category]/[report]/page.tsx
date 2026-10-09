@@ -8,8 +8,8 @@ import { BoolBadge, Card, ErrorBox, Loading, PageHeader } from "@/components/erp
 import { useFetch } from "@/components/erp/useFetch";
 import Button from "@/components/ui/button/Button";
 import { useNotice } from "@/context/NoticeContext";
-import { Link } from "@/i18n/navigation";
-import { ApiError, api, downloadFile } from "@/lib/api";
+import { Link, useRouter } from "@/i18n/navigation";
+import { ApiError, api, downloadFile, post } from "@/lib/api";
 import { fmtDate, fmtDateTime, fmtNumber } from "@/lib/format";
 import { notFound, useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -70,6 +70,20 @@ export default function ReportPage() {
     }
   }
 
+  const router = useRouter();
+  async function inBackground(format: "pdf" | "xlsx" | "csv") {
+    setBusy("run");
+    try {
+      await post("/reports/jobs", { category, report, format, filters: query });
+      notice.success(t("reports.queued"));
+      router.push("/reports/jobs");
+    } catch (e) {
+      notice.error((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function exportAs(format: "pdf" | "xlsx" | "csv") {
     setBusy(format);
     try {
@@ -112,6 +126,11 @@ export default function ReportPage() {
                 {busy === f ? t("reports.exporting") : t(`reports.export${f === "pdf" ? "Pdf" : f === "xlsx" ? "Xlsx" : "Csv"}`)}
               </Button>
             ))}
+            <select aria-label={t("reports.background")} disabled={busy !== null || missing.length > 0} value="" onChange={(e) => e.target.value && inBackground(e.target.value as "pdf" | "xlsx" | "csv")}
+              className="h-9 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
+              <option value="">{t("reports.background")}</option>
+              {(["xlsx", "csv", "pdf"] as const).map((f) => <option key={f} value={f}>{t(`reports.export${f === "pdf" ? "Pdf" : f === "xlsx" ? "Xlsx" : "Csv"}`)}</option>)}
+            </select>
           </>
         }
       />

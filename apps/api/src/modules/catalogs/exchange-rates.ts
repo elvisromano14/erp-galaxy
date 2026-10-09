@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Injectable, Logger, Module, OnApplicationBootstrap, OnApplicationShutdown, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Injectable, Logger, Module, OnApplicationBootstrap, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Decimal } from '@erp/domain';
 import { z } from 'zod';
@@ -11,6 +11,7 @@ import { RequirePermissions } from '../../common/auth/decorators';
 import { BusinessRuleException } from '../../common/errors/errors';
 import { Paged } from '../../common/http/paged';
 import { ZBody, ZQuery } from '../../common/http/zod.decorators';
+import { QueueService } from '../../common/queue/queue.service';
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 /** Las tasas MANUALES son de la empresa que las carga; las del BCV son globales y las trae la sincronización. */
@@ -143,30 +144,22 @@ export class ExchangeRatesController {
   }
 }
 
-/** Planificador ligero (sin dependencias): sincroniza al arrancar y cada FX_SYNC_INTERVAL_MINUTES; con candado en Redis. */
+/** Sincroniza la tasa del BCV con una tarea repetible de BullMQ (cola `fx-sync`): al arrancar y cada FX_SYNC_INTERVAL_MINUTES, una sola vez aunque haya varias instancias. */
 @Injectable()
-export class BcvScheduler implements OnApplicationBootstrap, OnApplicationShutdown {
+export class BcvScheduler implements OnApplicationBootstrap {
   private readonly log = new Logger('BcvScheduler');
-  private timer?: NodeJS.Timeout;
-  constructor(private readonly sync: BcvSyncService, private readonly redis: RedisService) {}
+  constructor(private readonly sync: BcvSyncService, private readonly queues: QueueService) {}
 
-  onApplicationBootstrap() {
+  async onApplicationBootstrap() {
     if (!env.FX_SYNC_ENABLED) return;
-    const tick = async () => {
-      const ok = await this.redis.client.set('lock:fx-sync', '1', 'EX', 120, 'NX').catch(() => null);
-      if (!ok) return;
-      try {
-        const r = await this.sync.syncNow();
-        this.log.log(`Tasas BCV: ${r.map(x => `${x.currency}=${x.rate || '-'} ${x.status}`).join(', ')}`);
-      } catch (e) {
-        this.log.warn((e as Error).message);
-      }
-    };
-    setTimeout(tick, 10_000).unref();
-    this.timer = setInterval(tick, env.FX_SYNC_INTERVAL_MINUTES * 60_000);
-    this.timer.unref();
+    try {
+      await this.queues.queue('fx-sync').upsertJobScheduler('fx-sync', { every: env.FX_SYNC_INTERVAL_MINUTES * 60_000 }, { name: 'sync', opts: { removeOnComplete: 10, removeOnFail: 50, attempts: 2, backoff: { type: 'fixed', delay: 60_000 } } });
+    } catch (e) { this.log.warn(`No se pudo programar la sincronización: ${(e as Error).message}`); }
+    this.queues.worker('fx-sync', async () => {
+      const r = await this.sync.syncNow();
+      this.log.log(`Tasas BCV: ${r.map(x => `${x.currency}=${x.rate || '-'} ${x.status}`).join(', ')}`);
+    });
   }
-  onApplicationShutdown() { if (this.timer) clearInterval(this.timer); }
 }
 
 @Module({

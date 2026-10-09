@@ -14,7 +14,14 @@ const schema = z.object({
   /** Ventana en que reusar un refresh token recién rotado se considera una carrera benigna (p. ej. dos pestañas). */
   REFRESH_REUSE_GRACE_SECONDS: z.coerce.number().default(10),
   LOG_LEVEL: z.string().default('info'),
-  WORKER_ENABLED: z.coerce.boolean().default(false),
+  /** Procesa las colas de BullMQ (reportes en segundo plano, tareas periódicas) dentro de este proceso. Puede correr aparte con `pnpm worker`. */
+  WORKER_ENABLED: z.enum(['true', 'false']).default('false').transform(v => v === 'true'),
+  /** Prefijo de las claves de BullMQ en Redis (separa entornos que comparten Redis). */
+  QUEUE_PREFIX: z.string().default('erp'),
+  /** Tope de filas de un reporte generado en segundo plano (PDF se limita aparte a 5 000). */
+  REPORT_ASYNC_ROW_CAP: z.coerce.number().default(300000),
+  /** Horas que se conserva el archivo de un reporte en segundo plano. */
+  REPORT_FILE_TTL_HOURS: z.coerce.number().default(72),
   /** Sincronización de la tasa oficial (BCV) con DolarApi. */
   FX_API_URL: z.string().url().default('https://ve.dolarapi.com/v1'),
   /** Leyenda al pie de facturas/notas mientras la numeración sea interna (antes de la imprenta digital). */

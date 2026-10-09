@@ -4,6 +4,8 @@ export interface NavLeaf {
   path: string;
   /** Permiso requerido (por defecto, ninguno). */
   perm?: string;
+  /** Visible si el usuario tiene AL MENOS uno de estos permisos. */
+  anyPerm?: string[];
   feature?: string;
   /** Visible solo si el usuario puede crear empresas (administrador global o de cliente). */
   flag?: "canCreateCompanies" | "superAdmin";
@@ -96,6 +98,7 @@ export const NAV: NavSection[] = [
       { key: "report-sellers", path: "/reports/sellers", perm: "reports:sellers:read" },
       { key: "report-sales", path: "/reports/sales", perm: "reports:sales:read" },
       { key: "report-fiscal", path: "/reports/fiscal", perm: "reports:fiscal:read" },
+      { key: "report-jobs", path: "/reports/jobs", anyPerm: ["inventory", "categories", "suppliers", "purchases", "customers", "sellers", "sales", "fiscal"].map((c) => `reports:${c}:read`) },
     ],
   },
   {

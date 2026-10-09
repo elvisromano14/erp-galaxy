@@ -1,7 +1,7 @@
-import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/db/prisma.service';
-import { RedisService } from '../../common/db/redis.service';
+import { QueueService } from '../../common/queue/queue.service';
 import { env } from '../../config/env';
 import { caracasToday } from '../inventory/inventory-docs.service';
 
@@ -81,14 +81,13 @@ export class AlertsService {
 }
 
 /**
- * Tareas periódicas de mantenimiento (candado en Redis para que solo una instancia corra a la vez):
- * vence las cotizaciones enviadas cuya vigencia pasó (ventas y compras).
+ * Tareas periódicas de mantenimiento con BullMQ (cola `housekeeping`; una sola ejecución aunque haya varias instancias):
+ * vencer cotizaciones enviadas cuya vigencia pasó (cada hora) y purgar los archivos de reportes en segundo plano ya expirados (diario).
  */
 @Injectable()
-export class HousekeepingService implements OnApplicationBootstrap, OnApplicationShutdown {
+export class HousekeepingService implements OnApplicationBootstrap {
   private readonly log = new Logger('Housekeeping');
-  private timer?: NodeJS.Timeout;
-  constructor(private readonly prisma: PrismaService, private readonly redis: RedisService) {}
+  constructor(private readonly prisma: PrismaService, private readonly queues: QueueService) {}
 
   /** Marca como vencidas las cotizaciones SENT con vigencia anterior a hoy en TODAS las empresas. Devuelve cuántas. */
   async expireQuotes(): Promise<number> {
@@ -105,19 +104,27 @@ export class HousekeepingService implements OnApplicationBootstrap, OnApplicatio
     return n;
   }
 
-  onApplicationBootstrap() {
-    if (!env.JOBS_ENABLED) return;
-    const tick = async () => {
-      const ok = await this.redis.client.set('lock:housekeeping', '1', 'EX', 600, 'NX').catch(() => null);
-      if (!ok) return;
-      try {
-        const n = await this.expireQuotes();
-        if (n) this.log.log(`Cotizaciones vencidas: ${n}`);
-      } catch (e) { this.log.warn((e as Error).message); }
-    };
-    setTimeout(tick, 20_000).unref();
-    this.timer = setInterval(tick, 60 * 60_000);
-    this.timer.unref();
+  /** Borra el archivo de las exportaciones vencidas (la fila queda como EXPIRED). Devuelve cuántas. */
+  async purgeReportFiles(): Promise<number> {
+    const companies = await this.prisma.company.findMany({ select: { id: true } });
+    let n = 0;
+    for (const c of companies) {
+      n += await this.prisma.runWithTenant(c.id, async tx => (await tx.reportJob.updateMany({ where: { file: { not: null }, expiresAt: { lt: new Date() } }, data: { file: null, status: 'EXPIRED' } })).count);
+    }
+    return n;
   }
-  onApplicationShutdown() { if (this.timer) clearInterval(this.timer); }
+
+  async onApplicationBootstrap() {
+    if (!env.JOBS_ENABLED) return;
+    const q = this.queues.queue('housekeeping');
+    const base = { removeOnComplete: 10, removeOnFail: 50 };
+    try {
+      await q.upsertJobScheduler('expire-quotes', { every: 60 * 60_000 }, { name: 'expire-quotes', opts: base });
+      await q.upsertJobScheduler('purge-report-files', { pattern: '0 3 * * *', tz: 'America/Caracas' }, { name: 'purge-report-files', opts: base });
+    } catch (e) { this.log.warn(`No se pudieron programar las tareas: ${(e as Error).message}`); }
+    this.queues.worker('housekeeping', async job => {
+      if (job.name === 'expire-quotes') { const n = await this.expireQuotes(); if (n) this.log.log(`Cotizaciones vencidas: ${n}`); }
+      else if (job.name === 'purge-report-files') { const n = await this.purgeReportFiles(); if (n) this.log.log(`Archivos de reportes purgados: ${n}`); }
+    });
+  }
 }
