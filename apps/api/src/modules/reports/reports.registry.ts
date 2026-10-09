@@ -33,7 +33,7 @@ export interface ReportDef {
 }
 
 export const CATEGORIES: Record<string, string> = {
-  inventory: 'Inventario', categories: 'Instancias', suppliers: 'Proveedores', purchases: 'Compras', customers: 'Clientes', sellers: 'Vendedores', sales: 'Ventas',
+  inventory: 'Inventario', categories: 'Instancias', suppliers: 'Proveedores', purchases: 'Compras', customers: 'Clientes', sellers: 'Vendedores', sales: 'Ventas', fiscal: 'Fiscal',
 };
 
 const cid = (c: ReportCtx) => Prisma.sql`${c.companyId}::uuid`;
@@ -604,20 +604,20 @@ export const REPORTS: ReportDef[] = [
     },
   },
   {
-    category: 'sales', id: 'book', title: 'Libro de ventas', description: 'Facturas y notas de crédito del período en Bs (las notas restan). Las facturas anuladas figuran sin montos. Referencial: el formato oficial lo valida el contador.',
+    category: 'sales', id: 'book', title: 'Libro de ventas', description: 'Facturas, notas de débito y notas de crédito del período en Bs (las de crédito restan). Las facturas anuladas figuran sin montos. Referencial: el formato oficial lo valida el contador.',
     filters: ['dateFrom', 'dateTo', 'customerId'],
     columns: [col('doc_date', 'Fecha', 'date'), col('type', 'Tipo'), col('number', 'Número'), col('control_no', 'N° control'), col('rif', 'RIF'), col('customer', 'Cliente'),
       col('exempt_bs', 'Exento Bs', 'money'), col('base_bs', 'Base imponible Bs', 'money'), col('tax_bs', 'IVA Bs', 'money'), col('igtf_bs', 'IGTF Bs', 'money'), col('total_bs', 'Total Bs', 'money')],
     async run(c) {
       const rows = await raw<Row>(c.tx, Prisma.sql`
-        SELECT d.doc_date, CASE d.doc_type WHEN 'INVOICE' THEN CASE WHEN d.status = 'CANCELLED' THEN 'Factura anulada' ELSE 'Factura' END ELSE 'Nota de crédito' END AS type,
+        SELECT d.doc_date, CASE d.doc_type WHEN 'INVOICE' THEN CASE WHEN d.status = 'CANCELLED' THEN 'Factura anulada' ELSE 'Factura' END WHEN 'DEBIT_NOTE' THEN 'Nota de débito' ELSE 'Nota de crédito' END AS type,
                d.number, d.control_no, COALESCE(d.fiscal_snapshot->'customer'->>'rif', cu.rif) AS rif, COALESCE(d.fiscal_snapshot->'customer'->>'legalName', cu.legal_name) AS customer,
                (CASE WHEN d.status = 'CANCELLED' THEN 0 ELSE d.exempt_base * d.exchange_rate * (CASE WHEN d.doc_type = 'CREDIT_NOTE' THEN -1 ELSE 1 END) END) AS exempt_n,
                (CASE WHEN d.status = 'CANCELLED' THEN 0 ELSE d.taxable_base * d.exchange_rate * (CASE WHEN d.doc_type = 'CREDIT_NOTE' THEN -1 ELSE 1 END) END) AS base_n,
                (CASE WHEN d.status = 'CANCELLED' THEN 0 ELSE d.tax_total * d.exchange_rate * (CASE WHEN d.doc_type = 'CREDIT_NOTE' THEN -1 ELSE 1 END) END) AS tax_n,
                (CASE WHEN d.status = 'CANCELLED' THEN 0 ELSE d.igtf_amount * d.exchange_rate END) AS igtf_n
         FROM sales_documents d JOIN customers cu ON cu.id = d.customer_id AND cu.company_id = d.company_id
-        WHERE d.company_id = ${cid(c)} AND d.doc_type IN ('INVOICE', 'CREDIT_NOTE') AND d.status IN ('CONFIRMED', 'CANCELLED')
+        WHERE d.company_id = ${cid(c)} AND d.doc_type IN ('INVOICE', 'CREDIT_NOTE', 'DEBIT_NOTE') AND d.status IN ('CONFIRMED', 'CANCELLED')
           ${when(c.f.dateFrom, Prisma.sql`AND d.doc_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND d.doc_date <= ${c.f.dateTo}::date`)}
           ${when(c.f.customerId, Prisma.sql`AND d.customer_id = ${c.f.customerId}::uuid`)}
         ORDER BY d.doc_date, d.number`);
@@ -626,6 +626,103 @@ export const REPORTS: ReportDef[] = [
         return { ...r, exempt_bs: e.toFixed(2), base_bs: b.toFixed(2), tax_bs: t.toFixed(2), igtf_bs: g.toFixed(2), total_bs: (e + b + t + g).toFixed(2) };
       });
       return { rows: out, totals: { exempt_bs: sum(out, 'exempt_bs'), base_bs: sum(out, 'base_bs'), tax_bs: sum(out, 'tax_bs'), igtf_bs: sum(out, 'igtf_bs'), total_bs: sum(out, 'total_bs') } };
+    },
+  },
+  {
+    category: 'purchases', id: 'book', title: 'Libro de compras', description: 'Compras y devoluciones del período en Bs (las devoluciones restan) con la retención de IVA practicada. Referencial: el formato oficial lo valida el contador.',
+    filters: ['dateFrom', 'dateTo', 'supplierId'],
+    columns: [col('doc_date', 'Fecha', 'date'), col('type', 'Tipo'), col('number', 'Número'), col('supplier_doc', 'Factura prov.'), col('control_no', 'Control prov.'), col('rif', 'RIF'), col('supplier', 'Proveedor'),
+      col('exempt_bs', 'Exento Bs', 'money'), col('base_bs', 'Base imponible Bs', 'money'), col('tax_bs', 'IVA Bs', 'money'), col('total_bs', 'Total Bs', 'money'), col('wh_iva_bs', 'IVA retenido Bs', 'money')],
+    async run(c) {
+      const rows = await raw<Row>(c.tx, Prisma.sql`
+        SELECT d.doc_date, CASE d.doc_type WHEN 'PURCHASE' THEN 'Compra' ELSE 'Devolución' END AS type, d.number, d.supplier_doc_no AS supplier_doc, d.supplier_control_no AS control_no, s.rif, s.legal_name AS supplier,
+               d.exempt_base * d.exchange_rate * (CASE WHEN d.doc_type = 'PURCHASE_RETURN' THEN -1 ELSE 1 END) AS exempt_n,
+               d.taxable_base * d.exchange_rate * (CASE WHEN d.doc_type = 'PURCHASE_RETURN' THEN -1 ELSE 1 END) AS base_n,
+               d.tax_total * d.exchange_rate * (CASE WHEN d.doc_type = 'PURCHASE_RETURN' THEN -1 ELSE 1 END) AS tax_n,
+               COALESCE((SELECT SUM(w.amount_bs) FROM withholdings w WHERE w.company_id = d.company_id AND w.purchase_document_id = d.id AND w.kind = 'IVA' AND w.status = 'CONFIRMED'), 0) AS wh_n
+        FROM purchase_documents d JOIN suppliers s ON s.id = d.supplier_id AND s.company_id = d.company_id
+        WHERE d.company_id = ${cid(c)} AND d.doc_type IN ('PURCHASE', 'PURCHASE_RETURN') AND d.status = 'CONFIRMED'
+          ${when(c.f.dateFrom, Prisma.sql`AND d.doc_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND d.doc_date <= ${c.f.dateTo}::date`)}
+          ${when(c.f.supplierId, Prisma.sql`AND d.supplier_id = ${c.f.supplierId}::uuid`)}
+        ORDER BY d.doc_date, d.number`);
+      const out = rows.map(({ exempt_n, base_n, tax_n, wh_n, ...r }) => {
+        const e = Number(exempt_n), b = Number(base_n), t = Number(tax_n);
+        return { ...r, exempt_bs: e.toFixed(2), base_bs: b.toFixed(2), tax_bs: t.toFixed(2), total_bs: (e + b + t).toFixed(2), wh_iva_bs: Number(wh_n).toFixed(2) };
+      });
+      return { rows: out, totals: { exempt_bs: sum(out, 'exempt_bs'), base_bs: sum(out, 'base_bs'), tax_bs: sum(out, 'tax_bs'), total_bs: sum(out, 'total_bs'), wh_iva_bs: sum(out, 'wh_iva_bs') } };
+    },
+  },
+  // ════════════════════════ FISCAL ════════════════════════
+  {
+    category: 'fiscal', id: 'vat-summary', title: 'Resumen de IVA por mes', description: 'Débito fiscal (ventas, notas de débito menos notas de crédito), crédito fiscal (compras menos devoluciones), retenciones de IVA recibidas y cuota tributaria. Referencial: la declaración la valida el contador.',
+    filters: ['dateFrom', 'dateTo'],
+    columns: [col('period', 'Período'), col('sales_base', 'Ventas gravadas Bs', 'money'), col('sales_exempt', 'Ventas exentas Bs', 'money'), col('debit', 'Débito fiscal Bs', 'money'), col('purchases_base', 'Compras gravadas Bs', 'money'), col('credit', 'Crédito fiscal Bs', 'money'),
+      col('wh_received', 'IVA retenido por clientes Bs', 'money'), col('due', 'Cuota tributaria Bs', 'money'), col('wh_issued', 'IVA retenido a proveedores (por enterar) Bs', 'money')],
+    async run(c) {
+      const range = (col: string) => Prisma.sql`${when(c.f.dateFrom, Prisma.sql`AND ${Prisma.raw(col)} >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND ${Prisma.raw(col)} <= ${c.f.dateTo}::date`)}`;
+      const sales = await raw<Row>(c.tx, Prisma.sql`
+        SELECT to_char(d.doc_date, 'YYYY-MM') AS period,
+               SUM(d.taxable_base * d.exchange_rate * (CASE d.doc_type WHEN 'CREDIT_NOTE' THEN -1 ELSE 1 END))::text AS base,
+               SUM(d.exempt_base * d.exchange_rate * (CASE d.doc_type WHEN 'CREDIT_NOTE' THEN -1 ELSE 1 END))::text AS exempt,
+               SUM(d.tax_total * d.exchange_rate * (CASE d.doc_type WHEN 'CREDIT_NOTE' THEN -1 ELSE 1 END))::text AS tax
+        FROM sales_documents d WHERE d.company_id = ${cid(c)} AND d.doc_type IN ('INVOICE', 'CREDIT_NOTE', 'DEBIT_NOTE') AND d.status = 'CONFIRMED' ${range('d.doc_date')} GROUP BY 1`);
+      const purchases = await raw<Row>(c.tx, Prisma.sql`
+        SELECT to_char(d.doc_date, 'YYYY-MM') AS period,
+               SUM(d.taxable_base * d.exchange_rate * (CASE d.doc_type WHEN 'PURCHASE_RETURN' THEN -1 ELSE 1 END))::text AS base,
+               SUM(d.tax_total * d.exchange_rate * (CASE d.doc_type WHEN 'PURCHASE_RETURN' THEN -1 ELSE 1 END))::text AS tax
+        FROM purchase_documents d WHERE d.company_id = ${cid(c)} AND d.doc_type IN ('PURCHASE', 'PURCHASE_RETURN') AND d.status = 'CONFIRMED' ${range('d.doc_date')} GROUP BY 1`);
+      const wh = await raw<Row>(c.tx, Prisma.sql`
+        SELECT to_char(w.voucher_date, 'YYYY-MM') AS period, w.direction, SUM(w.amount_bs)::text AS amount
+        FROM withholdings w WHERE w.company_id = ${cid(c)} AND w.kind = 'IVA' AND w.status = 'CONFIRMED' ${range('w.voucher_date')} GROUP BY 1, 2`);
+      const periods = new Set<string>([...sales, ...purchases, ...wh].map(r => String(r.period)));
+      const get = (rows: Row[], p: string, k: string, dir?: string) => Number(rows.find(r => r.period === p && (!dir || r.direction === dir))?.[k] ?? 0);
+      const out = [...periods].sort().map(p => {
+        const debit = get(sales, p, 'tax'), credit = get(purchases, p, 'tax'), recv = get(wh, p, 'amount', 'RECEIVED'), iss = get(wh, p, 'amount', 'ISSUED');
+        return { period: p, sales_base: get(sales, p, 'base').toFixed(2), sales_exempt: get(sales, p, 'exempt').toFixed(2), debit: debit.toFixed(2), purchases_base: get(purchases, p, 'base').toFixed(2), credit: credit.toFixed(2),
+          wh_received: recv.toFixed(2), due: (debit - credit - recv).toFixed(2), wh_issued: iss.toFixed(2) };
+      });
+      return { rows: out, totals: Object.fromEntries(['sales_base', 'sales_exempt', 'debit', 'purchases_base', 'credit', 'wh_received', 'due', 'wh_issued'].map(k => [k, sum(out, k)])) };
+    },
+  },
+  ...(['ISSUED', 'RECEIVED'] as const).map((direction): ReportDef => ({
+    category: 'fiscal', id: direction === 'ISSUED' ? 'withholdings-issued' : 'withholdings-received',
+    title: direction === 'ISSUED' ? 'Retenciones practicadas a proveedores' : 'Retenciones recibidas de clientes',
+    description: direction === 'ISSUED' ? 'IVA e ISLR que la empresa retuvo a sus proveedores (monto a enterar al SENIAT).' : 'IVA e ISLR que los clientes retuvieron a la empresa (a favor en la declaración).',
+    filters: ['dateFrom', 'dateTo', 'status'],
+    columns: [col('voucher_date', 'Fecha', 'date'), col('number', 'Comprobante'), col('external_number', 'Comprobante del cliente'), col('kind', 'Impuesto'), col('rif', 'RIF'), col('party', direction === 'ISSUED' ? 'Proveedor' : 'Cliente'),
+      col('document', 'Documento'), col('base_bs', 'Base Bs', 'money'), col('percentage', '%', 'pct'), col('amount_bs', 'Retenido Bs', 'money'), col('status', 'Estado')],
+    async run(c) {
+      const rows = await raw(c.tx, Prisma.sql`
+        SELECT w.voucher_date, w.number, w.external_number, w.kind, COALESCE(s.rif, cu.rif) AS rif, COALESCE(s.legal_name, cu.legal_name) AS party,
+               COALESCE(pd.number, sd.number) AS document, w.base_bs::text AS base_bs, w.percentage::text AS percentage, w.amount_bs::text AS amount_bs,
+               CASE w.status WHEN 'CONFIRMED' THEN 'Vigente' ELSE 'Anulada' END AS status
+        FROM withholdings w
+        LEFT JOIN suppliers s ON s.id = w.supplier_id AND s.company_id = w.company_id LEFT JOIN customers cu ON cu.id = w.customer_id AND cu.company_id = w.company_id
+        LEFT JOIN purchase_documents pd ON pd.id = w.purchase_document_id AND pd.company_id = w.company_id LEFT JOIN sales_documents sd ON sd.id = w.sales_document_id AND sd.company_id = w.company_id
+        WHERE w.company_id = ${cid(c)} AND w.direction = ${direction}
+          ${when(c.f.status, Prisma.sql`AND w.status = ${c.f.status}`, )} ${when(!c.f.status, Prisma.sql`AND w.status = 'CONFIRMED'`)}
+          ${when(c.f.dateFrom, Prisma.sql`AND w.voucher_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND w.voucher_date <= ${c.f.dateTo}::date`)}
+        ORDER BY w.voucher_date, w.number`);
+      return { rows, totals: { base_bs: sum(rows.filter(r => r.status === 'Vigente'), 'base_bs'), amount_bs: sum(rows.filter(r => r.status === 'Vigente'), 'amount_bs') } };
+    },
+  })),
+  {
+    category: 'fiscal', id: 'igtf', title: 'IGTF cobrado', description: 'IGTF de pagos en divisas, en facturas de contado y en cobros posteriores, convertido a Bs.',
+    filters: ['dateFrom', 'dateTo'],
+    columns: [col('doc_date', 'Fecha', 'date'), col('origin', 'Origen'), col('number', 'Documento'), col('customer', 'Cliente'), col('currency', 'Moneda'), col('igtf', 'IGTF (moneda)', 'money'), col('igtf_bs', 'IGTF Bs', 'money')],
+    async run(c) {
+      const rows = await raw(c.tx, Prisma.sql`
+        SELECT d.doc_date, 'Factura de contado' AS origin, d.number, cu.legal_name AS customer, cr.code AS currency, SUM(p.igtf_amount)::text AS igtf, round(SUM(p.igtf_amount) * d.exchange_rate, 2)::text AS igtf_bs
+        FROM sales_document_payments p JOIN sales_documents d ON d.id = p.document_id AND d.company_id = p.company_id AND d.status = 'CONFIRMED'
+        JOIN customers cu ON cu.id = d.customer_id AND cu.company_id = d.company_id JOIN currencies cr ON cr.id = d.currency_id
+        WHERE p.company_id = ${cid(c)} AND p.igtf_amount > 0 ${when(c.f.dateFrom, Prisma.sql`AND d.doc_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND d.doc_date <= ${c.f.dateTo}::date`)}
+        GROUP BY d.id, cu.legal_name, cr.code
+        UNION ALL
+        SELECT r.receipt_date, 'Cobro', r.number, cu.legal_name, cr.code, r.igtf_amount::text, round(r.igtf_amount * r.exchange_rate, 2)::text
+        FROM customer_receipts r JOIN customers cu ON cu.id = r.customer_id AND cu.company_id = r.company_id JOIN currencies cr ON cr.id = r.currency_id
+        WHERE r.company_id = ${cid(c)} AND r.status = 'CONFIRMED' AND r.igtf_amount > 0 ${when(c.f.dateFrom, Prisma.sql`AND r.receipt_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND r.receipt_date <= ${c.f.dateTo}::date`)}
+        ORDER BY 1, 3`);
+      return { rows, totals: { igtf_bs: sum(rows, 'igtf_bs') } };
     },
   },
   {

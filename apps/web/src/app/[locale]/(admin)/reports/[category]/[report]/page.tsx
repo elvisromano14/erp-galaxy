@@ -145,10 +145,10 @@ export default function ReportPage() {
                 {values.productId && <button className="mt-1 text-xs text-brand-500" onClick={() => (set("productId", ""), setLabels((l) => ({ ...l, productId: "" })))}>{t("common.clear")}</button>}
               </div>
             )}
-            {has("docType") && <SelectField label={t("fields.docType")} value={String(values.docType ?? "")} onChange={(v) => set("docType", v)} options={(category === "sales" ? ["QUOTE", "BUDGET", "ORDER"] : DOC_TYPES).map((d) => ({ value: d, label: category === "sales" ? t(`sales.docTypes.${d}`) : t(`docTypes.${d}`) }))} placeholder={t("common.all")} />}
+            {has("docType") && <SelectField label={t("fields.docType")} value={String(values.docType ?? "")} onChange={(v) => set("docType", v)} options={(category === "sales" ? ["QUOTE", "BUDGET", "ORDER", "INVOICE", "CREDIT_NOTE", "DEBIT_NOTE"] : DOC_TYPES).map((d) => ({ value: d, label: category === "sales" ? t(`sales.docTypes.${d}`) : t(`docTypes.${d}`) }))} placeholder={t("common.all")} />}
             {has("status") && (
               <SelectField label={t("fields.status")} value={String(values.status ?? "")} onChange={(v) => set("status", v)} placeholder={t("common.all")}
-                options={(report === "serials" ? ["IN_STOCK", "SOLD", "RETURNED", "SCRAPPED"] : category === "sales" ? ["DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED", "CONFIRMED", "CONVERTED", "CANCELLED"] : PURCHASE_STATUSES).map((s) => ({ value: s, label: report === "serials" ? t(`serialStatus.${s}`) : t(`status.${s}`) }))} />
+                options={(report === "serials" ? ["IN_STOCK", "SOLD", "RETURNED", "SCRAPPED"] : category === "sales" ? ["DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED", "CONFIRMED", "CONVERTED", "CANCELLED"] : category === "fiscal" ? ["CONFIRMED", "CANCELLED"] : PURCHASE_STATUSES).map((s) => ({ value: s, label: report === "serials" ? t(`serialStatus.${s}`) : t(`status.${s}`) }))} />
             )}
             {has("search") && <TextField label={t("fields.search")} value={String(values.search ?? "")} onChange={(v) => set("search", v)} />}
             {has("onlyWithStock") && <CheckField label={t("reports.onlyWithStock")} checked={!!values.onlyWithStock} onChange={(v) => set("onlyWithStock", v)} />}

@@ -415,6 +415,7 @@ function Editor({ meta, id }: { meta: PurchaseDocMeta; id: string }) {
         if (can("purchases:invoices:create")) add("topur", <Button size="sm" disabled={busy} onClick={() => action(`${meta.api}/:id/convert-to-purchase`, t("purchases.convertedOk"), { navigateTo: (d) => ["invoices", d.id] })}>{t("purchases.convertToPurchase")}</Button>);
         if (can("purchases:delivery-note-returns:create")) add("ret", <Button variant="outline" size="sm" onClick={() => router.push(`/purchases/delivery-note-returns/new?parent=${id}`)}>{t("purchases.createReturn")}</Button>);
       }
+      if (T === "PURCHASE" && status === "CONFIRMED" && doc?.paymentCondition === "CREDIT" && can("fiscal:withholdings:create")) add("wh", <Button variant="outline" size="sm" onClick={() => router.push(`/fiscal/withholdings/new?direction=ISSUED&partyId=${doc.supplierId}&label=${encodeURIComponent(h.supplierDisplay)}&doc=${id}`)}>{t("sales.withhold")}</Button>);
       if (T === "PURCHASE" && status === "CONFIRMED" && can("purchases:returns:create")) add("ret", <Button variant="outline" size="sm" onClick={() => router.push(`/purchases/returns/new?parent=${id}`)}>{t("purchases.createReturn")}</Button>);
       const cancellable = status !== "DRAFT" && !["CANCELLED", "REJECTED", "EXPIRED"].includes(status);
       if (cancellable && !isNew && can(P("cancel"))) add("cx", <Button variant="outline" size="sm" disabled={busy} onClick={() => setDialog("cancel")}>{t("common.cancelDocument")}</Button>);

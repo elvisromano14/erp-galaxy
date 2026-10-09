@@ -62,7 +62,8 @@
       "settings": "Configuración",
       "reports": "Reportes",
       "sales": "Ventas",
-      "treasury": "Tesorería"
+      "treasury": "Tesorería",
+      "fiscal": "Fiscal"
     },
     "items": {
       "products": "Productos",
@@ -121,7 +122,10 @@
       "receivables": "Cuentas por cobrar",
       "receipts": "Cobros a clientes",
       "sales-invoices": "Facturas",
-      "sales-credit-notes": "Notas de crédito"
+      "sales-credit-notes": "Notas de crédito",
+      "withholdings": "Retenciones",
+      "sales-debit-notes": "Notas de débito",
+      "report-fiscal": "Fiscal"
     }
   },
   "header": {
@@ -596,7 +600,8 @@
       "purchases": "Compras",
       "customers": "Clientes",
       "sellers": "Vendedores",
-      "sales": "Ventas"
+      "sales": "Ventas",
+      "fiscal": "Fiscal"
     }
   },
   "import": {
@@ -661,7 +666,8 @@
       "BUDGET": "Presupuesto",
       "ORDER": "Pedido",
       "INVOICE": "Factura",
-      "CREDIT_NOTE": "Nota de crédito"
+      "CREDIT_NOTE": "Nota de crédito",
+      "DEBIT_NOTE": "Nota de débito"
     },
     "confirmMessage": {
       "BUDGET": "Se asignará el número. Si reserva existencias, se aparta la cantidad en el depósito.",
@@ -703,7 +709,17 @@
     "cnSerials": "Seriales que se devuelven",
     "receivable": "Cuenta por cobrar",
     "paymentsDone": "Pagos recibidos",
-    "serialsNote": "Indique los seriales que se venden"
+    "serialsNote": "Indique los seriales que se venden",
+    "debitNote": "Nota de débito",
+    "debitNoteTitle": "Nota de débito",
+    "dnHint": "Cargo adicional a esta factura (intereses, ajuste, gastos). Aumenta la cuenta por cobrar.",
+    "dnConcept": "Concepto",
+    "dnAmount": "Monto (sin IVA)",
+    "debitNoteOk": "Nota de débito emitida",
+    "refund": "Devolver el dinero",
+    "refundAccount": "Sale de la cuenta",
+    "refundHint": "Solo si la nota deja saldo a favor del cliente (factura de contado o ya pagada).",
+    "withhold": "Registrar retención"
   },
   "treasury": {
     "searchHint": "Buscar por número o referencia…",
@@ -811,5 +827,44 @@
       "SIN_COSTO": "Sin costo",
       "PRECIO_NEGATIVO": "Precio negativo"
     }
+  },
+  "fiscal": {
+    "subtitle": "Comprobantes de retención de IVA e ISLR, practicados a proveedores o recibidos de clientes. Porcentajes de referencia: los valida el contador.",
+    "searchHint": "Buscar por comprobante…",
+    "direction": "Tipo",
+    "directions": {
+      "ISSUED": "Practicada a proveedor",
+      "RECEIVED": "Recibida de cliente"
+    },
+    "allDirections": "Todos los tipos",
+    "allKinds": "IVA e ISLR",
+    "kind": "Impuesto",
+    "party": "Tercero",
+    "base": "Base Bs",
+    "withheld": "Retenido Bs",
+    "newTitle": "Nueva retención",
+    "referenceNote": "La retención reduce la cuenta por pagar (practicada) o por cobrar (recibida) por el monto retenido.",
+    "percentage": "Porcentaje %",
+    "pctHint": "Vacío = el % de retención del tercero",
+    "islrHint": "Según el concepto (obligatorio)",
+    "baseOverride": "Base Bs (opcional)",
+    "baseHint": "IVA: vacío = IVA del documento · ISLR: vacío = base del documento",
+    "voucherDate": "Fecha del comprobante",
+    "externalNumber": "N° del comprobante del cliente",
+    "concept": "Concepto",
+    "documents": "Documentos con saldo",
+    "pickParty": "Seleccione el proveedor o cliente.",
+    "noDocs": "No hay facturas con saldo abierto.",
+    "ref": "Factura prov. / Control",
+    "vatBs": "IVA Bs",
+    "already": "Ya retenido",
+    "estimate": "Retención estimada",
+    "register": "Registrar retención",
+    "created": "Retención registrada",
+    "cancelled": "Retención anulada",
+    "voucher": "Comprobante",
+    "document": "Documento",
+    "period": "Período",
+    "cancelMessage": "Se restituye el saldo del documento retenido."
   }
 }

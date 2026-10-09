@@ -55,6 +55,8 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
   const [payModal, setPayModal] = useState(false);
   const [pays, setPays] = useState<Row[]>([{ paymentMethodId: "", currencyId: "", bankAccountId: "", amount: "", reference: "" }]);
   const [cnRows, setCnRows] = useState<Row[] | null>(null);
+  const [refund, setRefund] = useState({ on: false, bankAccountId: "" });
+  const [dn, setDn] = useState<{ concept: string; amount: string } | null>(null);
   const methods = useFetch<Row[]>(meta.type === "INVOICE" ? "/payment-methods" : null, { limit: 100 });
   const isInvoice = meta.type === "INVOICE";
 
@@ -326,6 +328,19 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
         </Modal>
       )}
 
+      {dn && (
+        <Modal isOpen onClose={() => setDn(null)} className="m-4 max-w-lg p-6">
+          <h3 className="mb-2 pe-10 text-lg font-semibold text-gray-800 dark:text-white/90">{t("sales.debitNoteTitle")}</h3>
+          <p className="mb-4 text-sm text-gray-500">{t("sales.dnHint")}</p>
+          <ErrorBox error={error} />
+          <div className="grid gap-4">
+            <TextField label={t("sales.dnConcept")} required value={dn.concept} onChange={(v) => setDn({ ...dn, concept: v })} />
+            <DecimalField label={t("sales.dnAmount")} required value={dn.amount} onChange={(v) => setDn({ ...dn, amount: v })} align="end" />
+          </div>
+          <div className="mt-6 flex justify-end gap-3"><Button variant="outline" size="sm" onClick={() => setDn(null)}>{t("common.cancel")}</Button><Button size="sm" disabled={busy || dn.concept.trim().length < 3 || !dn.amount} onClick={submitDebitNote}>{t("sales.debitNote")}</Button></div>
+        </Modal>
+      )}
+
       {cnRows && (
         <Modal isOpen onClose={() => setCnRows(null)} className="m-4 max-w-3xl p-6">
           <h3 className="mb-2 pe-10 text-lg font-semibold text-gray-800 dark:text-white/90">{t("sales.creditNoteTitle")}</h3>
@@ -344,6 +359,12 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
               ))}
             </tbody>
           </table>
+          {can("treasury:movements:create") && (
+            <div className="mt-4 rounded-lg border border-gray-100 p-3 dark:border-gray-800">
+              <CheckField label={t("sales.refund")} hint={t("sales.refundHint")} checked={refund.on} onChange={(v) => setRefund({ ...refund, on: v })} />
+              {refund.on && <RefSelect className="mt-3 max-w-sm" label={t("sales.refundAccount")} resource="/bank-accounts" labelKey={(r) => `${r.name} (${r.number.slice(-4)})`} value={refund.bankAccountId} onChange={(v) => setRefund({ ...refund, bankAccountId: v })} />}
+            </div>
+          )}
           <div className="mt-6 flex justify-end gap-3"><Button variant="outline" size="sm" onClick={() => setCnRows(null)}>{t("common.cancel")}</Button><Button size="sm" disabled={busy || !cnRows.some((r) => (r.serial ? parseSerials(r.serialsText).length > 0 : Number(r.qty) > 0))} onClick={submitCreditNote}>{t("sales.creditNote")}</Button></div>
         </Modal>
       )}
@@ -359,10 +380,16 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
     if (!cnRows) return;
     const rows = cnRows.filter((r) => (r.serial ? parseSerials(r.serialsText).length > 0 : Number(r.qty) > 0));
     await action(`${meta.api}/:id/credit-note`, t("sales.creditNoteOk"), {
-      body: { lines: rows.map((r) => (r.serial ? { parentLineId: r.lineId, quantity: String(parseSerials(r.serialsText).length), serials: parseSerials(r.serialsText) } : { parentLineId: r.lineId, quantity: r.qty })) },
+      body: { lines: rows.map((r) => (r.serial ? { parentLineId: r.lineId, quantity: String(parseSerials(r.serialsText).length), serials: parseSerials(r.serialsText) } : { parentLineId: r.lineId, quantity: r.qty })), ...(refund.on && refund.bankAccountId ? { refund: { bankAccountId: refund.bankAccountId } } : {}) },
       navigateTo: (d) => ["credit-notes", d.id],
     });
     setCnRows(null);
+  }
+
+  async function submitDebitNote() {
+    if (!dn) return;
+    await action(`${meta.api}/:id/debit-note`, t("sales.debitNoteOk"), { body: { concept: dn.concept.trim(), amount: dn.amount }, navigateTo: (d) => ["debit-notes", d.id] });
+    setDn(null);
   }
 
   async function emit() {
@@ -380,7 +407,7 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
     const T = meta.type;
     if (status === "DRAFT" && !isNew && can(P("update"))) add("del", <Button variant="danger" size="sm" disabled={busy} onClick={() => setDialog("delete")}>{t("common.delete")}</Button>);
     if (!readOnly) add("save", <Button variant="outline" size="sm" disabled={busy} onClick={saveDraft}>{t("common.saveDraft")}</Button>);
-    if ((T === "INVOICE" || T === "CREDIT_NOTE") && doc && status !== "DRAFT") {
+    if ((T === "INVOICE" || T === "CREDIT_NOTE" || T === "DEBIT_NOTE") && doc && status !== "DRAFT") {
       add("pdf", <Button variant="outline" size="sm" onClick={() => openPdf(`${meta.api}/${id}/pdf`).catch((e) => setError(e instanceof ApiError ? e : new ApiError(0, "ERROR", String(e))))}>{t("sales.pdf")}</Button>);
       add("tk", <Button variant="outline" size="sm" onClick={() => openPdf(`${meta.api}/${id}/pdf`, { format: "ticket" }).catch((e) => setError(e instanceof ApiError ? e : new ApiError(0, "ERROR", String(e))))}>{t("sales.pdfTicket")}</Button>);
     }
@@ -402,6 +429,8 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
         if (error?.code === "CREDIT_LIMIT_EXCEEDED" && can("sales:orders:credit-override")) add("ovr", <Button variant="danger" size="sm" disabled={busy} onClick={() => action(`${meta.api}/:id/confirm`, t("sales.issuedOk"), { save: true, body: { overrideCredit: true } })}>{t("sales.confirmOverCredit")}</Button>);
       }
       if (status === "CONFIRMED") {
+        if (can("sales:debit-notes:create")) add("dn", <Button variant="outline" size="sm" disabled={busy} onClick={() => setDn({ concept: "", amount: "" })}>{t("sales.debitNote")}</Button>);
+        if (doc?.paymentCondition === "CREDIT" && can("fiscal:withholdings:create")) add("wh", <Button variant="outline" size="sm" onClick={() => router.push(`/fiscal/withholdings/new?direction=RECEIVED&partyId=${doc.customerId}&label=${encodeURIComponent(h.customerDisplay)}&doc=${id}`)}>{t("sales.withhold")}</Button>);
         if (can("sales:credit-notes:create")) add("cn", <Button variant="outline" size="sm" disabled={busy} onClick={openCreditNote}>{t("sales.creditNote")}</Button>);
         if (can(P("cancel"))) add("cx", <Button variant="outline" size="sm" disabled={busy} onClick={() => setDialog("cancel")}>{t("common.cancelDocument")}</Button>);
       }

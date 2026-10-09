@@ -65,6 +65,7 @@ export const NAV: NavSection[] = [
       { key: "sales-orders", path: "/sales/orders", perm: "sales:orders:read" },
       { key: "sales-invoices", path: "/sales/invoices", perm: "sales:invoices:read" },
       { key: "sales-credit-notes", path: "/sales/credit-notes", perm: "sales:credit-notes:read" },
+      { key: "sales-debit-notes", path: "/sales/debit-notes", perm: "sales:debit-notes:read" },
     ],
   },
   {
@@ -78,6 +79,11 @@ export const NAV: NavSection[] = [
     ],
   },
   {
+    key: "fiscal",
+    icon: "report",
+    items: [{ key: "withholdings", path: "/fiscal/withholdings", perm: "fiscal:withholdings:read" }],
+  },
+  {
     key: "reports",
     icon: "report",
     items: [
@@ -88,6 +94,7 @@ export const NAV: NavSection[] = [
       { key: "report-customers", path: "/reports/customers", perm: "reports:customers:read" },
       { key: "report-sellers", path: "/reports/sellers", perm: "reports:sellers:read" },
       { key: "report-sales", path: "/reports/sales", perm: "reports:sales:read" },
+      { key: "report-fiscal", path: "/reports/fiscal", perm: "reports:fiscal:read" },
     ],
   },
   {

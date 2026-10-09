@@ -12,7 +12,7 @@ import { ReceivablesService } from '../treasury/receivables.service';
 import { TreasuryService } from '../treasury/treasury.service';
 import { invoicePdf, InvoicePdfData } from './invoice-pdf';
 import { SalesService } from './sales.service';
-import { confirmInvoiceSchema, creditNoteSchema, SalesDocInput, Viewer } from './sales.types';
+import { confirmInvoiceSchema, creditNoteSchema, debitNoteSchema, SalesDocInput, Viewer } from './sales.types';
 
 const DAY = 86_400_000;
 const entryStatus = (balance: Decimal, amount: Decimal) => (balance.isZero() ? 'PAID' : balance.eq(amount) ? 'OPEN' : 'PARTIALLY_PAID');
@@ -269,10 +269,10 @@ export class InvoicingService {
       }),
     };
     const draft = await this.sales.create('CREDIT_NOTE', docInput, v);
-    return this.confirmCreditNote(draft.id, v);
+    return this.confirmCreditNote(draft.id, v, input.refund);
   }
 
-  private async confirmCreditNote(id: string, v: Viewer) {
+  private async confirmCreditNote(id: string, v: Viewer, refund?: { bankAccountId: string }) {
     const tx = this.prisma.tx;
     const doc = await this.sales.find('CREDIT_NOTE', id, v, true);
     const lines = await tx.salesDocumentLine.findMany({ where: { documentId: id }, orderBy: { lineNo: 'asc' } });
@@ -323,13 +323,61 @@ export class InvoicingService {
       where: { id },
       data: { status: 'CONFIRMED', number, controlNo, fiscalSnapshot: await this.snapshot(doc.customerId, doc.sellerId), confirmedAt: new Date(), confirmedBy: this.prisma.userId, version: { increment: 1 } },
     });
-    await this.audit.log('sales_credit_note', id, 'CONFIRM', { number, controlNo, invoice: link.parentId });
+    if (refund) await this.refundCreditNote(id, cn.id, doc, refund.bankAccountId);
+    await this.audit.log('sales_credit_note', id, 'CONFIRM', { number, controlNo, invoice: link.parentId, refund: !!refund });
     return this.sales.get('CREDIT_NOTE', id, v);
+  }
+
+  /** Devuelve en dinero el saldo a favor que dejó la nota de crédito (sale de la cuenta indicada). */
+  private async refundCreditNote(docId: string, entryId: string, doc: { currencyId: string; exchangeRate: { toString(): string }; docDate: Date; number: string | null }, bankAccountId: string) {
+    const tx = this.prisma.tx;
+    const entry = await tx.receivableEntry.findFirstOrThrow({ where: { id: entryId } });
+    const owed = D(entry.balance.toString()).neg();
+    if (owed.lte(0)) throw new BusinessRuleException('La nota no deja saldo a favor que devolver (se aplicó a la factura pendiente)', 'NOTHING_TO_REFUND');
+    const acc = await this.treasury.activeAccount(bankAccountId, true);
+    let amountAcc = owed;
+    if (acc.currencyId !== doc.currencyId) {
+      const accRate = await this.sales.rateOf(acc.currencyId, new Date(caracasToday()));
+      amountAcc = round(owed.mul(D(doc.exchangeRate.toString())).div(accRate), 4);
+    }
+    await this.treasury.addMovement({ bankAccountId: acc.id, date: new Date(caracasToday()), kind: 'CUSTOMER_REFUND', amount: amountAcc.neg(), reference: doc.number, description: `Devolución nota de crédito ${doc.number}`, sourceType: 'SALES_CREDIT_NOTE', sourceId: docId });
+    await tx.receivableEntry.update({ where: { id: entryId }, data: { balance: '0', status: 'PAID' } });
+  }
+
+  // ═════════════════════════ nota de débito ═════════════════════════
+
+  /** Cargo adicional a una factura (intereses, ajuste de precio, gastos…): una línea de concepto sin inventario; aumenta la cuenta por cobrar. */
+  async createDebitNote(invoiceId: string, input: z.infer<typeof debitNoteSchema>, v: Viewer) {
+    const tx = this.prisma.tx;
+    const inv = await this.sales.find('INVOICE', invoiceId, v, true);
+    if (inv.status !== 'CONFIRMED') throw new BusinessRuleException(`Solo se emite nota de débito sobre una factura emitida (estado ${inv.status})`, 'INVALID_STATE');
+    let product = await tx.product.findFirst({ where: { sku: 'ND-CONCEPTO', deletedAt: null } });
+    if (!product) {
+      const unit = await tx.unit.findFirstOrThrow({ where: { deletedAt: null }, orderBy: { code: 'asc' } });
+      product = await tx.product.create({ data: { companyId: this.prisma.companyId, sku: 'ND-CONCEPTO', name: 'Concepto de nota de débito', unitId: unit.id, isService: true, createdBy: this.prisma.userId } });
+    }
+    const iva = input.taxId === undefined ? await tx.tax.findFirst({ where: { code: 'IVA_GENERAL', deletedAt: null, isActive: true } }) : null;
+    const draft = await this.sales.create('DEBIT_NOTE', {
+      customerId: inv.customerId, sellerId: inv.sellerId, warehouseId: inv.warehouseId, currencyId: inv.currencyId, exchangeRate: inv.exchangeRate.toString(),
+      paymentCondition: inv.paymentCondition as 'CASH' | 'CREDIT', creditDays: inv.creditDays, reservesStock: false, notes: input.notes ?? null,
+      lines: [{ productId: product.id, description: input.concept, quantity: '1', unitPrice: input.amount, discountPct: '0', taxId: input.taxId ?? iva?.id ?? null }],
+    }, v);
+    await tx.documentLink.create({ data: { companyId: this.prisma.companyId, parentType: 'INVOICE', parentId: invoiceId, childType: 'DEBIT_NOTE', childId: draft.id } });
+    const doc = await this.sales.find('DEBIT_NOTE', draft.id, v, true);
+    const number = await this.seq.next('SALES_DEBIT_NOTE');
+    const controlNo = await this.nextControlNo();
+    await this.receivables.createEntry({
+      customerId: doc.customerId, entryType: 'DEBIT_NOTE', sourceType: 'SALES_DEBIT_NOTE', sourceId: doc.id, documentNo: number, issueDate: doc.docDate,
+      dueDate: new Date(doc.docDate.getTime() + inv.creditDays * DAY), currencyId: doc.currencyId, exchangeRate: doc.exchangeRate.toString(), amount: D(doc.total.toString()).toFixed(4),
+    });
+    await tx.salesDocument.update({ where: { id: doc.id }, data: { status: 'CONFIRMED', number, controlNo, fiscalSnapshot: await this.snapshot(doc.customerId, doc.sellerId), confirmedAt: new Date(), confirmedBy: this.prisma.userId, version: { increment: 1 } } });
+    await this.audit.log('sales_debit_note', doc.id, 'CONFIRM', { number, controlNo, invoice: invoiceId });
+    return this.sales.get('DEBIT_NOTE', doc.id, v);
   }
 
   // ═════════════════════════ PDF ═════════════════════════
 
-  async pdf(docType: 'INVOICE' | 'CREDIT_NOTE', id: string, format: 'a4' | 'ticket', v: Viewer) {
+  async pdf(docType: 'INVOICE' | 'CREDIT_NOTE' | 'DEBIT_NOTE', id: string, format: 'a4' | 'ticket', v: Viewer) {
     const tx = this.prisma.tx;
     const doc = await this.sales.get(docType, id, v);
     if (doc.status === 'DRAFT') throw new BusinessRuleException('El borrador no tiene PDF fiscal; emita el documento primero', 'DRAFT_NO_PDF');
@@ -345,7 +393,7 @@ export class InvoicingService {
       kind: docType, number: doc.number, controlNo: doc.controlNo, status: doc.status, docDate: doc.docDate.toISOString().slice(0, 10),
       dueDate: doc.paymentCondition === 'CREDIT' ? new Date(doc.docDate.getTime() + doc.creditDays * DAY).toISOString().slice(0, 10) : null,
       currency: cur.code, exchangeRate: doc.exchangeRate.toString(), paymentCondition: doc.paymentCondition, creditDays: doc.creditDays, seller: snap.seller, notes: doc.notes,
-      origin: docType === 'CREDIT_NOTE' && parentDoc ? `Factura ${parentDoc.number}` : null,
+      origin: docType !== 'INVOICE' && parentDoc ? `Factura ${parentDoc.number}` : null,
       company: snap.company, customer: snap.customer,
       lines: doc.lines.map(l => {
         const t = l.taxId ? taxes.get(l.taxId) : undefined;
@@ -357,6 +405,6 @@ export class InvoicingService {
       legend: env.INVOICE_LEGEND,
     };
     const buffer = await invoicePdf(data, format);
-    return { buffer, filename: `${docType === 'INVOICE' ? 'factura' : 'nota-credito'}-${doc.number}${format === 'ticket' ? '-ticket' : ''}.pdf` };
+    return { buffer, filename: `${docType === 'INVOICE' ? 'factura' : docType === 'CREDIT_NOTE' ? 'nota-credito' : 'nota-debito'}-${doc.number}${format === 'ticket' ? '-ticket' : ''}.pdf` };
   }
 }

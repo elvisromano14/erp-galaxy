@@ -8,10 +8,10 @@ export const ADMIN_RESOURCES = [
   'exchange-rates', 'movement-reasons', 'banks', 'bank-accounts',
 ] as const;
 export const INVENTORY_DOCS = ['transfers', 'charges', 'discharges', 'adjustments', 'cost-adjustments'] as const;
-export const SALES_DOCS = ['quotes', 'budgets', 'orders', 'invoices', 'credit-notes'] as const;
+export const SALES_DOCS = ['quotes', 'budgets', 'orders', 'invoices', 'credit-notes', 'debit-notes'] as const;
 export const PURCHASE_DOCS = ['quotes', 'orders', 'delivery-notes', 'delivery-note-returns', 'invoices', 'returns'] as const;
 
-export const REPORT_CATEGORIES = ['inventory', 'categories', 'suppliers', 'purchases', 'customers', 'sellers', 'sales'] as const;
+export const REPORT_CATEGORIES = ['inventory', 'categories', 'suppliers', 'purchases', 'customers', 'sellers', 'sales', 'fiscal'] as const;
 const build = (module: string, resource: string, actions: string[]) => actions.map(a => `${module}:${resource}:${a}`);
 
 export const ALL_PERMISSIONS: string[] = [
@@ -34,6 +34,7 @@ export const ALL_PERMISSIONS: string[] = [
   'sales:orders:credit-override',
   ...build('payables', 'entries', ['read']),
   ...build('treasury', 'payments', ['read', 'create', 'cancel']),
+  ...build('fiscal', 'withholdings', ['read', 'create', 'cancel']),
   ...build('treasury', 'receipts', ['read', 'create', 'cancel']),
   ...build('treasury', 'receivables', ['read', 'create']),
   ...build('treasury', 'movements', ['read', 'create']),

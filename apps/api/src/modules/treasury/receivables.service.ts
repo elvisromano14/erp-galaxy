@@ -147,6 +147,14 @@ export class ReceivablesService {
     }
     if (total.isNegative()) throw new BusinessRuleException('Los saldos a favor aplicados superan lo que se cobra', 'NEGATIVE_RECEIPT');
 
+    // IGTF: si el cliente paga con un instrumento en divisas que lo aplica, entrega el monto aplicado MÁS el IGTF (3 % de lo entregado).
+    const company = await tx.company.findUniqueOrThrow({ where: { id: companyId } });
+    const igtfTax = company.isIgtfCollector && method.appliesIgtf && total.gt(0)
+      ? await tx.tax.findFirst({ where: { kind: 'IGTF', isActive: true, deletedAt: null, validFrom: { lte: date }, OR: [{ validTo: null }, { validTo: { gte: date } }] }, orderBy: { validFrom: 'desc' } }) : null;
+    const igtfPct = D(igtfTax?.rate.toString() ?? 0);
+    const handed = igtfPct.gt(0) ? round(total.div(D(1).minus(igtfPct.div(100))), 4) : total;
+    const igtfAmount = handed.minus(total);
+
     // Una retención entregada por el cliente no mueve banco; lo demás entra a una cuenta de la misma moneda.
     const movesBank = total.gt(0) && method.type !== 'WITHHOLDING';
     let account = null;
@@ -160,13 +168,13 @@ export class ReceivablesService {
     const rc = await tx.customerReceipt.create({
       data: {
         companyId, number, customerId: input.customerId, receiptDate: date, paymentMethodId: method.id, bankAccountId: account?.id ?? null, currencyId: input.currencyId,
-        exchangeRate: rcRate.toFixed(8), amount: total.toFixed(4), reference: input.reference?.trim() || null, notes: input.notes ?? null, createdBy: this.prisma.userId,
+        exchangeRate: rcRate.toFixed(8), amount: handed.toFixed(4), igtfPct: igtfPct.toFixed(4), igtfAmount: igtfAmount.toFixed(4), reference: input.reference?.trim() || null, notes: input.notes ?? null, createdBy: this.prisma.userId,
       },
     });
     await tx.customerReceiptApplication.createMany({ data: apps.map(a => ({ companyId, receiptId: rc.id, receivableEntryId: a.entryId, amount: a.amount.toFixed(4), amountReceipt: a.amountReceipt.toFixed(4) })) });
     for (const a of apps) await tx.receivableEntry.update({ where: { id: a.entryId }, data: { balance: a.newBalance.toFixed(4), status: entryStatus(a.newBalance, a.entryAmount) } });
     if (account) {
-      await this.treasury.addMovement({ bankAccountId: account.id, date, kind: 'CUSTOMER_RECEIPT', amount: total, reference: input.reference ?? number, description: `Cobro ${number} de ${customer.legalName}`, sourceType: 'CUSTOMER_RECEIPT', sourceId: rc.id });
+      await this.treasury.addMovement({ bankAccountId: account.id, date, kind: 'CUSTOMER_RECEIPT', amount: handed, reference: input.reference ?? number, description: `Cobro ${number} de ${customer.legalName}`, sourceType: 'CUSTOMER_RECEIPT', sourceId: rc.id });
     }
     await this.audit.log('customer_receipt', rc.id, 'CREATE', input);
     return this.getReceipt(rc.id);

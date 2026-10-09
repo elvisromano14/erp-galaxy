@@ -1,7 +1,7 @@
 import { renderPdf } from '../reports/report-export';
 
 export interface InvoicePdfData {
-  kind: 'INVOICE' | 'CREDIT_NOTE';
+  kind: 'INVOICE' | 'CREDIT_NOTE' | 'DEBIT_NOTE';
   number: string | null; controlNo: string | null; status: string; docDate: string; dueDate?: string | null;
   currency: string; exchangeRate: string; paymentCondition: string; creditDays: number; seller?: string | null; notes?: string | null; origin?: string | null;
   company: { rif: string; legalName: string; tradeName?: string | null; fiscalAddress?: string | null; isSpecialTaxpayer?: boolean };
@@ -27,7 +27,7 @@ function byRate(d: InvoicePdfData) {
 }
 
 export function invoicePdf(d: InvoicePdfData, format: 'a4' | 'ticket'): Promise<Buffer> {
-  const title = d.kind === 'INVOICE' ? 'FACTURA' : 'NOTA DE CRÉDITO';
+  const title = d.kind === 'INVOICE' ? 'FACTURA' : d.kind === 'CREDIT_NOTE' ? 'NOTA DE CRÉDITO' : 'NOTA DE DÉBITO';
   const ticket = format === 'ticket';
   const fs = ticket ? 7.5 : 9;
   const isVes = d.currency === 'VES';

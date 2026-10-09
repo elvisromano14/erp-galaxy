@@ -10,7 +10,7 @@ import { ZBody, ZQuery } from '../../common/http/zod.decorators';
 import { InvoicingService } from './invoicing.service';
 import { SalesService } from './sales.service';
 import {
-  SalesRoute, SALES_ROUTES, salesCancelSchema, salesDocSchema, salesDocUpdateSchema, salesListSchema, confirmSchema, confirmInvoiceSchema, creditNoteSchema, pdfQuery, Viewer,
+  SalesRoute, SALES_ROUTES, salesCancelSchema, salesDocSchema, salesDocUpdateSchema, salesListSchema, confirmSchema, confirmInvoiceSchema, creditNoteSchema, debitNoteSchema, pdfQuery, Viewer,
 } from './sales.types';
 
 const id = new ZodPipe(uuid);
@@ -108,6 +108,14 @@ export class SalesActionsController {
   @Post('invoices/:id/credit-note') @RequirePermissions('sales:credit-notes:create', 'sales:credit-notes:confirm')
   async creditNote(@CurrentUser() u: AuthUser, @Param('id', id) did: string, @ZBody(creditNoteSchema) b: z.infer<typeof creditNoteSchema>) { return this.inv.createCreditNote(did, b, await viewerOf(this.perms, u)); }
 
+  @Post('invoices/:id/debit-note') @RequirePermissions('sales:debit-notes:create')
+  async debitNote(@CurrentUser() u: AuthUser, @Param('id', id) did: string, @ZBody(debitNoteSchema) b: z.infer<typeof debitNoteSchema>) { return this.inv.createDebitNote(did, b, await viewerOf(this.perms, u)); }
+
+  @Get('debit-notes/:id/pdf') @RequirePermissions('sales:debit-notes:read')
+  async debitNotePdf(@CurrentUser() u: AuthUser, @Param('id', id) did: string, @ZQuery(pdfQuery) q: z.infer<typeof pdfQuery>, @Res({ passthrough: true }) res: Response) {
+    return this.sendPdf(res, await this.inv.pdf('DEBIT_NOTE', did, q.format, await viewerOf(this.perms, u)));
+  }
+
   @Get('invoices/:id/pdf') @RequirePermissions('sales:invoices:read')
   async invoicePdf(@CurrentUser() u: AuthUser, @Param('id', id) did: string, @ZQuery(pdfQuery) q: z.infer<typeof pdfQuery>, @Res({ passthrough: true }) res: Response) {
     return this.sendPdf(res, await this.inv.pdf('INVOICE', did, q.format, await viewerOf(this.perms, u)));
@@ -129,5 +137,5 @@ export class SalesActionsController {
 export const SalesControllers: Type<unknown>[] = [
   SalesActionsController,
   ...SALES_ROUTES.map(makeReadController),
-  ...SALES_ROUTES.filter(r => r.docType !== 'CREDIT_NOTE').map(makeWriteController),
+  ...SALES_ROUTES.filter(r => !['CREDIT_NOTE', 'DEBIT_NOTE'].includes(r.docType)).map(makeWriteController),
 ];

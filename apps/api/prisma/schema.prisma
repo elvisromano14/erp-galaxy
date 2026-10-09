@@ -1098,6 +1098,8 @@ model CustomerReceipt {
   currencyId      String    @map("currency_id") @db.Uuid
   exchangeRate    Decimal   @default(1) @map("exchange_rate") @db.Decimal(18, 8)
   amount          Decimal   @db.Decimal(18, 4)
+  igtfPct         Decimal   @default(0) @map("igtf_pct") @db.Decimal(7, 4)
+  igtfAmount      Decimal   @default(0) @map("igtf_amount") @db.Decimal(18, 4)
   reference       String?
   notes           String?
   cancelledAt     DateTime? @map("cancelled_at") @db.Timestamptz
@@ -1143,4 +1145,39 @@ model SalesDocumentPayment {
 
   @@index([companyId, documentId])
   @@map("sales_document_payments")
+}
+
+/// Retenciones de IVA/ISLR. ISSUED = las practicamos a un proveedor (reducen la CxP); RECEIVED = nos las practica un cliente (reducen la CxC).
+model Withholding {
+  id                 String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId          String    @map("company_id") @db.Uuid
+  direction          String
+  kind               String
+  number             String
+  externalNumber     String?   @map("external_number")
+  status             String    @default("CONFIRMED")
+  voucherDate        DateTime  @map("voucher_date") @db.Date
+  period             String
+  supplierId         String?   @map("supplier_id") @db.Uuid
+  customerId         String?   @map("customer_id") @db.Uuid
+  purchaseDocumentId String?   @map("purchase_document_id") @db.Uuid
+  salesDocumentId    String?   @map("sales_document_id") @db.Uuid
+  payableEntryId     String?   @map("payable_entry_id") @db.Uuid
+  receivableEntryId  String?   @map("receivable_entry_id") @db.Uuid
+  concept            String?
+  baseBs             Decimal   @map("base_bs") @db.Decimal(18, 4)
+  percentage         Decimal   @db.Decimal(7, 4)
+  amountBs           Decimal   @map("amount_bs") @db.Decimal(18, 4)
+  appliedAmount      Decimal   @map("applied_amount") @db.Decimal(18, 4)
+  notes              String?
+  cancelledAt        DateTime? @map("cancelled_at") @db.Timestamptz
+  cancelledBy        String?   @map("cancelled_by") @db.Uuid
+  cancelReason       String?   @map("cancel_reason")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  createdBy          String?   @map("created_by") @db.Uuid
+
+  @@unique([companyId, id])
+  @@unique([companyId, number])
+  @@index([companyId, direction, kind, period])
+  @@map("withholdings")
 }
