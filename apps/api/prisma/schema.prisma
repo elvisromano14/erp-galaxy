@@ -1,0 +1,833 @@
+// Mini ERP – esquema Prisma (fases 0–5: núcleo, catálogos, terceros, inventario, compras)
+//
+// Convenciones (erp-v3 §6.1):
+//  - PK uuidv7() de PostgreSQL 18; tablas snake_case; enums como text + CHECK (ver sql/).
+//  - Sin relaciones Prisma: las FK compuestas (company_id, x_id) y las políticas RLS se crean en
+//    prisma/sql/*.sql (script gen-composite-fks), para impedir referencias entre empresas.
+//  - NO usar `prisma migrate dev`: las migraciones se generan con `migrate diff` y se aplican con scripts/migrate.ts.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────── Núcleo y seguridad ─────────────────────────
+
+model Company {
+  id                    String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  rif                   String   @unique
+  legalName             String   @map("legal_name")
+  tradeName             String?  @map("trade_name")
+  fiscalAddress         String?  @map("fiscal_address")
+  baseCurrencyId        String   @map("base_currency_id") @db.Uuid
+  valuationCurrencyId   String   @map("valuation_currency_id") @db.Uuid
+  isSpecialTaxpayer     Boolean  @default(false) @map("is_special_taxpayer")
+  isVatWithholdingAgent Boolean  @default(false) @map("is_vat_withholding_agent")
+  isIgtfCollector       Boolean  @default(false) @map("is_igtf_collector")
+  features              Json     @default("{\"lots\":false,\"serials\":false,\"expiry\":false,\"offline\":false}")
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("companies")
+}
+
+model User {
+  id           String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  fullName     String    @map("full_name")
+  isActive     Boolean   @default(true) @map("is_active")
+  isSuperAdmin Boolean   @default(false) @map("is_super_admin")
+  failedLogins Int       @default(0) @map("failed_logins")
+  lockedUntil  DateTime? @map("locked_until") @db.Timestamptz
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("users")
+}
+
+model UserCompany {
+  userId    String   @map("user_id") @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@id([userId, companyId])
+  @@map("user_companies")
+}
+
+model Role {
+  id        String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  code      String
+  name      String
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([companyId, id])
+  @@map("roles")
+}
+
+model Permission {
+  code        String @id
+  module      String
+  description String
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  companyId      String @map("company_id") @db.Uuid
+  roleId         String @map("role_id") @db.Uuid
+  permissionCode String @map("permission_code")
+
+  @@id([companyId, roleId, permissionCode])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId    String @map("user_id") @db.Uuid
+  companyId String @map("company_id") @db.Uuid
+  roleId    String @map("role_id") @db.Uuid
+
+  @@id([userId, companyId, roleId])
+  @@map("user_roles")
+}
+
+model RefreshToken {
+  id           String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  companyId    String?   @map("company_id") @db.Uuid
+  tokenHash    String    @unique @map("token_hash")
+  familyId     String    @map("family_id") @db.Uuid
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz
+  replacedById String?   @map("replaced_by_id") @db.Uuid
+  userAgent    String?   @map("user_agent")
+  ip           String?
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id         String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId  String?  @map("company_id") @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  entity     String
+  entityId   String?  @map("entity_id")
+  action     String
+  diff       Json?
+  ip         String?
+  requestId  String?  @map("request_id")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([companyId, entity, entityId])
+  @@index([companyId, createdAt])
+  @@map("audit_logs")
+}
+
+model DocumentSequence {
+  id         String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  docType    String   @map("doc_type")
+  series     String   @default("A")
+  prefix     String   @default("")
+  nextNumber BigInt   @default(1) @map("next_number")
+  padding    Int      @default(6)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, docType, series])
+  @@map("document_sequences")
+}
+
+model IdempotencyKey {
+  companyId      String   @map("company_id") @db.Uuid
+  key            String
+  requestHash    String   @map("request_hash")
+  responseStatus Int?     @map("response_status")
+  responseBody   Json?    @map("response_body")
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@id([companyId, key])
+  @@map("idempotency_keys")
+}
+
+model Setting {
+  companyId String @map("company_id") @db.Uuid
+  key       String
+  value     Json
+
+  @@id([companyId, key])
+  @@map("settings")
+}
+
+// ───────────────────────── Catálogos globales ─────────────────────────
+
+model Currency {
+  id       String @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  code     String @unique
+  name     String
+  symbol   String
+  decimals Int    @default(2)
+
+  @@map("currencies")
+}
+
+model ExchangeRate {
+  id         String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  currencyId String   @map("currency_id") @db.Uuid
+  rate       Decimal  @db.Decimal(18, 8) // Bs por unidad de moneda
+  date       DateTime @db.Date
+  source     String   @default("MANUAL")
+  createdBy  String?  @map("created_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([currencyId, date, createdAt])
+  @@map("exchange_rates")
+}
+
+model Bank {
+  id     String @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  code   String @unique // código de 4 dígitos
+  name   String
+
+  @@map("banks")
+}
+
+// ───────────────────────── Administración (por empresa) ─────────────────────────
+
+model Tax {
+  id         String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId  String    @map("company_id") @db.Uuid
+  code       String
+  name       String
+  kind       String    @default("VAT") // VAT | EXEMPT | EXONERATED | IGTF
+  rate       Decimal   @db.Decimal(7, 4)
+  validFrom  DateTime  @map("valid_from") @db.Date
+  validTo    DateTime? @map("valid_to") @db.Date
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, code, validFrom])
+  @@unique([companyId, id])
+  @@map("taxes")
+}
+
+model Unit {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  code      String
+  name      String
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([companyId, id])
+  @@map("units")
+}
+
+model Warehouse {
+  id                 String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId          String    @map("company_id") @db.Uuid
+  code               String
+  name               String
+  address            String?
+  allowNegativeStock Boolean   @default(false) @map("allow_negative_stock")
+  isActive           Boolean   @default(true) @map("is_active")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([companyId, id])
+  @@map("warehouses")
+}
+
+model Category {
+  id            String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId     String    @map("company_id") @db.Uuid
+  code          String
+  name          String
+  parentId      String?   @map("parent_id") @db.Uuid
+  marginDefault Decimal?  @map("margin_default") @db.Decimal(7, 4)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([companyId, id])
+  @@map("categories")
+}
+
+model Product {
+  id           String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId    String    @map("company_id") @db.Uuid
+  sku          String
+  name         String
+  description  String?
+  categoryId   String?   @map("category_id") @db.Uuid
+  unitId       String    @map("unit_id") @db.Uuid
+  taxId        String?   @map("tax_id") @db.Uuid
+  trackingMode String    @default("NONE") @map("tracking_mode") // NONE | LOT | SERIAL
+  hasExpiry    Boolean   @default(false) @map("has_expiry")
+  isService    Boolean   @default(false) @map("is_service")
+  minStock     Decimal   @default(0) @map("min_stock") @db.Decimal(18, 4)
+  maxStock     Decimal   @default(0) @map("max_stock") @db.Decimal(18, 4)
+  isActive     Boolean   @default(true) @map("is_active")
+  version      Int       @default(1)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  createdBy    String?   @map("created_by") @db.Uuid
+  updatedBy    String?   @map("updated_by") @db.Uuid
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, sku])
+  @@unique([companyId, id])
+  @@index([companyId, name])
+  @@map("products")
+}
+
+model ProductBarcode {
+  id        String @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId String @map("company_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  barcode   String
+
+  @@unique([companyId, barcode])
+  @@index([companyId, productId])
+  @@map("product_barcodes")
+}
+
+model ProductReference {
+  id        String  @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId String  @map("company_id") @db.Uuid
+  productId String  @map("product_id") @db.Uuid
+  refType   String  @default("OEM") @map("ref_type") // OEM | EQUIVALENT | ALTERNATE
+  code      String
+  brand     String?
+
+  @@index([companyId, code])
+  @@index([companyId, productId])
+  @@map("product_references")
+}
+
+model ProductUom {
+  id        String  @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId String  @map("company_id") @db.Uuid
+  productId String  @map("product_id") @db.Uuid
+  name      String
+  factor    Decimal @db.Decimal(18, 4) // unidades base por presentación
+  barcode   String?
+
+  @@index([companyId, productId])
+  @@map("product_uoms")
+}
+
+model PriceList {
+  id         String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId  String    @map("company_id") @db.Uuid
+  code       String
+  name       String
+  currencyId String    @map("currency_id") @db.Uuid
+  isDefault  Boolean   @default(false) @map("is_default")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([companyId, id])
+  @@map("price_lists")
+}
+
+model ProductPrice {
+  id          String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  priceListId String   @map("price_list_id") @db.Uuid
+  price       Decimal  @db.Decimal(18, 4)
+  validFrom   DateTime @default(now()) @map("valid_from") @db.Date
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  createdBy   String?  @map("created_by") @db.Uuid
+
+  @@unique([companyId, productId, priceListId, validFrom])
+  @@map("product_prices")
+}
+
+model Zone {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  code      String
+  name      String
+  parentId  String?   @map("parent_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([companyId, id])
+  @@map("zones")
+}
+
+model Seller {
+  id             String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId      String    @map("company_id") @db.Uuid
+  code           String
+  name           String
+  userId         String?   @map("user_id") @db.Uuid
+  commissionRate Decimal   @default(0) @map("commission_rate") @db.Decimal(7, 4)
+  zoneId         String?   @map("zone_id") @db.Uuid
+  monthlyGoal    Decimal?  @map("monthly_goal") @db.Decimal(18, 4)
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([companyId, id])
+  @@map("sellers")
+}
+
+model Supplier {
+  id                String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId         String    @map("company_id") @db.Uuid
+  rif               String
+  legalName         String    @map("legal_name")
+  tradeName         String?   @map("trade_name")
+  personType        String    @default("LEGAL") @map("person_type") // LEGAL | NATURAL
+  isSpecialTaxpayer Boolean   @default(false) @map("is_special_taxpayer")
+  retentionIvaPct   Decimal   @default(0) @map("retention_iva_pct") @db.Decimal(7, 4)
+  isIslrSubject     Boolean   @default(false) @map("is_islr_subject")
+  creditDays        Int       @default(0) @map("credit_days")
+  zoneId            String?   @map("zone_id") @db.Uuid
+  email             String?
+  phone             String?
+  address           String?
+  isActive          Boolean   @default(true) @map("is_active")
+  version           Int       @default(1)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, rif])
+  @@unique([companyId, id])
+  @@map("suppliers")
+}
+
+model ProductSupplier {
+  id          String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  supplierId  String   @map("supplier_id") @db.Uuid
+  supplierSku String?  @map("supplier_sku")
+  lastCost    Decimal? @map("last_cost") @db.Decimal(18, 6)
+  leadTimeDays Int?    @map("lead_time_days")
+
+  @@unique([companyId, productId, supplierId])
+  @@map("product_suppliers")
+}
+
+model Customer {
+  id                String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId         String    @map("company_id") @db.Uuid
+  rif               String
+  legalName         String    @map("legal_name")
+  tradeName         String?   @map("trade_name")
+  personType        String    @default("LEGAL") @map("person_type")
+  isSpecialTaxpayer Boolean   @default(false) @map("is_special_taxpayer")
+  retentionIvaPct   Decimal   @default(0) @map("retention_iva_pct") @db.Decimal(7, 4)
+  priceListId       String?   @map("price_list_id") @db.Uuid
+  creditLimit       Decimal   @default(0) @map("credit_limit") @db.Decimal(18, 4)
+  creditDays        Int       @default(0) @map("credit_days")
+  sellerId          String?   @map("seller_id") @db.Uuid
+  zoneId            String?   @map("zone_id") @db.Uuid
+  email             String?
+  phone             String?
+  address           String?
+  isActive          Boolean   @default(true) @map("is_active")
+  version           Int       @default(1)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, rif])
+  @@unique([companyId, id])
+  @@map("customers")
+}
+
+model BankAccount {
+  id             String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId      String    @map("company_id") @db.Uuid
+  bankId         String    @map("bank_id") @db.Uuid
+  name           String
+  number         String
+  currencyId     String    @map("currency_id") @db.Uuid
+  accountType    String    @default("CHECKING") @map("account_type") // CHECKING | SAVINGS | CASH
+  openingBalance Decimal   @default(0) @map("opening_balance") @db.Decimal(18, 4)
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, number])
+  @@unique([companyId, id])
+  @@map("bank_accounts")
+}
+
+model PaymentMethod {
+  id               String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId        String    @map("company_id") @db.Uuid
+  code             String
+  name             String
+  type             String // CASH | TRANSFER | MOBILE_PAYMENT | CARD | ZELLE | CHECK | WITHHOLDING | CREDIT
+  currencyId       String?   @map("currency_id") @db.Uuid
+  requiresReference Boolean  @default(false) @map("requires_reference")
+  appliesIgtf      Boolean   @default(false) @map("applies_igtf")
+  bankAccountId    String?   @map("bank_account_id") @db.Uuid
+  isActive         Boolean   @default(true) @map("is_active")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([companyId, id])
+  @@map("payment_methods")
+}
+
+model OperationType {
+  id                   String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId            String    @map("company_id") @db.Uuid
+  code                 String
+  name                 String
+  docType              String    @map("doc_type")
+  inventoryEffect      String    @default("NONE") @map("inventory_effect") // IN | OUT | NONE
+  affectsReceivable    Boolean   @default(false) @map("affects_receivable")
+  affectsPayable       Boolean   @default(false) @map("affects_payable")
+  affectsBank          Boolean   @default(false) @map("affects_bank")
+  requiresFiscalNumber Boolean   @default(false) @map("requires_fiscal_number")
+  series               String    @default("A")
+  isActive             Boolean   @default(true) @map("is_active")
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt            DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([companyId, id])
+  @@map("operation_types")
+}
+
+model MovementReason {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  code      String
+  name      String
+  kind      String // CHARGE | DISCHARGE | ADJUSTMENT
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([companyId, id])
+  @@map("movement_reasons")
+}
+
+// ───────────────────────── Inventario ─────────────────────────
+
+/// Kardex inmutable (sin UPDATE/DELETE: trigger en sql/).
+model InventoryMovement {
+  id                String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  seq               BigInt   @unique @default(autoincrement())
+  companyId         String   @map("company_id") @db.Uuid
+  productId         String   @map("product_id") @db.Uuid
+  warehouseId       String   @map("warehouse_id") @db.Uuid
+  lotId             String?  @map("lot_id") @db.Uuid
+  quantity          Decimal  @db.Decimal(18, 4) // ± (entrada positiva, salida negativa)
+  unitCost          Decimal  @map("unit_cost") @db.Decimal(18, 6)
+  totalCost         Decimal  @map("total_cost") @db.Decimal(18, 4)
+  qtyAfter          Decimal  @map("qty_after") @db.Decimal(18, 4) // existencia total de la empresa tras el movimiento
+  warehouseQtyAfter Decimal  @map("warehouse_qty_after") @db.Decimal(18, 4)
+  avgCostAfter      Decimal  @map("avg_cost_after") @db.Decimal(18, 6)
+  docType           String   @map("doc_type")
+  docId             String   @map("doc_id") @db.Uuid
+  docLineId         String?  @map("doc_line_id") @db.Uuid
+  reversalOf        String?  @map("reversal_of") @db.Uuid
+  postedAt          DateTime @default(now()) @map("posted_at") @db.Timestamptz
+  createdBy         String?  @map("created_by") @db.Uuid
+
+  @@index([companyId, productId, seq])
+  @@index([companyId, warehouseId, productId])
+  @@index([companyId, docType, docId])
+  @@map("inventory_movements")
+}
+
+model InventoryStock {
+  id          String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  warehouseId String   @map("warehouse_id") @db.Uuid
+  quantity    Decimal  @default(0) @db.Decimal(18, 4)
+  reservedQty Decimal  @default(0) @map("reserved_qty") @db.Decimal(18, 4)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, productId, warehouseId])
+  @@map("inventory_stock")
+}
+
+model ProductCost {
+  id          String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  avgCost     Decimal  @default(0) @map("avg_cost") @db.Decimal(18, 6)
+  costPending Boolean  @default(false) @map("cost_pending")
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, productId])
+  @@map("product_costs")
+}
+
+model Lot {
+  id           String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId    String    @map("company_id") @db.Uuid
+  productId    String    @map("product_id") @db.Uuid
+  lotNo        String    @map("lot_no")
+  expiryDate   DateTime? @map("expiry_date") @db.Date
+  supplierId   String?   @map("supplier_id") @db.Uuid
+  status       String    @default("ACTIVE")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@unique([companyId, productId, lotNo])
+  @@unique([companyId, id])
+  @@map("lots")
+}
+
+model InventoryLotBalance {
+  id          String  @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId   String  @map("company_id") @db.Uuid
+  productId   String  @map("product_id") @db.Uuid
+  warehouseId String  @map("warehouse_id") @db.Uuid
+  lotId       String  @map("lot_id") @db.Uuid
+  quantity    Decimal @default(0) @db.Decimal(18, 4)
+
+  @@unique([companyId, productId, warehouseId, lotId])
+  @@map("inventory_lot_balances")
+}
+
+model InventoryDocument {
+  id            String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId     String    @map("company_id") @db.Uuid
+  docType       String    @map("doc_type") // TRANSFER | CHARGE | DISCHARGE | ADJUSTMENT | COST_ADJUSTMENT
+  status        String    @default("DRAFT")
+  number        String?
+  docDate       DateTime  @map("doc_date") @db.Date
+  warehouseId   String    @map("warehouse_id") @db.Uuid
+  toWarehouseId String?   @map("to_warehouse_id") @db.Uuid
+  reasonId      String?   @map("reason_id") @db.Uuid
+  notes         String?
+  confirmedAt   DateTime? @map("confirmed_at") @db.Timestamptz
+  confirmedBy   String?   @map("confirmed_by") @db.Uuid
+  cancelledAt   DateTime? @map("cancelled_at") @db.Timestamptz
+  cancelledBy   String?   @map("cancelled_by") @db.Uuid
+  cancelReason  String?   @map("cancel_reason")
+  version       Int       @default(1)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  createdBy     String?   @map("created_by") @db.Uuid
+  updatedBy     String?   @map("updated_by") @db.Uuid
+
+  @@unique([companyId, id])
+  @@unique([companyId, docType, number])
+  @@index([companyId, docType, status])
+  @@map("inventory_documents")
+}
+
+model InventoryDocumentLine {
+  id          String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  documentId  String   @map("document_id") @db.Uuid
+  lineNo      Int      @map("line_no")
+  productId   String   @map("product_id") @db.Uuid
+  quantity    Decimal  @default(0) @db.Decimal(18, 4)
+  unitCost    Decimal? @map("unit_cost") @db.Decimal(18, 6)
+  systemQty   Decimal? @map("system_qty") @db.Decimal(18, 4)
+  countedQty  Decimal? @map("counted_qty") @db.Decimal(18, 4)
+  difference  Decimal? @db.Decimal(18, 4)
+  newAvgCost  Decimal? @map("new_avg_cost") @db.Decimal(18, 6)
+  lotNo       String?  @map("lot_no")
+  expiryDate  DateTime? @map("expiry_date") @db.Date
+  notes       String?
+
+  @@unique([companyId, id])
+  @@index([companyId, documentId])
+  @@map("inventory_document_lines")
+}
+
+model InventoryPeriod {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  year      Int
+  month     Int
+  status    String    @default("OPEN") // OPEN | CLOSED
+  closedAt  DateTime? @map("closed_at") @db.Timestamptz
+  closedBy  String?   @map("closed_by") @db.Uuid
+
+  @@unique([companyId, year, month])
+  @@unique([companyId, id])
+  @@map("inventory_periods")
+}
+
+model InventoryPeriodSnapshot {
+  id        String  @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId String  @map("company_id") @db.Uuid
+  periodId  String  @map("period_id") @db.Uuid
+  productId String  @map("product_id") @db.Uuid
+  qty       Decimal @db.Decimal(18, 4)
+  avgCost   Decimal @map("avg_cost") @db.Decimal(18, 6)
+  value     Decimal @db.Decimal(18, 4)
+
+  @@unique([companyId, periodId, productId])
+  @@map("inventory_period_snapshots")
+}
+
+// ───────────────────────── Compras ─────────────────────────
+
+model PurchaseDocument {
+  id               String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId        String    @map("company_id") @db.Uuid
+  docType          String    @map("doc_type") // QUOTE | ORDER | DELIVERY_NOTE | DELIVERY_NOTE_RETURN | PURCHASE | PURCHASE_RETURN
+  status           String    @default("DRAFT")
+  number           String?
+  docDate          DateTime  @map("doc_date") @db.Date
+  dueDate          DateTime? @map("due_date") @db.Date
+  expiresAt        DateTime? @map("expires_at") @db.Date
+  supplierId       String    @map("supplier_id") @db.Uuid
+  warehouseId      String?   @map("warehouse_id") @db.Uuid
+  currencyId       String    @map("currency_id") @db.Uuid
+  exchangeRate     Decimal   @default(1) @map("exchange_rate") @db.Decimal(18, 8)
+  paymentCondition String    @default("CASH") @map("payment_condition") // CASH | CREDIT
+  creditDays       Int       @default(0) @map("credit_days")
+  supplierDocNo    String?   @map("supplier_doc_no")
+  supplierControlNo String?  @map("supplier_control_no")
+  subtotal         Decimal   @default(0) @db.Decimal(18, 4)
+  taxableBase      Decimal   @default(0) @map("taxable_base") @db.Decimal(18, 4)
+  exemptBase       Decimal   @default(0) @map("exempt_base") @db.Decimal(18, 4)
+  taxTotal         Decimal   @default(0) @map("tax_total") @db.Decimal(18, 4)
+  total            Decimal   @default(0) @db.Decimal(18, 4)
+  totalBase        Decimal   @default(0) @map("total_base") @db.Decimal(18, 4) // en Bs
+  notes            String?
+  confirmedAt      DateTime? @map("confirmed_at") @db.Timestamptz
+  confirmedBy      String?   @map("confirmed_by") @db.Uuid
+  cancelledAt      DateTime? @map("cancelled_at") @db.Timestamptz
+  cancelledBy      String?   @map("cancelled_by") @db.Uuid
+  cancelReason     String?   @map("cancel_reason")
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  createdBy        String?   @map("created_by") @db.Uuid
+  updatedBy        String?   @map("updated_by") @db.Uuid
+
+  @@unique([companyId, id])
+  @@unique([companyId, docType, number])
+  @@index([companyId, docType, status])
+  @@index([companyId, supplierId])
+  @@map("purchase_documents")
+}
+
+model PurchaseDocumentLine {
+  id          String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId   String    @map("company_id") @db.Uuid
+  documentId  String    @map("document_id") @db.Uuid
+  lineNo      Int       @map("line_no")
+  productId   String    @map("product_id") @db.Uuid
+  description String?
+  quantity    Decimal   @db.Decimal(18, 4)
+  unitCost    Decimal   @map("unit_cost") @db.Decimal(18, 6) // en la moneda del documento
+  discountPct Decimal   @default(0) @map("discount_pct") @db.Decimal(7, 4)
+  taxId       String?   @map("tax_id") @db.Uuid
+  taxRate     Decimal   @default(0) @map("tax_rate") @db.Decimal(7, 4) // congelada
+  net         Decimal   @default(0) @db.Decimal(18, 4)
+  tax         Decimal   @default(0) @db.Decimal(18, 4)
+  total       Decimal   @default(0) @db.Decimal(18, 4)
+  lotNo       String?   @map("lot_no")
+  expiryDate  DateTime? @map("expiry_date") @db.Date
+
+  @@unique([companyId, id])
+  @@index([companyId, documentId])
+  @@map("purchase_document_lines")
+}
+
+model DocumentLink {
+  id         String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  parentType String   @map("parent_type")
+  parentId   String   @map("parent_id") @db.Uuid
+  childType  String   @map("child_type")
+  childId    String   @map("child_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@unique([companyId, parentId, childId])
+  @@unique([companyId, id])
+  @@index([companyId, childId])
+  @@map("document_links")
+}
+
+model DocumentLinkLine {
+  linkId       String  @map("link_id") @db.Uuid
+  companyId    String  @map("company_id") @db.Uuid
+  parentLineId String  @map("parent_line_id") @db.Uuid
+  childLineId  String  @map("child_line_id") @db.Uuid
+  quantity     Decimal @db.Decimal(18, 4)
+
+  @@id([linkId, parentLineId, childLineId])
+  @@index([companyId, parentLineId])
+  @@index([companyId, childLineId])
+  @@map("document_link_lines")
+}
+
+model DocumentCancellation {
+  id         String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  docType    String   @map("doc_type")
+  docId      String   @map("doc_id") @db.Uuid
+  reason     String
+  cancelledBy String? @map("cancelled_by") @db.Uuid
+  cancelledAt DateTime @default(now()) @map("cancelled_at") @db.Timestamptz
+
+  @@index([companyId, docId])
+  @@map("document_cancellations")
+}
+
+model PayableEntry {
+  id                 String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId          String   @map("company_id") @db.Uuid
+  supplierId         String   @map("supplier_id") @db.Uuid
+  purchaseDocumentId String   @map("purchase_document_id") @db.Uuid
+  entryType          String   @default("INVOICE") @map("entry_type") // INVOICE | RETURN
+  dueDate            DateTime @map("due_date") @db.Date
+  currencyId         String   @map("currency_id") @db.Uuid
+  exchangeRate       Decimal  @map("exchange_rate") @db.Decimal(18, 8)
+  amount             Decimal  @db.Decimal(18, 4) // negativo en devoluciones
+  balance            Decimal  @db.Decimal(18, 4)
+  status             String   @default("OPEN") // OPEN | PARTIALLY_PAID | PAID | CANCELLED
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@index([companyId, supplierId, status])
+  @@index([companyId, purchaseDocumentId])
+  @@map("payable_entries")
+}

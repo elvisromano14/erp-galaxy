@@ -1,0 +1,18 @@
+# Servicios de desarrollo aislados (puertos distintos para no chocar con otros proyectos locales)
+services:
+  postgres:
+    image: docker.io/library/postgres:18
+    container_name: minierp-postgres
+    environment:
+      POSTGRES_DB: minierp
+      POSTGRES_USER: minierp_admin
+      POSTGRES_PASSWORD: minierp_admin
+    ports: ["127.0.0.1:55432:5432"]
+    volumes: ["minierp-pgdata:/var/lib/postgresql"]
+  redis:
+    image: docker.io/library/redis:7-alpine
+    container_name: minierp-redis
+    command: ["redis-server", "--requirepass", "minierp_redis", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
+    ports: ["127.0.0.1:56379:6379"]
+volumes:
+  minierp-pgdata: {}

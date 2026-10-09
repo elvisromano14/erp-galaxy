@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "outDir": "dist", "baseUrl": ".", "rootDir": ".", "incremental": true, "types": ["node", "jest"] },
+  "include": ["src", "test", "prisma", "scripts"]
+}

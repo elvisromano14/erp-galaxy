@@ -1,0 +1,9 @@
+process.env.NODE_ENV = 'test';
+process.env.LOG_LEVEL = 'silent';
+process.env.DATABASE_URL = 'postgresql://erp_app:erp_app@127.0.0.1:55432/minierp_test?connection_limit=25';
+process.env.MIGRATION_DATABASE_URL = 'postgresql://erp_migrator:erp_migrator@127.0.0.1:55432/minierp_test';
+process.env.REDIS_URL = 'redis://:minierp_redis@127.0.0.1:56379/1';
+process.env.JWT_ACCESS_SECRET = 'test_access_secret_test_access_secret_test_access_secret_1234';
+process.env.JWT_REFRESH_SECRET = 'test_refresh_secret_test_refresh_secret_test_refresh_secret_12';
+process.env.THROTTLE_LOGIN_PER_MIN = '100000';
+process.env.THROTTLE_DEFAULT_PER_MIN = '100000';

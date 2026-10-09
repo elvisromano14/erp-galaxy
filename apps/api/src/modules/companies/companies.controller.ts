@@ -1,0 +1,77 @@
+import { Body, Controller, ForbiddenException, Get, Param, Patch, Post } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { z } from 'zod';
+import { AllowNoCompany, AuthUser, CurrentUser, RequirePermissions } from '../../common/auth/decorators';
+import { ZodPipe } from '../../common/http/zod.pipe';
+import { CompaniesService } from './companies.service';
+import { uuid } from '@erp/contracts';
+
+const features = z.object({ lots: z.boolean(), serials: z.boolean(), expiry: z.boolean(), offline: z.boolean() }).partial();
+const createCompany = z.object({
+  rif: z.string().min(5), legalName: z.string().min(2), tradeName: z.string().optional(), fiscalAddress: z.string().optional(),
+  baseCurrencyCode: z.string().length(3).optional(), valuationCurrencyCode: z.string().length(3).optional(),
+  isSpecialTaxpayer: z.boolean().optional(), isVatWithholdingAgent: z.boolean().optional(), isIgtfCollector: z.boolean().optional(),
+  admin: z.object({ email: z.string().email(), fullName: z.string().min(2), password: z.string().min(10) }).optional(),
+});
+const updateCompany = z.object({
+  legalName: z.string().min(2).optional(), tradeName: z.string().nullable().optional(), fiscalAddress: z.string().nullable().optional(),
+  isSpecialTaxpayer: z.boolean().optional(), isVatWithholdingAgent: z.boolean().optional(), isIgtfCollector: z.boolean().optional(),
+  features: features.optional(),
+}).strict();
+const createUser = z.object({ email: z.string().email(), fullName: z.string().min(2), password: z.string().min(10).optional(), roleCodes: z.array(z.string()).min(1) });
+const updateUser = z.object({ fullName: z.string().min(2).optional(), isActive: z.boolean().optional(), roleCodes: z.array(z.string()).optional() }).strict();
+const createRole = z.object({ code: z.string().min(2).max(30), name: z.string().min(2), permissions: z.array(z.string()) });
+const updateRole = z.object({ name: z.string().min(2).optional(), permissions: z.array(z.string()).optional() }).strict();
+
+@ApiTags('companies') @ApiBearerAuth()
+@Controller('companies')
+export class CompaniesController {
+  constructor(private readonly svc: CompaniesService) {}
+
+  /** Alta de empresas: solo superadministrador de la plataforma. */
+  @Post() @AllowNoCompany()
+  create(@CurrentUser() u: AuthUser, @Body(new ZodPipe(createCompany)) b: z.infer<typeof createCompany>) {
+    if (!u.isSuperAdmin) throw new ForbiddenException({ error: 'FORBIDDEN', message: 'Solo el superadministrador puede crear empresas' });
+    return this.svc.create(b);
+  }
+
+  @Get() @RequirePermissions('security:companies:read')
+  list(@CurrentUser() u: AuthUser) {
+    return u.isSuperAdmin ? this.svc.listAll() : this.svc.current().then(c => [c]);
+  }
+
+  @Get('current') @RequirePermissions('security:companies:read')
+  current() { return this.svc.current(); }
+
+  @Patch('current') @RequirePermissions('security:companies:update')
+  update(@Body(new ZodPipe(updateCompany)) b: z.infer<typeof updateCompany>) { return this.svc.updateCurrent(b); }
+}
+
+@ApiTags('users') @ApiBearerAuth()
+@Controller('users')
+export class UsersController {
+  constructor(private readonly svc: CompaniesService) {}
+  @Get() @RequirePermissions('security:users:read') list() { return this.svc.listUsers(); }
+  @Post() @RequirePermissions('security:users:create')
+  create(@Body(new ZodPipe(createUser)) b: z.infer<typeof createUser>) { return this.svc.createUser(b); }
+  @Patch(':id') @RequirePermissions('security:users:update')
+  update(@Param('id', new ZodPipe(uuid)) id: string, @Body(new ZodPipe(updateUser)) b: z.infer<typeof updateUser>) { return this.svc.updateUser(id, b); }
+}
+
+@ApiTags('roles') @ApiBearerAuth()
+@Controller('roles')
+export class RolesController {
+  constructor(private readonly svc: CompaniesService) {}
+  @Get() @RequirePermissions('security:roles:read') list() { return this.svc.listRoles(); }
+  @Post() @RequirePermissions('security:roles:create')
+  create(@Body(new ZodPipe(createRole)) b: z.infer<typeof createRole>) { return this.svc.createRole(b); }
+  @Patch(':id') @RequirePermissions('security:roles:update')
+  update(@Param('id', new ZodPipe(uuid)) id: string, @Body(new ZodPipe(updateRole)) b: z.infer<typeof updateRole>) { return this.svc.updateRole(id, b); }
+}
+
+@ApiTags('permissions') @ApiBearerAuth()
+@Controller('permissions')
+export class PermissionsController {
+  constructor(private readonly svc: CompaniesService) {}
+  @Get() @RequirePermissions('security:roles:read') list() { return this.svc.listPermissions(); }
+}
