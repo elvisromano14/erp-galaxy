@@ -16,6 +16,7 @@ import { CatalogsModule } from './modules/catalogs/catalogs.module';
 import { ProductsModule } from './modules/products/products.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { PurchasesModule } from './modules/purchases/purchases.module';
+import { SequencesModule } from './modules/sequences/sequences.module';
 
 @Module({
   imports: [
@@ -29,7 +30,7 @@ import { PurchasesModule } from './modules/purchases/purchases.module';
       },
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: env.THROTTLE_DEFAULT_PER_MIN }]),
-    DbModule, OrganizationsModule, AuthModule, HealthModule, CompaniesModule, CatalogsModule, ProductsModule, InventoryModule, PurchasesModule,
+    DbModule, OrganizationsModule, AuthModule, HealthModule, CompaniesModule, CatalogsModule, ProductsModule, InventoryModule, PurchasesModule, SequencesModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

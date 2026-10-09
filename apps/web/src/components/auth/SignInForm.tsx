@@ -8,29 +8,32 @@ import { useRouter } from "@/i18n/navigation";
 import { EyeCloseIcon, EyeIcon } from "@/icons";
 import { ApiError } from "@/lib/api";
 import { useTranslations } from "next-intl";
+import { reqEmail } from "@/lib/validators";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+
+const schema = z.object({ email: reqEmail, password: z.string().min(1, "Obligatorio") });
 
 export default function SignInForm() {
   const t = useTranslations("auth");
   const { status, login } = useAuth();
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const form = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema), defaultValues: { email: "", password: "" } });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { register, formState } = form;
 
   useEffect(() => {
     if (status === "ready") router.replace("/");
     if (status === "needs-company") router.replace("/select-company");
   }, [status, router]);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = form.handleSubmit(async (v) => {
     setError(null);
-    setBusy(true);
     try {
-      await login(email.trim(), password);
+      await login(v.email.trim(), v.password);
     } catch (err) {
       const code = err instanceof ApiError ? err.code : "";
       setError(
@@ -39,10 +42,8 @@ export default function SignInForm() {
         : err instanceof ApiError && err.status === 429 ? t("errors.tooManyRequests")
         : t("errors.generic"),
       );
-    } finally {
-      setBusy(false);
     }
-  };
+  });
 
   return (
     <div className="flex w-full flex-1 flex-col lg:w-1/2">
@@ -62,21 +63,14 @@ export default function SignInForm() {
               <Label htmlFor="email">
                 {t("email")} <span className="text-error-500">*</span>
               </Label>
-              <Input id="email" type="email" autoComplete="username" placeholder="usuario@empresa.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input id="email" type="email" autoComplete="username" placeholder="usuario@empresa.com" error={!!formState.errors.email} hint={formState.errors.email?.message} {...register("email")} />
             </div>
             <div>
               <Label htmlFor="password">
                 {t("password")} <span className="text-error-500">*</span>
               </Label>
               <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
-                  placeholder={t("passwordPlaceholder")}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
+                <Input id="password" type={showPassword ? "text" : "password"} autoComplete="current-password" placeholder={t("passwordPlaceholder")} error={!!formState.errors.password} hint={formState.errors.password?.message} {...register("password")} />
                 <button
                   type="button"
                   aria-label={showPassword ? t("hidePassword") : t("showPassword")}
@@ -87,8 +81,8 @@ export default function SignInForm() {
                 </button>
               </div>
             </div>
-            <Button type="submit" className="w-full" size="sm" disabled={busy || !email || !password}>
-              {busy ? t("signingIn") : t("signIn")}
+            <Button type="submit" className="w-full" size="sm" disabled={formState.isSubmitting}>
+              {formState.isSubmitting ? t("signingIn") : t("signIn")}
             </Button>
           </div>
         </form>

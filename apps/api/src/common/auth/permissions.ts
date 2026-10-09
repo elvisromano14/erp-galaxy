@@ -18,7 +18,9 @@ export const ALL_PERMISSIONS: string[] = [
   ...build('security', 'roles', ['read', 'create', 'update']),
   ...build('security', 'companies', ['read', 'update']),
   ...build('security', 'audit', ['read']),
+  ...build('admin', 'sequences', ['read', 'update']),
   ...build('inventory', 'stock', ['read']),
+  ...build('inventory', 'serials', ['read']),
   ...build('inventory', 'kardex', ['read']),
   ...build('inventory', 'valuation', ['read']),
   ...build('inventory', 'periods', ['read', 'close']),
@@ -39,7 +41,7 @@ export const ROLE_TEMPLATES: Record<string, { name: string; permissions: string[
   ALMACENISTA: {
     name: 'Almacenista',
     permissions: [
-      ...readCatalogs, 'inventory:stock:read', 'inventory:kardex:read',
+      ...readCatalogs, 'inventory:stock:read', 'inventory:kardex:read', 'inventory:serials:read',
       ...INVENTORY_DOCS.flatMap(r => build('inventory', r, DOC)),
       'purchases:delivery-notes:read', 'purchases:delivery-notes:create', 'purchases:delivery-notes:confirm',
     ],

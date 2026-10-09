@@ -13,7 +13,7 @@ export type Line = Record<string, any> & { _key: string };
 export interface LineCol {
   key: string;
   header: string;
-  kind: "product" | "decimal" | "text" | "date" | "readonly" | "select";
+  kind: "product" | "decimal" | "text" | "date" | "readonly" | "select" | "serials";
   align?: "end";
   className?: string;
   /** Para `readonly`: cómo mostrar el valor. */
@@ -23,6 +23,10 @@ export interface LineCol {
   editable?: (line: Line) => boolean;
   placeholder?: string;
 }
+
+/** Seriales escritos como texto: uno por línea (también se aceptan comas o punto y coma). */
+export const parseSerials = (text?: string | null): string[] => (text ?? "").split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean);
+export const isSerialLine = (l: Line) => l.product?.trackingMode === "SERIAL";
 
 export const productLabel: LabelFn = (r) => `${r.sku} — ${r.name}`;
 let counter = 0;
@@ -39,7 +43,16 @@ export default function LinesEditor({ columns, lines, onChange, readOnly, onProd
   footer?: React.ReactNode;
 }) {
   const t = useTranslations("common");
-  const upd = (i: number, patch: Partial<Line>) => onChange(lines.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  const upd = (i: number, patch: Partial<Line>) =>
+    onChange(
+      lines.map((l, idx) => {
+        if (idx !== i) return l;
+        const next = { ...l, ...patch };
+        // En productos por serial la cantidad ES el número de seriales.
+        if ("serialsText" in patch && isSerialLine(next)) next.quantity = String(parseSerials(next.serialsText).length || "");
+        return next;
+      }),
+    );
   const input = "h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
 
   return (
@@ -69,7 +82,7 @@ export default function LinesEditor({ columns, lines, onChange, readOnly, onProd
                       {c.kind === "readonly" ? (
                         <span className="tabular-nums">{c.format ? c.format(l) : String(value || "—")}</span>
                       ) : !editable ? (
-                        <span className={cn(c.kind === "decimal" && "tabular-nums")}>{c.kind === "product" ? l.productLabel : c.kind === "decimal" ? fmtNumber(value, 0, 6) : c.kind === "select" ? (c.options?.find((o) => o.value === value)?.label ?? "—") : String(value || "—")}</span>
+                        <span className={cn(c.kind === "decimal" && "tabular-nums")}>{c.kind === "product" ? l.productLabel : c.kind === "decimal" ? fmtNumber(value, 0, 6) : c.kind === "select" ? (c.options?.find((o) => o.value === value)?.label ?? "—") : c.kind === "serials" ? (isSerialLine(l) || l.serialsText ? <span className="font-mono text-xs whitespace-pre-line">{parseSerials(l.serialsText).join("\n") || "—"}</span> : "—") : String(value || "—")}</span>
                       ) : c.kind === "product" ? (
                         <AsyncPicker
                           resource="/products"
@@ -88,6 +101,18 @@ export default function LinesEditor({ columns, lines, onChange, readOnly, onProd
                           onChange={(e) => upd(i, { [c.key]: e.target.value.replace(",", ".").replace(/[^0-9.]/g, "") })}
                           className={cn(input, "text-end tabular-nums")}
                         />
+                      ) : c.kind === "serials" ? (
+                        <div>
+                          <textarea
+                            rows={2}
+                            value={l.serialsText ?? ""}
+                            aria-label={c.header}
+                            placeholder={c.placeholder}
+                            onChange={(e) => upd(i, { serialsText: e.target.value })}
+                            className={cn(input, "h-auto min-w-48 py-2 font-mono text-xs")}
+                          />
+                          <span className="mt-0.5 block text-theme-xs text-gray-400">{parseSerials(l.serialsText).length}</span>
+                        </div>
                       ) : c.kind === "date" ? (
                         <input type="date" value={value} aria-label={c.header} onChange={(e) => upd(i, { [c.key]: e.target.value })} className={input} />
                       ) : c.kind === "select" ? (

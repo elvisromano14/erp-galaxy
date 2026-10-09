@@ -3,7 +3,7 @@
 import { calcDocument } from "@erp/domain";
 import ConfirmDialog from "@/components/erp/ConfirmDialog";
 import { DecimalField, IntField, SelectField, TextAreaField, TextField } from "@/components/erp/FormFields";
-import LinesEditor, { newKey, type Line, type LineCol } from "@/components/erp/LinesEditor";
+import LinesEditor, { isSerialLine, newKey, parseSerials, type Line, type LineCol } from "@/components/erp/LinesEditor";
 import { PURCHASE_DOCS, SLUG_BY_TYPE, type PurchaseDocMeta } from "@/components/erp/purchase-docs";
 import { AsyncRefField, RefSelect, useOptions } from "@/components/erp/RefSelect";
 import { Card, ErrorBox, Loading, PageHeader, StatusBadge } from "@/components/erp/ui";
@@ -79,6 +79,7 @@ function Editor({ meta, id }: { meta: PurchaseDocMeta; id: string }) {
         _key: l.id, productId: l.productId, productLabel: l.product ? `${l.product.sku} — ${l.product.name}` : l.productId,
         quantity: String(l.quantity), unitCost: String(l.unitCost), discountPct: String(l.discountPct), taxId: l.taxId ?? "",
         lotNo: l.lotNo ?? "", expiryDate: l.expiryDate ? String(l.expiryDate).slice(0, 10) : "", parentLineId: l.parentLineId ?? null,
+        product: l.product, serialsText: ((l.serials as string[]) ?? []).join("\n"),
       })),
     );
   }, [doc]);
@@ -99,6 +100,7 @@ function Editor({ meta, id }: { meta: PurchaseDocMeta; id: string }) {
           _key: newKey(), productId: l.productId, productLabel: l.product ? `${l.product.sku} — ${l.product.name}` : l.productId,
           quantity: avail.get(l.id) ?? String(l.quantity), unitCost: String(l.unitCost), discountPct: String(l.discountPct), taxId: l.taxId ?? "",
           lotNo: l.lotNo ?? "", parentLineId: l.id, _maxQty: avail.get(l.id) ?? String(l.quantity),
+          product: l.product, serialsText: "", // en devoluciones de productos por serial se indican los seriales que se devuelven
         })),
     );
   }, [parentDoc.data, isNew]);
@@ -140,13 +142,17 @@ function Editor({ meta, id }: { meta: PurchaseDocMeta; id: string }) {
     ? [{ key: "lotNo", header: t("fields.lotNo"), kind: "text", className: "min-w-28" }, ...(feature("expiry") ? [{ key: "expiryDate", header: t("fields.expiryDate"), kind: "date" as const, className: "min-w-36" }] : [])]
     : [];
   const fixedLines = isReturn; // en devoluciones solo se edita la cantidad
+  const movesStock = ["DELIVERY_NOTE", "PURCHASE", "DELIVERY_NOTE_RETURN", "PURCHASE_RETURN"].includes(meta.type);
+  const serialCol: LineCol[] = feature("serials") && movesStock ? [{ key: "serialsText", header: t("fields.serials"), kind: "serials", placeholder: t("inventory.serialsPlaceholder"), editable: (l) => isSerialLine(l) && !(meta.type === "PURCHASE" && l.parentLineId) }] : [];
+  const notSerial = (l: Line) => !isSerialLine(l) || (meta.type === "PURCHASE" && !!l.parentLineId);
   const columns: LineCol[] = [
     { key: "product", header: t("fields.product"), kind: "product", className: "min-w-72", placeholder: t("inventory.searchProduct"), editable: () => !fixedLines },
-    { key: "quantity", header: t("fields.quantity"), kind: "decimal", align: "end", className: "w-28" },
+    { key: "quantity", header: t("fields.quantity"), kind: "decimal", align: "end", className: "w-28", editable: notSerial },
     { key: "unitCost", header: t("fields.unitCost"), kind: "decimal", align: "end", className: "w-32", editable: () => !fixedLines },
     { key: "discountPct", header: t("fields.discountPct"), kind: "decimal", align: "end", className: "w-24", editable: () => !fixedLines },
     { key: "taxId", header: t("fields.tax"), kind: "select", options: taxes.options, className: "min-w-40", editable: () => !fixedLines },
     ...lotCols,
+    ...serialCol,
     { key: "total", header: t("fields.total"), kind: "readonly", align: "end", format: (l) => { const c = live?.byKey.get(l._key); return c ? fmtMoney(c.total.toString()) : "—"; } },
   ];
 
@@ -162,6 +168,7 @@ function Editor({ meta, id }: { meta: PurchaseDocMeta; id: string }) {
       lines: lines.filter((l) => l.productId).map((l) => ({
         productId: l.productId, quantity: l.quantity, unitCost: l.unitCost || "0", discountPct: v(l.discountPct) ?? "0",
         taxId: l.taxId || null, lotNo: v(l.lotNo) ?? null, expiryDate: v(l.expiryDate) ?? null, parentLineId: l.parentLineId ?? null,
+        ...(isSerialLine(l) && parseSerials(l.serialsText).length ? { serials: parseSerials(l.serialsText) } : {}),
       })),
     };
   }
@@ -236,14 +243,14 @@ function Editor({ meta, id }: { meta: PurchaseDocMeta; id: string }) {
   function openReceive() {
     const st: Row[] = doc?.lineStatus ?? [];
     setReceiveWh(doc?.warehouseId ?? "");
-    setReceive((doc!.lines as Row[]).map((l) => ({ lineId: l.id, label: l.product ? `${l.product.sku} — ${l.product.name}` : l.productId, pending: st.find((s) => s.lineId === l.id)?.pending ?? "0", qty: "", lotNo: "", expiryDate: "" })).filter((x) => Number(x.pending) > 0));
+    setReceive((doc!.lines as Row[]).map((l) => ({ lineId: l.id, label: l.product ? `${l.product.sku} — ${l.product.name}` : l.productId, pending: st.find((s) => s.lineId === l.id)?.pending ?? "0", qty: "", lotNo: "", expiryDate: "", serial: l.product?.trackingMode === "SERIAL", serialsText: "" })).filter((x) => Number(x.pending) > 0));
   }
 
   async function doReceive() {
     if (!receive) return;
-    const rows = receive.filter((r) => Number(r.qty) > 0);
+    const rows = receive.filter((r) => (r.serial ? parseSerials(r.serialsText).length > 0 : Number(r.qty) > 0));
     await action(`${meta.api}/:id/receive`, t("purchases.received"), {
-      body: { warehouseId: receiveWh || undefined, lines: rows.map((r) => ({ orderLineId: r.lineId, quantity: r.qty, lotNo: r.lotNo || undefined, expiryDate: r.expiryDate || undefined })) },
+      body: { warehouseId: receiveWh || undefined, lines: rows.map((r) => (r.serial ? { orderLineId: r.lineId, quantity: String(parseSerials(r.serialsText).length), serials: parseSerials(r.serialsText) } : { orderLineId: r.lineId, quantity: r.qty, lotNo: r.lotNo || undefined, expiryDate: r.expiryDate || undefined })) },
       navigateTo: (d) => ["delivery-notes", d.id],
     });
     setReceive(null);
@@ -309,7 +316,7 @@ function Editor({ meta, id }: { meta: PurchaseDocMeta; id: string }) {
           lines={lines}
           onChange={setLines}
           readOnly={readOnly}
-          onProductPick={(_, p) => ({ taxId: p.taxId ?? "", quantity: "1", discountPct: "0", unitCost: "" })}
+          onProductPick={(_, p) => ({ taxId: p.taxId ?? "", quantity: p.trackingMode === "SERIAL" ? "" : "1", discountPct: "0", unitCost: "", serialsText: "" })}
           footer={
             <div className="mt-4 flex justify-end">
               <dl className="w-full max-w-sm space-y-1 text-sm">
@@ -371,7 +378,7 @@ function Editor({ meta, id }: { meta: PurchaseDocMeta; id: string }) {
               {receive.map((r, i) => (
                 <tr key={r.lineId} className="border-b border-gray-50 dark:border-gray-800">
                   <td className="py-2">{r.label}</td><td className="text-end tabular-nums">{fmtQty(r.pending)}</td>
-                  <td className="w-32 py-1"><input inputMode="decimal" aria-label={t("purchases.receiveQty")} value={r.qty} onChange={(e) => setReceive(receive.map((x, j) => (j === i ? { ...x, qty: e.target.value.replace(",", ".").replace(/[^0-9.]/g, "") } : x)))} className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-end text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90" /></td>
+                  <td className="w-32 py-1">{r.serial ? <textarea rows={2} aria-label={t("fields.serials")} placeholder={t("inventory.serialsPlaceholder")} value={r.serialsText} onChange={(e) => setReceive(receive.map((x, j) => (j === i ? { ...x, serialsText: e.target.value } : x)))} className="w-full min-w-48 rounded-lg border border-gray-300 bg-transparent px-3 py-2 font-mono text-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90" /> : <input inputMode="decimal" aria-label={t("purchases.receiveQty")} value={r.qty} onChange={(e) => setReceive(receive.map((x, j) => (j === i ? { ...x, qty: e.target.value.replace(",", ".").replace(/[^0-9.]/g, "") } : x)))} className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-end text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90" />}</td>
                   {feature("lots") && <td className="ps-3"><input aria-label={t("fields.lotNo")} value={r.lotNo} onChange={(e) => setReceive(receive.map((x, j) => (j === i ? { ...x, lotNo: e.target.value } : x)))} className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90" /></td>}
                 </tr>
               ))}
@@ -379,7 +386,7 @@ function Editor({ meta, id }: { meta: PurchaseDocMeta; id: string }) {
           </table>
           <div className="mt-6 flex justify-end gap-3">
             <Button variant="outline" size="sm" onClick={() => setReceive(null)}>{t("common.cancel")}</Button>
-            <Button size="sm" disabled={busy || !receiveWh || !receive.some((r) => Number(r.qty) > 0)} onClick={doReceive}>{t("purchases.receive")}</Button>
+            <Button size="sm" disabled={busy || !receiveWh || !receive.some((r) => (r.serial ? parseSerials(r.serialsText).length > 0 : Number(r.qty) > 0))} onClick={doReceive}>{t("purchases.receive")}</Button>
           </div>
         </Modal>
       )}

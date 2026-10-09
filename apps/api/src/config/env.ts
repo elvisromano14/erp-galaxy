@@ -15,6 +15,10 @@ const schema = z.object({
   REFRESH_REUSE_GRACE_SECONDS: z.coerce.number().default(10),
   LOG_LEVEL: z.string().default('info'),
   WORKER_ENABLED: z.coerce.boolean().default(false),
+  /** Sincronización de la tasa oficial (BCV) con DolarApi. */
+  FX_API_URL: z.string().url().default('https://ve.dolarapi.com/v1'),
+  FX_SYNC_ENABLED: z.enum(['true', 'false']).default('false').transform(v => v === 'true'),
+  FX_SYNC_INTERVAL_MINUTES: z.coerce.number().min(5).default(120),
   LOGIN_MAX_ATTEMPTS: z.coerce.number().default(5),
   LOGIN_LOCK_MINUTES: z.coerce.number().default(15),
   THROTTLE_LOGIN_PER_MIN: z.coerce.number().default(10),

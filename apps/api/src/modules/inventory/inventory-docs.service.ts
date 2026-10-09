@@ -25,6 +25,7 @@ const line = z.object({
   unitCost: decimalStr.optional(),
   countedQty: decimalStr.optional(),
   newAvgCost: decimalStr.optional(),
+  serials: z.array(z.string().trim().min(1).max(100)).max(5000).optional(),
   lotNo: z.string().trim().min(1).max(60).nullable().optional(),
   expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   notes: z.string().max(500).nullable().optional(),
@@ -81,11 +82,18 @@ export class InventoryDocsService {
       if (!p) throw bad('PRODUCT_NOT_FOUND', 'Producto inexistente');
       if (!p.isActive) throw bad('PRODUCT_INACTIVE', `El producto ${p.sku} está inactivo`);
       if (p.isService) throw bad('PRODUCT_IS_SERVICE', `El producto ${p.sku} es un servicio y no mueve inventario`);
-      if (docType === 'TRANSFER' || docType === 'CHARGE' || docType === 'DISCHARGE') {
+      const serialProduct = p.trackingMode === 'SERIAL';
+      if (!serialProduct && l.serials?.length) throw bad('SERIALS_NOT_ALLOWED', `El producto ${p.sku} no se controla por seriales`);
+      if (serialProduct && docType !== 'COST_ADJUSTMENT') {
+        const nos = l.serials ?? [];
+        if (docType !== 'ADJUSTMENT' && !nos.length) throw bad('SERIALS_REQUIRED', `El producto ${p.sku} se controla por seriales: indique los seriales`);
+        if (docType === 'ADJUSTMENT' && l.serials === undefined) throw bad('SERIALS_REQUIRED', `Indique los seriales contados de ${p.sku} (lista vacía si no hay ninguno)`);
+        if (new Set(nos.map(x => x.trim())).size !== nos.length) throw bad('DUPLICATE_SERIAL', `Hay seriales repetidos para ${p.sku}`);
+      } else if (docType === 'TRANSFER' || docType === 'CHARGE' || docType === 'DISCHARGE') {
         if (l.quantity === undefined || D(l.quantity).lte(0)) throw bad('QUANTITY_REQUIRED', 'La cantidad debe ser mayor que cero');
       }
       if (docType === 'CHARGE' && (l.unitCost === undefined || D(l.unitCost).isNegative())) throw bad('COST_REQUIRED', 'El cargo requiere costo unitario');
-      if (docType === 'ADJUSTMENT' && (l.countedQty === undefined || D(l.countedQty).isNegative())) throw bad('COUNTED_QTY_REQUIRED', 'Indique la cantidad contada');
+      if (docType === 'ADJUSTMENT' && !serialProduct && (l.countedQty === undefined || D(l.countedQty).isNegative())) throw bad('COUNTED_QTY_REQUIRED', 'Indique la cantidad contada');
       if (docType === 'COST_ADJUSTMENT' && (l.newAvgCost === undefined || D(l.newAvgCost).isNegative())) throw bad('NEW_COST_REQUIRED', 'Indique el nuevo costo promedio');
       if (p.trackingMode === 'LOT' && docType !== 'COST_ADJUSTMENT' && !l.lotNo && (docType === 'CHARGE' || docType === 'ADJUSTMENT')) throw bad('LOT_REQUIRED', `El producto ${p.sku} requiere lote`);
       if (p.trackingMode === 'LOT' && docType === 'CHARGE' && p.hasExpiry && !l.expiryDate) throw bad('EXPIRY_REQUIRED', `El producto ${p.sku} requiere vencimiento`);
@@ -97,10 +105,12 @@ export class InventoryDocsService {
     });
   }
 
-  private lineData(companyId: string, documentId: string, l: z.infer<typeof line>, i: number) {
+  private lineData(companyId: string, documentId: string, l: z.infer<typeof line>, i: number, docTypeOfLine: InvDocType) {
     return {
       companyId, documentId, lineNo: i + 1, productId: l.productId,
-      quantity: l.quantity ?? '0', unitCost: l.unitCost ?? null, countedQty: l.countedQty ?? null, newAvgCost: l.newAvgCost ?? null,
+      quantity: l.serials ? String(l.serials.length) : l.quantity ?? '0', unitCost: l.unitCost ?? null,
+      countedQty: l.serials && docTypeOfLine === 'ADJUSTMENT' ? String(l.serials.length) : l.countedQty ?? null, newAvgCost: l.newAvgCost ?? null,
+      serials: l.serials ?? [],
       lotNo: l.lotNo ?? null, expiryDate: l.expiryDate ? new Date(l.expiryDate) : null, notes: l.notes ?? null,
     };
   }
@@ -117,7 +127,7 @@ export class InventoryDocsService {
         createdBy: this.prisma.userId, updatedBy: this.prisma.userId,
       },
     });
-    await tx.inventoryDocumentLine.createMany({ data: input.lines.map((l, i) => this.lineData(companyId, doc.id, l, i)) });
+    await tx.inventoryDocumentLine.createMany({ data: input.lines.map((l, i) => this.lineData(companyId, doc.id, l, i, docType)) });
     await this.audit.log(`inventory_${docType.toLowerCase()}`, doc.id, 'CREATE', input);
     return this.get(docType, doc.id);
   }
@@ -137,6 +147,7 @@ export class InventoryDocsService {
       lines: input.lines ?? existingLines.map(l => ({
         productId: l.productId, quantity: l.quantity.toString(), unitCost: l.unitCost?.toString(), countedQty: l.countedQty?.toString(),
         newAvgCost: l.newAvgCost?.toString(), lotNo: l.lotNo, expiryDate: l.expiryDate?.toISOString().slice(0, 10) ?? null, notes: l.notes,
+        serials: l.serials.length ? l.serials : undefined,
       })),
     };
     await this.validate(docType, merged as z.infer<typeof invDocSchema>);
@@ -146,7 +157,7 @@ export class InventoryDocsService {
     });
     if (input.lines) {
       await tx.inventoryDocumentLine.deleteMany({ where: { documentId: id } });
-      await tx.inventoryDocumentLine.createMany({ data: input.lines.map((l, i) => this.lineData(companyId, id, l, i)) });
+      await tx.inventoryDocumentLine.createMany({ data: input.lines.map((l, i) => this.lineData(companyId, id, l, i, docType)) });
     }
     await this.audit.log(`inventory_${docType.toLowerCase()}`, id, 'UPDATE', input);
     return this.get(docType, id);
@@ -169,7 +180,7 @@ export class InventoryDocsService {
     const tx = this.prisma.tx;
     const doc = await this.find(docType, id);
     const lines = await tx.inventoryDocumentLine.findMany({ where: { documentId: id }, orderBy: { lineNo: 'asc' } });
-    const products = new Map((await tx.product.findMany({ where: { id: { in: lines.map(l => l.productId) } }, select: { id: true, sku: true, name: true } })).map(p => [p.id, p]));
+    const products = new Map((await tx.product.findMany({ where: { id: { in: lines.map(l => l.productId) } }, select: { id: true, sku: true, name: true, trackingMode: true } })).map(p => [p.id, p]));
     return { ...doc, lines: lines.map(l => ({ ...l, product: products.get(l.productId) })) };
   }
 
@@ -193,15 +204,16 @@ export class InventoryDocsService {
     if (doc.status !== 'DRAFT') throw new BusinessRuleException(`El documento ya está ${doc.status}`, 'INVALID_STATE');
     const lines = await tx.inventoryDocumentLine.findMany({ where: { documentId: id }, orderBy: { lineNo: 'asc' } });
     if (!lines.length) throw new BusinessRuleException('El documento no tiene líneas', 'EMPTY_DOCUMENT');
+    const serialProductIds = new Set((await tx.product.findMany({ where: { id: { in: lines.map(l => l.productId) }, trackingMode: 'SERIAL' }, select: { id: true } })).map(x => x.id));
     // Revalidar contra el estado actual (producto/depósito pudieron cambiar desde el borrador).
     await this.validate(docType, {
       warehouseId: doc.warehouseId, toWarehouseId: doc.toWarehouseId, reasonId: doc.reasonId, notes: doc.notes,
-      lines: lines.map(l => ({ productId: l.productId, quantity: l.quantity.toString(), unitCost: l.unitCost?.toString(), countedQty: l.countedQty?.toString(), newAvgCost: l.newAvgCost?.toString(), lotNo: l.lotNo, expiryDate: l.expiryDate?.toISOString().slice(0, 10) ?? null })),
+      lines: lines.map(l => ({ productId: l.productId, quantity: l.quantity.toString(), unitCost: l.unitCost?.toString(), countedQty: l.countedQty?.toString(), newAvgCost: l.newAvgCost?.toString(), lotNo: l.lotNo, expiryDate: l.expiryDate?.toISOString().slice(0, 10) ?? null, serials: l.serials.length || serialProductIds.has(l.productId) ? l.serials : undefined })),
     } as z.infer<typeof invDocSchema>);
 
     const moves: MoveRequest[] = [];
     for (const l of lines) {
-      const base = { productId: l.productId, warehouseId: doc.warehouseId, docLineId: l.id, lotNo: l.lotNo, expiryDate: l.expiryDate?.toISOString().slice(0, 10) ?? null, ref: l.id };
+      const base = { productId: l.productId, warehouseId: doc.warehouseId, docLineId: l.id, lotNo: l.lotNo, expiryDate: l.expiryDate?.toISOString().slice(0, 10) ?? null, ref: l.id, ...(l.serials.length || serialProductIds.has(l.productId) ? { serials: l.serials } : {}) };
       switch (docType) {
         case 'TRANSFER':
           moves.push({ ...base, kind: 'TRANSFER_OUT', quantity: l.quantity.toString() });

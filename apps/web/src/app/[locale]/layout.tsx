@@ -1,4 +1,5 @@
 import { AuthProvider } from "@/context/AuthContext";
+import QueryProvider from "@/context/QueryProvider";
 import { NoticeProvider } from "@/context/NoticeContext";
 import { SidebarProvider } from "@/context/SidebarContext";
 import { ThemeProvider } from "@/context/ThemeContext";
@@ -44,9 +45,11 @@ export default async function RootLayout({
         <NextIntlClientProvider>
           <ThemeProvider>
             <NoticeProvider>
-              <AuthProvider>
-                <SidebarProvider>{children}</SidebarProvider>
-              </AuthProvider>
+              <QueryProvider>
+                <AuthProvider>
+                  <SidebarProvider>{children}</SidebarProvider>
+                </AuthProvider>
+              </QueryProvider>
             </NoticeProvider>
           </ThemeProvider>
         </NextIntlClientProvider>

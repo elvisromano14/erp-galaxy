@@ -28,7 +28,7 @@ Usuarios de **desarrollo** (contraseña de semilla `Admin12345!`, cambiar `SEED_
 
 ```bash
 pnpm --filter @erp/domain test       # 11 pruebas unitarias (totales, IVA, IGTF, costeo, RIF)
-cd apps/api && npx jest --config jest.e2e.config.js   # 53 pruebas e2e contra PostgreSQL/Redis reales (BD `minierp_test`, se recrea sola)
+cd apps/api && npx jest --config jest.e2e.config.js   # 65 pruebas e2e contra PostgreSQL/Redis reales (BD `minierp_test`, se recrea sola)
 ```
 
 Las e2e cubren: autenticación (bloqueo, rotación y reutilización de refresh, revocación), aislamiento multiempresa (RLS + FK compuestas),
@@ -46,24 +46,27 @@ lotes FEFO, períodos, idempotencia y el flujo completo de compras.
 | S3–S4 Inventario | Kardex, existencias, **costo promedio ponderado**, cargos, descargos, traslados, ajustes (hoja de conteo), ajuste de costo, **lotes con vencimiento (FEFO)** tras flag, stock negativo configurable, **períodos de inventario**, valorización actual/histórica |
 | S5 Compras | Cotización → orden → nota de entrega → compra, devoluciones (al costo original), anulaciones con reversos, cuentas por pagar, trazabilidad por `document_links` |
 
+Además: tasas BCV automáticas (DolarApi) con tasa manual por empresa, numeración configurable, seriales y edición/baja de empresas.
+
 Reportes de esta etapa: existencias, kardex y valorizado (con fecha). El resto del catálogo de reportes llega con sus módulos (D16).
 
 ## Decisiones y desviaciones respecto a `erp-v3.md` (a revisar)
 
 - **Prisma 6.19** (no «la última»: el tag `latest` de Prisma es hoy un RC 8). NestJS 11.
 - **Validación Zod con pipe propio** + `nestjs-zod` solo para Swagger (Zod 3.25).
-- **Frontend sin TanStack Query/Table, React Hook Form, Zustand, Dexie ni Serwist.** El `AGENTS.md` del template prohíbe instalar paquetes sin preguntar; solo se usó lo que el template ya trae + el paquete del workspace `@erp/domain`. Hay un `useFetch`, `DataTable` y formularios propios. La PWA/offline (S7–S8) no forma parte de estas fases.
+- **Frontend** con TanStack Query/Table, React Hook Form + Zod y Zustand (instalados con autorización). Dexie y Serwist siguen sin usarse (PWA/offline: S7–S8).
 - **Interfaz solo en español** (`es`); el template traía `en`, que se eliminó.
 - **Compras de contado** se registran con la CxP en estado `PAID` (el pago/banco real llega con CxP y Bancos, S11/S13).
 - Si el precio de la factura difiere del de la nota de entrega, **no se revaloriza** el costo ya ingresado (límite documentado).
-- **Seriales**: el diseño existe pero está **bloqueado** (`FEATURE_NOT_AVAILABLE`); solo lotes/vencimiento están operativos.
+- **Seriales** operativos (se activan por empresa y por producto); el costo sigue siendo promedio por producto (no por serial).
+- **Tasas**: las del BCV son globales (DolarApi, fuente oficial); si la API no responde se carga manual. Una tasa manual solo aplica a su empresa.
 - El ejemplo numérico de `erp-v2.md §9.9` tenía un error: 41,325 × 36,52 = **1.509,189** (no 1.509,219).
 - Los porcentajes fiscales y la lista de bancos son **de referencia**: validar con el contador antes de producción (v3 §8).
 
 ## Pendiente del Sprint 0 / fases (no hecho)
 
 Despliegue al VPS (Caddy, Quadlet, CI/CD en GitHub Actions), backups con copia externa, cliente API generado desde OpenAPI,
-PWA base, sincronización de tasa BCV (hoy carga manual), configuración de secuencias de numeración por UI, workers BullMQ,
+PWA base, workers BullMQ (el sync de tasas usa un planificador ligero con candado en Redis),
 exportación PDF/Excel y el resto de reportes.
 
 ## Notas operativas

@@ -26,7 +26,7 @@ export default function ProductsPage() {
   const columns: Column<Row>[] = [
     { key: "sku", header: t("fields.sku"), sort: "sku" },
     { key: "name", header: t("fields.name"), sort: "name" },
-    ...(feature("lots") ? [{ key: "trackingMode", header: t("fields.trackingMode"), render: (r: Row) => t(`enums.trackingMode.${r.trackingMode}`) }] : []),
+    ...(feature("lots") || feature("serials") ? [{ key: "trackingMode", header: t("fields.trackingMode"), render: (r: Row) => t(`enums.trackingMode.${r.trackingMode}`) }] : []),
     { key: "isService", header: t("fields.isService"), render: (r) => <BoolBadge value={r.isService} /> },
     { key: "isActive", header: t("fields.isActive"), render: (r) => <BoolBadge value={r.isActive} /> },
   ];

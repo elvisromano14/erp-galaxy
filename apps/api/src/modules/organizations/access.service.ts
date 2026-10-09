@@ -3,6 +3,7 @@ import { PrismaService } from '../../common/db/prisma.service';
 
 export interface VisibleCompany {
   id: string; rif: string; legalName: string; tradeName: string | null; organizationId: string; organizationName: string;
+  isActive: boolean; fiscalAddress: string | null; isSpecialTaxpayer: boolean; isVatWithholdingAgent: boolean; isIgtfCollector: boolean;
 }
 
 export type AccessVia = 'super' | 'orgAdmin' | 'member';
@@ -26,11 +27,12 @@ export class AccessService {
     return (await this.prisma.userOrganization.findFirst({ where: { userId } }))?.organizationId ?? null;
   }
 
-  async visibleCompanies(userId: string, isSuperAdmin: boolean): Promise<VisibleCompany[]> {
-    const select = { id: true, rif: true, legalName: true, tradeName: true, organizationId: true };
+  async visibleCompanies(userId: string, isSuperAdmin: boolean, includeInactive = false): Promise<VisibleCompany[]> {
+    const select = { id: true, rif: true, legalName: true, tradeName: true, organizationId: true, isActive: true, fiscalAddress: true, isSpecialTaxpayer: true, isVatWithholdingAgent: true, isIgtfCollector: true };
+    const active = includeInactive ? {} : { isActive: true };
     let companies;
     if (isSuperAdmin) {
-      companies = await this.prisma.company.findMany({ where: { isActive: true }, select, orderBy: { legalName: 'asc' } });
+      companies = await this.prisma.company.findMany({ where: { ...active }, select, orderBy: { legalName: 'asc' } });
     } else {
       const adminOrgs = await this.adminOrgIds(userId);
       const memberIds = (await this.prisma.userCompany.findMany({ where: { userId, isActive: true }, select: { companyId: true } })).map(m => m.companyId);
@@ -38,7 +40,7 @@ export class AccessService {
       const myOrg = await this.userOrgId(userId);
       companies = await this.prisma.company.findMany({
         where: {
-          isActive: true,
+          ...active,
           OR: [
             ...(adminOrgs.length ? [{ organizationId: { in: adminOrgs } }] : []),
             ...(memberIds.length && myOrg ? [{ id: { in: memberIds }, organizationId: myOrg }] : []),

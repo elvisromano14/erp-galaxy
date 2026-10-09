@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { isValidRif, normalizeRif, formatRif } from '@erp/domain';
 import { PrismaService } from '../../common/db/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
@@ -19,7 +19,9 @@ export interface CreateCompanyInput {
 }
 
 @Injectable()
-export class CompaniesService {
+export class CompaniesService implements OnApplicationBootstrap {
+  private readonly log = new Logger('CompaniesService');
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -28,8 +30,8 @@ export class CompaniesService {
     private readonly orgs: OrganizationsService,
   ) {}
 
-  /** Asegura el catálogo global de permisos (idempotente). */
-  async syncPermissionCatalog() {
+  /** Asegura el catálogo global de permisos (idempotente). Devuelve los permisos NUEVOS. */
+  async syncPermissionCatalog(): Promise<string[]> {
     const existing = new Set((await this.prisma.permission.findMany({ select: { code: true } })).map(p => p.code));
     const toCreate = ALL_PERMISSIONS.filter(c => !existing.has(c));
     if (toCreate.length) {
@@ -37,6 +39,35 @@ export class CompaniesService {
         data: toCreate.map(code => ({ code, module: code.split(':')[0], description: code })),
         skipDuplicates: true,
       });
+    }
+    return toCreate;
+  }
+
+  /**
+   * Al arrancar: los permisos nuevos del catálogo se otorgan a los roles de sistema de las empresas ya existentes
+   * (ADMIN recibe siempre todos; el resto solo los permisos recién creados, para no pisar personalizaciones).
+   */
+  async onApplicationBootstrap() {
+    try {
+      const added = await this.syncPermissionCatalog();
+      const companies = await this.prisma.company.findMany({ select: { id: true } });
+      const changed: string[] = [];
+      for (const { id: companyId } of companies) {
+        await this.prisma.runWithTenant(companyId, async tx => {
+          const roles = await tx.role.findMany({ where: { companyId, isSystem: true } });
+          for (const role of roles) {
+            const tpl = ROLE_TEMPLATES[role.code];
+            if (!tpl) continue;
+            const wanted = role.code === 'ADMIN' ? tpl.permissions : tpl.permissions.filter(p => added.includes(p));
+            if (!wanted.length) continue;
+            const r = await tx.rolePermission.createMany({ data: wanted.map(p => ({ companyId, roleId: role.id, permissionCode: p })), skipDuplicates: true });
+            if (r.count) changed.push(companyId);
+          }
+        });
+      }
+      await Promise.all([...new Set(changed)].map(id => this.perms.invalidate(id)));
+    } catch (e) {
+      this.log.warn(`No se pudieron sincronizar los permisos de los roles: ${(e as Error).message}`);
     }
   }
 
@@ -57,8 +88,26 @@ export class CompaniesService {
   }
 
   /** Empresas que el usuario puede ver (nunca las de otros clientes). */
-  listVisible(actor: Actor) {
-    return this.access.visibleCompanies(actor.userId, actor.isSuperAdmin);
+  listVisible(actor: Actor, includeInactive = false) {
+    return this.access.visibleCompanies(actor.userId, actor.isSuperAdmin, includeInactive);
+  }
+
+  /** Edición/baja lógica de una empresa: solo el administrador global o el administrador de SU cliente. */
+  async updateById(id: string, data: {
+    legalName?: string; tradeName?: string | null; fiscalAddress?: string | null;
+    isSpecialTaxpayer?: boolean; isVatWithholdingAgent?: boolean; isIgtfCollector?: boolean; isActive?: boolean;
+  }, actor: Actor) {
+    const company = await this.prisma.company.findUnique({ where: { id } });
+    // Para quien no administra ese cliente la empresa "no existe" (no se revela).
+    if (!company) throw new NotFoundError('Empresa', id);
+    if (!actor.isSuperAdmin && !(await this.access.adminOrgIds(actor.userId)).includes(company.organizationId)) throw new NotFoundError('Empresa', id);
+    const updated = await this.prisma.company.update({ where: { id }, data });
+    if (data.isActive === false) {
+      // Baja: se cierran las sesiones que estaban en esa empresa.
+      await this.prisma.refreshToken.updateMany({ where: { companyId: id, revokedAt: null }, data: { revokedAt: new Date() } });
+    }
+    await this.audit.log('company', id, data.isActive === false ? 'DEACTIVATE' : data.isActive === true ? 'ACTIVATE' : 'UPDATE', data, { companyId: null });
+    return updated;
   }
 
   async create(input: CreateCompanyInput, actor: Actor) {
@@ -137,9 +186,6 @@ export class CompaniesService {
     const current = await this.current();
     let features = current.features as Record<string, boolean>;
     if (data.features) {
-      if (data.features.serials) {
-        throw new BusinessRuleException('El control por seriales aún no está implementado', 'FEATURE_NOT_AVAILABLE');
-      }
       features = { ...features, ...data.features };
       if (features.expiry && !features.lots) throw new BusinessRuleException('El vencimiento requiere habilitar lotes', 'FEATURE_DEPENDENCY');
     }

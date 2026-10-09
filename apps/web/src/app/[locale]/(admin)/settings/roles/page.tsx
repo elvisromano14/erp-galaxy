@@ -1,6 +1,7 @@
 "use client";
 
-import { CheckField, TextField } from "@/components/erp/FormFields";
+import { CheckField } from "@/components/erp/FormFields";
+import { RText } from "@/components/erp/rhf";
 import { Card, ErrorBox, PageHeader } from "@/components/erp/ui";
 import { useFetch } from "@/components/erp/useFetch";
 import Button from "@/components/ui/button/Button";
@@ -9,8 +10,12 @@ import { useAuth } from "@/context/AuthContext";
 import { useNotice } from "@/context/NoticeContext";
 import { PlusIcon } from "@/icons";
 import { ApiError, patch, post } from "@/lib/api";
+import { reqText } from "@/lib/validators";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 
 type Row = Record<string, any>;
 
@@ -46,13 +51,13 @@ export default function RolesPage() {
   );
 }
 
+const roleSchema = z.object({ code: z.string().trim().min(2, "Mínimo 2 caracteres").max(30), name: reqText() });
+
 function RoleForm({ row, all, onClose, onSaved }: { row?: Row; all: string[]; onClose: () => void; onSaved: () => void }) {
   const t = useTranslations();
-  const [code, setCode] = useState(row?.code ?? "");
-  const [name, setName] = useState(row?.name ?? "");
+  const form = useForm<z.infer<typeof roleSchema>>({ resolver: zodResolver(roleSchema) as never, defaultValues: { code: row?.code ?? "", name: row?.name ?? "" } });
   const [selected, setSelected] = useState<Set<string>>(new Set(row?.permissions ?? []));
   const [error, setError] = useState<ApiError | null>(null);
-  const [busy, setBusy] = useState(false);
   const groups = useMemo(() => {
     const g = new Map<string, string[]>();
     for (const p of all) {
@@ -61,23 +66,19 @@ function RoleForm({ row, all, onClose, onSaved }: { row?: Row; all: string[]; on
     }
     return [...g.entries()];
   }, [all]);
-  const toggle = (p: string) => setSelected((s) => { const n = new Set(s); n.has(p) ? n.delete(p) : n.add(p); return n; });
+  const toggle = (p: string) => setSelected((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; });
   const toggleGroup = (ps: string[], on: boolean) => setSelected((s) => { const n = new Set(s); ps.forEach((p) => (on ? n.add(p) : n.delete(p))); return n; });
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
+  const submit = form.handleSubmit(async (v) => {
     setError(null);
     try {
-      if (row) await patch(`/roles/${row.id}`, { name, permissions: [...selected] });
-      else await post("/roles", { code, name, permissions: [...selected] });
+      if (row) await patch(`/roles/${row.id}`, { name: v.name, permissions: [...selected] });
+      else await post("/roles", { code: v.code, name: v.name, permissions: [...selected] });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err : new ApiError(0, "ERROR", String(err)));
-    } finally {
-      setBusy(false);
     }
-  }
+  });
 
   return (
     <Modal isOpen onClose={onClose} className="m-4 max-w-4xl p-6">
@@ -85,8 +86,8 @@ function RoleForm({ row, all, onClose, onSaved }: { row?: Row; all: string[]; on
         <h3 className="mb-4 pe-10 text-lg font-semibold text-gray-800 dark:text-white/90">{row ? t("settings.editRole") : t("settings.newRole")}</h3>
         <ErrorBox error={error} />
         <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <TextField label={t("fields.code")} required value={code} onChange={setCode} disabled={!!row} />
-          <TextField label={t("fields.name")} required value={name} onChange={setName} />
+          <RText control={form.control} name="code" label={t("fields.code")} required disabled={!!row} />
+          <RText control={form.control} name="name" label={t("fields.name")} required />
         </div>
         <div className="max-h-[50vh] space-y-4 overflow-y-auto pe-2">
           {groups.map(([group, ps]) => (
@@ -102,7 +103,7 @@ function RoleForm({ row, all, onClose, onSaved }: { row?: Row; all: string[]; on
         </div>
         <div className="mt-6 flex justify-end gap-3">
           <Button variant="outline" size="sm" onClick={onClose}>{t("common.cancel")}</Button>
-          <Button type="submit" size="sm" disabled={busy || !name || (!row && !code)}>{busy ? t("common.saving") : t("common.save")}</Button>
+          <Button type="submit" size="sm" disabled={form.formState.isSubmitting}>{form.formState.isSubmitting ? t("common.saving") : t("common.save")}</Button>
         </div>
       </form>
     </Modal>

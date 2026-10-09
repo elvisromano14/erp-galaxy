@@ -34,6 +34,12 @@ export interface MoveRequest {
   docLineId?: string | null;
   reversalOf?: string | null;
   ref?: unknown;              // dato opaco del llamador devuelto en el resultado
+  /** Productos con control por serial: lista de seriales; `quantity` debe coincidir. En ADJUST_TO = seriales contados presentes. */
+  serials?: string[];
+  /** Estado final de los seriales en una salida (EXIT): SCRAPPED por defecto; las ventas usarán SOLD. */
+  serialStatus?: 'SOLD' | 'SCRAPPED' | 'RETURNED';
+  /** @internal existencia del sistema (ajustes de seriales divididos en entrada/salida). */
+  _sys?: DecimalLike;
 }
 
 export interface PostedMove {
@@ -100,8 +106,21 @@ export class PostingService {
     const costPending = new Set<string>();
 
     // 3) procesamiento en memoria + lotes
-    interface Row { req: MoveRequest; qty: Decimal; unitCost: Decimal; total: Decimal; qtyAfter: Decimal; whAfter: Decimal; avgAfter: Decimal; lotId: string | null; systemQty?: Decimal }
+    interface Row { req: MoveRequest; qty: Decimal; unitCost: Decimal; total: Decimal; qtyAfter: Decimal; whAfter: Decimal; avgAfter: Decimal; lotId: string | null; systemQty?: Decimal; serialNos?: string[] }
     const rows: Row[] = [];
+
+    // Estado en memoria de los seriales tocados por este documento (se persiste al final).
+    interface SerialSt { id?: string; productId: string; serialNo: string; status: string; warehouseId: string | null; isNew: boolean; dirty: boolean }
+    const serialState = new Map<string, SerialSt>();
+    const sKey = (productId: string, no: string) => `${productId}|${no}`;
+    const loadSerials = async (productId: string, nos: string[]) => {
+      const missing = nos.filter(n => !serialState.has(sKey(productId, n)));
+      if (missing.length) {
+        const found = await tx.productSerial.findMany({ where: { productId, serialNo: { in: missing } } });
+        for (const f of found) serialState.set(sKey(productId, f.serialNo), { id: f.id, productId, serialNo: f.serialNo, status: f.status, warehouseId: f.warehouseId, isNew: false, dirty: false });
+      }
+      return nos.map(n => serialState.get(sKey(productId, n)));
+    };
     const lotBalanceDelta: { productId: string; warehouseId: string; lotId: string; delta: Decimal }[] = [];
 
     for (let i = 0; i < moves.length; i++) {
@@ -114,10 +133,20 @@ export class PostingService {
       const fail = (code: string, message: string, extra?: ErrorDetailLike) =>
         new BusinessRuleException(message, code, [{ field: `lines[${i}]`, code, message: extra?.message ?? m.productId }]);
 
-      const emit = (qtySigned: Decimal, unitCost: Decimal, newState: CostState, whNew: Decimal, lotId: string | null, systemQty?: Decimal, req: MoveRequest = m) => {
+      const serialMode = product.trackingMode === 'SERIAL';
+      /** Seriales de la línea: sin repetidos ni vacíos, y en cantidad igual a `quantity` (entera). */
+      const serialList = (allowEmpty = false): string[] => {
+        const raw = (m.serials ?? []).map(x => x.trim()).filter(Boolean);
+        const nos = [...new Set(raw)];
+        if (!allowEmpty && !nos.length) throw fail('SERIALS_REQUIRED', `El producto ${product.sku} se controla por seriales: indique los seriales`);
+        if (raw.length !== nos.length) throw fail('DUPLICATE_SERIAL', `Hay seriales repetidos para ${product.sku}`);
+        if (m.quantity !== undefined && !D(m.quantity).eq(nos.length)) throw fail('SERIAL_COUNT_MISMATCH', `La cantidad (${D(m.quantity).toString()}) no coincide con los seriales indicados (${nos.length}) para ${product.sku}`);
+        return nos;
+      };
+      const emit = (qtySigned: Decimal, unitCost: Decimal, newState: CostState, whNew: Decimal, lotId: string | null, systemQty?: Decimal, req: MoveRequest = m, serialNos?: string[]) => {
         rows.push({
           req, qty: qtySigned, unitCost, total: round(qtySigned.mul(unitCost), 4),
-          qtyAfter: newState.qty, whAfter: whNew, avgAfter: newState.avgCost, lotId, systemQty,
+          qtyAfter: newState.qty, whAfter: whNew, avgAfter: newState.avgCost, lotId, systemQty: systemQty ?? (req._sys !== undefined ? D(req._sys) : undefined), serialNos,
         });
         cost.set(m.productId, newState);
         whQty.set(key, whNew);
@@ -130,20 +159,38 @@ export class PostingService {
 
       switch (m.kind) {
         case 'ENTRY': {
-          const q = D(m.quantity!);
+          const nos = serialMode ? serialList() : undefined;
+          const q = nos ? D(nos.length) : D(m.quantity!);
           if (m.unitCost === undefined) throw fail('COST_REQUIRED', 'La entrada requiere costo unitario');
           const r = applyEntry(st, q, m.unitCost);
+          if (nos) {
+            const cur = await loadSerials(m.productId, nos);
+            cur.forEach((c, idx) => {
+              if (c?.status === 'IN_STOCK') throw fail('SERIAL_ALREADY_IN_STOCK', `El serial ${nos[idx]} de ${product.sku} ya está en existencia`);
+              if (c) { c.status = 'IN_STOCK'; c.warehouseId = m.warehouseId; c.dirty = true; }
+              else serialState.set(sKey(m.productId, nos[idx]), { productId: m.productId, serialNo: nos[idx], status: 'IN_STOCK', warehouseId: m.warehouseId, isNew: true, dirty: true });
+            });
+          }
           const lotId = lots ? await this.resolveLot(tx, companyId, product, m, true) : null;
           if (lotId) lotBalanceDelta.push({ productId: m.productId, warehouseId: m.warehouseId, lotId, delta: q });
-          emit(q, r.unitCost, r.state, whQty.get(key)!.plus(q), lotId);
+          emit(q, r.unitCost, r.state, whQty.get(key)!.plus(q), lotId, undefined, m, nos);
           break;
         }
         case 'EXIT':
         case 'RETURN_OUT':
         case 'TRANSFER_OUT': {
-          const q = D(m.quantity!);
+          const nos = serialMode ? serialList() : undefined;
+          const q = nos ? D(nos.length) : D(m.quantity!);
           const base = whQty.get(key)!;
           assertStock(base.minus(q));
+          if (nos) {
+            const cur = await loadSerials(m.productId, nos);
+            cur.forEach((c, idx) => {
+              if (!c || c.status !== 'IN_STOCK' || c.warehouseId !== m.warehouseId) throw fail('SERIAL_NOT_IN_STOCK', `El serial ${nos[idx]} de ${product.sku} no está en existencia en el depósito ${wh.code}`);
+              if (m.kind === 'EXIT') { c.status = m.serialStatus ?? 'SCRAPPED'; c.warehouseId = null; c.dirty = true; }
+              else if (m.kind === 'RETURN_OUT') { c.status = m.serialStatus ?? 'RETURNED'; c.warehouseId = null; c.dirty = true; }
+            });
+          }
           // Reparto por lote (FEFO o lote indicado)
           const parts = lots ? await this.allocateLots(tx, companyId, product, m, q, fail) : [{ lotId: null as string | null, qty: q }];
           for (const part of parts) {
@@ -155,19 +202,46 @@ export class PostingService {
             else r = { state: { qty: cur.qty, avgCost: cur.avgCost }, unitCost: cur.avgCost }; // traslado: C y Q globales no cambian
             if (m.kind === 'EXIT' && cur.avgCost.isZero() && cur.qty.lte(0)) costPending.add(m.productId);
             if (part.lotId) lotBalanceDelta.push({ productId: m.productId, warehouseId: m.warehouseId, lotId: part.lotId, delta: part.qty.neg() });
-            emit(part.qty.neg(), r.unitCost, r.state, wNow.minus(part.qty), part.lotId);
+            emit(part.qty.neg(), r.unitCost, r.state, wNow.minus(part.qty), part.lotId, undefined, m, nos);
           }
           break;
         }
         case 'TRANSFER_IN': {
-          const q = D(m.quantity!);
+          const nos = serialMode ? serialList() : undefined;
+          const q = nos ? D(nos.length) : D(m.quantity!);
           const cur = st;
+          if (nos) {
+            const found = await loadSerials(m.productId, nos);
+            found.forEach((c, idx) => {
+              if (!c || c.status !== 'IN_STOCK') throw fail('SERIAL_NOT_IN_STOCK', `El serial ${nos[idx]} de ${product.sku} no está en existencia`);
+              c.warehouseId = m.warehouseId; c.dirty = true;
+            });
+          }
           const lotId = lots ? await this.resolveLot(tx, companyId, product, m, false) : null;
           if (lotId) lotBalanceDelta.push({ productId: m.productId, warehouseId: m.warehouseId, lotId, delta: q });
-          emit(q, cur.avgCost, { qty: cur.qty, avgCost: cur.avgCost }, whQty.get(key)!.plus(q), lotId);
+          emit(q, cur.avgCost, { qty: cur.qty, avgCost: cur.avgCost }, whQty.get(key)!.plus(q), lotId, undefined, m, nos);
           break;
         }
         case 'ADJUST_TO': {
+          if (serialMode) {
+            // Seriales contados presentes en el depósito vs. los del sistema: faltantes → salida; sobrantes → entrada a costo promedio.
+            const counted = serialList(true);
+            const dbSys = await tx.productSerial.findMany({ where: { productId: m.productId, warehouseId: m.warehouseId, status: 'IN_STOCK' }, select: { serialNo: true } });
+            const system = new Set(dbSys.map(x => x.serialNo));
+            for (const [k, v] of serialState) if (v.productId === m.productId) { if (v.status === 'IN_STOCK' && v.warehouseId === m.warehouseId) system.add(v.serialNo); else system.delete(v.serialNo); void k; }
+            const countedSet = new Set(counted);
+            const missingNos = [...system].filter(x => !countedSet.has(x));
+            const extraNos = counted.filter(x => !system.has(x));
+            const found = await loadSerials(m.productId, extraNos);
+            found.forEach((c, idx) => { if (c?.status === 'IN_STOCK') throw fail('SERIAL_IN_OTHER_WAREHOUSE', `El serial ${extraNos[idx]} de ${product.sku} figura en existencia en otro depósito`); });
+            const base = { productId: m.productId, warehouseId: m.warehouseId, docLineId: m.docLineId, ref: m.ref, _sys: system.size };
+            const sub: MoveRequest[] = [];
+            if (missingNos.length) sub.push({ ...base, kind: 'EXIT', quantity: missingNos.length, serials: missingNos, serialStatus: 'SCRAPPED' });
+            if (extraNos.length) sub.push({ ...base, kind: 'ENTRY', quantity: extraNos.length, serials: extraNos, unitCost: st.avgCost.toString() });
+            if (!sub.length) { rows.push({ req: m, qty: ZERO, unitCost: st.avgCost, total: ZERO, qtyAfter: st.qty, whAfter: whQty.get(key)!, avgAfter: st.avgCost, lotId: null, systemQty: D(system.size) }); break; }
+            moves.splice(i + 1, 0, ...sub);
+            break;
+          }
           const counted = D(m.countedQty!);
           let system: Decimal;
           let lotId: string | null = null;
@@ -201,6 +275,16 @@ export class PostingService {
       }
     }
 
+    // 4a) seriales: filas nuevas y cambios de estado/ubicación
+    for (const sr of serialState.values()) {
+      if (!sr.dirty) continue;
+      if (sr.isNew) {
+        const c = await tx.productSerial.create({ data: { companyId, productId: sr.productId, serialNo: sr.serialNo, status: sr.status, warehouseId: sr.warehouseId, lastDocType: p.docType, lastDocId: p.docId } });
+        sr.id = c.id;
+      } else {
+        await tx.productSerial.update({ where: { id: sr.id! }, data: { status: sr.status, warehouseId: sr.warehouseId, lastDocType: p.docType, lastDocId: p.docId } });
+      }
+    }
     // 4) persistir: kardex, saldos, costos, lotes
     const created = await tx.inventoryMovement.createManyAndReturn({
       data: rows.map(r => ({
@@ -212,6 +296,11 @@ export class PostingService {
     });
     // createManyAndReturn conserva el orden de inserción; aseguramos por seq
     created.sort((a, b) => (a.seq < b.seq ? -1 : 1));
+    const links: { movementId: string; companyId: string; serialId: string }[] = [];
+    created.forEach((c, idx) => {
+      for (const no of rows[idx].serialNos ?? []) links.push({ movementId: c.id, companyId, serialId: serialState.get(sKey(c.productId, no))!.id! });
+    });
+    if (links.length) await tx.movementSerial.createMany({ data: links });
 
     for (const [key, qty] of whQty) {
       const [productId, warehouseId] = key.split('|');
@@ -254,6 +343,11 @@ export class PostingService {
     if (!originals.length) return [];
     const done = new Set((await tx.inventoryMovement.findMany({ where: { docType, docId, reversalOf: { not: null } }, select: { reversalOf: true } })).map(x => x.reversalOf!));
     const pending = originals.filter(o => !done.has(o.id));
+    // Seriales de cada movimiento original (para revertir exactamente las mismas unidades).
+    const links = await tx.movementSerial.findMany({ where: { movementId: { in: pending.map(o => o.id) } } });
+    const serialRows = links.length ? await tx.productSerial.findMany({ where: { id: { in: [...new Set(links.map(l => l.serialId))] } } }) : [];
+    const noById = new Map(serialRows.map(r => [r.id, r.serialNo]));
+    const serialsOf = (movementId: string) => links.filter(l => l.movementId === movementId).map(l => noById.get(l.serialId)!);
     // Orden inverso: deshace en sentido contrario al original.
     const moves: MoveRequest[] = [];
     for (const o of pending.reverse()) {
@@ -262,7 +356,8 @@ export class PostingService {
         if (!D(o.totalCost.toString()).isZero()) throw new BusinessRuleException('Un ajuste de costo no se puede anular', 'COST_ADJUSTMENT_NOT_REVERSIBLE');
         continue;
       }
-      const base = { productId: o.productId, warehouseId: o.warehouseId, lotId: o.lotId, docLineId: o.docLineId, reversalOf: o.id, quantity: q.abs().toFixed(QTY_DP), unitCost: o.unitCost.toString() };
+      const sers = serialsOf(o.id);
+      const base = { productId: o.productId, warehouseId: o.warehouseId, lotId: o.lotId, docLineId: o.docLineId, reversalOf: o.id, quantity: q.abs().toFixed(QTY_DP), unitCost: o.unitCost.toString(), ...(sers.length ? { serials: sers, serialStatus: (mode === 'STANDARD' && !['DELIVERY_NOTE', 'PURCHASE'].includes(docType) ? 'SCRAPPED' : 'RETURNED') as 'SCRAPPED' | 'RETURNED' } : {}) };
       if (mode === 'TRANSFER') moves.push({ ...base, kind: q.gt(0) ? 'TRANSFER_OUT' : 'TRANSFER_IN' });
       else moves.push({ ...base, kind: q.gt(0) ? 'RETURN_OUT' : 'ENTRY' });
     }

@@ -17,6 +17,10 @@ export const kardexQuerySchema = z.object({
   dateFrom: date.optional(), dateTo: date.optional(),
   cursor: z.string().regex(/^\d+$/).optional(), limit: z.coerce.number().int().min(1).max(200).default(50),
 });
+export const serialsQuerySchema = paginationQuery.extend({
+  productId: uuid.optional(), warehouseId: uuid.optional(), status: z.enum(['IN_STOCK', 'SOLD', 'RETURNED', 'SCRAPPED']).optional(),
+});
+export const serialHistorySchema = z.object({ productId: uuid, serialNo: z.string().min(1) });
 export const valuationQuerySchema = z.object({ asOf: date.optional(), warehouseId: uuid.optional(), categoryId: uuid.optional() });
 export const periodSchema = z.object({ year: z.number().int().min(2000).max(2100), month: z.number().int().min(1).max(12) });
 
@@ -49,6 +53,31 @@ export class InventoryQueriesService {
     const [{ count }] = await this.prisma.tx.$queryRaw<{ count: bigint }[]>`
       SELECT count(*) AS count FROM inventory_stock s JOIN products p ON p.id = s.product_id AND p.company_id = s.company_id WHERE ${where}`;
     return Paged.of(rows, Number(count), q.page, q.limit);
+  }
+
+  /** Seriales (una fila por unidad) con su estado y ubicación actual. */
+  async serials(q: z.infer<typeof serialsQuerySchema>) {
+    const where: Prisma.ProductSerialWhereInput = {
+      ...(q.productId ? { productId: q.productId } : {}), ...(q.warehouseId ? { warehouseId: q.warehouseId } : {}), ...(q.status ? { status: q.status } : {}),
+      ...(q.search ? { serialNo: { contains: q.search, mode: 'insensitive' } } : {}),
+    };
+    const tx = this.prisma.tx;
+    const [rows, total] = await Promise.all([
+      tx.productSerial.findMany({ where, orderBy: [{ updatedAt: 'desc' }, { serialNo: 'asc' }], skip: (q.page - 1) * q.limit, take: q.limit }),
+      tx.productSerial.count({ where }),
+    ]);
+    const products = new Map((await tx.product.findMany({ where: { id: { in: [...new Set(rows.map(r => r.productId))] } }, select: { id: true, sku: true, name: true } })).map(p => [p.id, p]));
+    return Paged.of(rows.map(r => ({ ...r, product: products.get(r.productId) })), total, q.page, q.limit);
+  }
+
+  /** Trazabilidad de un serial: todos los movimientos del kardex en que participó. */
+  async serialHistory(q: z.infer<typeof serialHistorySchema>) {
+    const tx = this.prisma.tx;
+    const serial = await tx.productSerial.findUnique({ where: { companyId_productId_serialNo: { companyId: this.prisma.companyId, productId: q.productId, serialNo: q.serialNo } } });
+    if (!serial) throw new NotFoundError('Serial', q.serialNo);
+    const links = await tx.movementSerial.findMany({ where: { serialId: serial.id } });
+    const moves = await tx.inventoryMovement.findMany({ where: { id: { in: links.map(l => l.movementId) } }, orderBy: { seq: 'asc' } });
+    return { serial, movements: moves };
   }
 
   async productStock(productId: string) {

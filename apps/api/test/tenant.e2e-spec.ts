@@ -110,11 +110,10 @@ describe('Multiempresa (RLS + FK compuestas) y catálogos', () => {
     const { unitId } = await seedBasics(api);
     const r1 = await api.post('/products', { sku: 'L1', name: 'x', unitId, trackingMode: 'LOT' });
     expect(r1.status).toBe(422); expect(r1.body.error).toBe('FEATURE_DISABLED');
-    expect((await api.patch('/companies/current', { features: { serials: true } })).status).toBe(422);
     expect((await api.patch('/companies/current', { features: { expiry: true } })).status).toBe(422); // requiere lotes
     expect((await api.patch('/companies/current', { features: { lots: true, expiry: true } })).status).toBe(200);
     expect((await api.post('/products', { sku: 'L2', name: 'x', unitId, trackingMode: 'LOT', hasExpiry: true })).status).toBe(201);
-    expect((await api.post('/products', { sku: 'L3', name: 'x', unitId, trackingMode: 'SERIAL' })).status).toBe(422);
+    expect((await api.post('/products', { sku: 'L3', name: 'x', unitId, trackingMode: 'SERIAL' })).status).toBe(422); // seriales desactivados
   });
 
   it('productos: búsqueda por OEM/código de barras, precios con historial y control de versión', async () => {
@@ -149,7 +148,10 @@ describe('Multiempresa (RLS + FK compuestas) y catálogos', () => {
     await api.post('/exchange-rates', { currencyId: usd, rate: '36.52', date: '2026-10-01' });
     const latest = await api.get(`/exchange-rates/latest?currencyId=${usd}&date=2026-10-05`);
     expect(latest.body.data.rate).toBe('36.52');
-    const [{ n }] = await ctx.prisma.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM exchange_rates WHERE date = '2026-10-01'`;
+    const [{ n }] = await ctx.prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT set_config('app.company_id', ${t.companyId}, true)`;
+      return tx.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM exchange_rates WHERE date = '2026-10-01'`;
+    });
     expect(Number(n)).toBeGreaterThanOrEqual(2);
     await expect(ctx.prisma.$executeRaw`UPDATE exchange_rates SET rate = 1`).rejects.toThrow();
     await expect(ctx.prisma.$executeRaw`DELETE FROM exchange_rates`).rejects.toThrow();

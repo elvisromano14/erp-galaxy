@@ -3,7 +3,7 @@
 import ConfirmDialog from "@/components/erp/ConfirmDialog";
 import { INV_DOCS, type InvDocMeta } from "@/components/erp/inventory-docs";
 import { TextAreaField } from "@/components/erp/FormFields";
-import LinesEditor, { newKey, type Line, type LineCol } from "@/components/erp/LinesEditor";
+import LinesEditor, { isSerialLine, newKey, parseSerials, type Line, type LineCol } from "@/components/erp/LinesEditor";
 import { RefSelect } from "@/components/erp/RefSelect";
 import { Card, ErrorBox, Loading, PageHeader, StatusBadge } from "@/components/erp/ui";
 import { useFetch } from "@/components/erp/useFetch";
@@ -56,6 +56,7 @@ function Editor({ meta, id }: { meta: InvDocMeta; id: string }) {
         _key: l.id, productId: l.productId, productLabel: l.product ? `${l.product.sku} — ${l.product.name}` : l.productId,
         quantity: l.quantity === "0" ? "" : String(l.quantity), unitCost: l.unitCost ?? "", countedQty: l.countedQty ?? "", newAvgCost: l.newAvgCost ?? "",
         lotNo: l.lotNo ?? "", expiryDate: l.expiryDate ? String(l.expiryDate).slice(0, 10) : "", systemQty: l.systemQty, difference: l.difference,
+        product: l.product, serialsText: ((l.serials as string[]) ?? []).join("\n"),
       })),
     );
   }, [doc]);
@@ -67,13 +68,15 @@ function Editor({ meta, id }: { meta: InvDocMeta; id: string }) {
       ]
     : [];
   const product: LineCol = { key: "product", header: t("fields.product"), kind: "product", className: "min-w-72", placeholder: t("inventory.searchProduct") };
+  const serialCol: LineCol[] = feature("serials") && meta.type !== "COST_ADJUSTMENT" ? [{ key: "serialsText", header: t("fields.serials"), kind: "serials", placeholder: t("inventory.serialsPlaceholder"), editable: (l) => isSerialLine(l) }] : [];
+  const notSerial = (l: Line) => !isSerialLine(l);
   const columns: LineCol[] =
-    meta.type === "TRANSFER" ? [product, ...lotCols.slice(0, 1), { key: "quantity", header: t("fields.quantity"), kind: "decimal", align: "end", className: "w-32" }]
-    : meta.type === "CHARGE" ? [product, ...lotCols, { key: "quantity", header: t("fields.quantity"), kind: "decimal", align: "end", className: "w-32" }, { key: "unitCost", header: t("fields.unitCostVal"), kind: "decimal", align: "end", className: "w-36" }]
-    : meta.type === "DISCHARGE" ? [product, ...lotCols.slice(0, 1), { key: "quantity", header: t("fields.quantity"), kind: "decimal", align: "end", className: "w-32" }]
-    : meta.type === "ADJUSTMENT" ? [product, ...lotCols.slice(0, 1),
+    meta.type === "TRANSFER" ? [product, ...lotCols.slice(0, 1), ...serialCol, { key: "quantity", header: t("fields.quantity"), kind: "decimal", align: "end", className: "w-32", editable: notSerial }]
+    : meta.type === "CHARGE" ? [product, ...lotCols, ...serialCol, { key: "quantity", header: t("fields.quantity"), kind: "decimal", align: "end", className: "w-32", editable: notSerial }, { key: "unitCost", header: t("fields.unitCostVal"), kind: "decimal", align: "end", className: "w-36" }]
+    : meta.type === "DISCHARGE" ? [product, ...lotCols.slice(0, 1), ...serialCol, { key: "quantity", header: t("fields.quantity"), kind: "decimal", align: "end", className: "w-32", editable: notSerial }]
+    : meta.type === "ADJUSTMENT" ? [product, ...lotCols.slice(0, 1), ...serialCol,
         ...(status === "CONFIRMED" ? [{ key: "systemQty", header: t("inventory.systemQty"), kind: "readonly" as const, align: "end" as const, format: (l: Line) => fmtQty(l.systemQty) }] : []),
-        { key: "countedQty", header: t("inventory.countedQty"), kind: "decimal", align: "end", className: "w-36" },
+        { key: "countedQty", header: t("inventory.countedQty"), kind: "decimal", align: "end", className: "w-36", editable: notSerial },
         ...(status === "CONFIRMED" ? [{ key: "difference", header: t("inventory.difference"), kind: "readonly" as const, align: "end" as const, format: (l: Line) => fmtQty(l.difference) }] : [])]
     : [product, { key: "newAvgCost", header: t("inventory.newAvgCost"), kind: "decimal", align: "end", className: "w-40" }];
 
@@ -88,8 +91,9 @@ function Editor({ meta, id }: { meta: InvDocMeta; id: string }) {
       notes: header.notes.trim() || null,
       ...(version !== undefined ? { version } : {}),
       lines: lines.filter((l) => l.productId).map((l) => ({
-        productId: l.productId, quantity: c(l.quantity ?? ""), unitCost: c(l.unitCost ?? ""), countedQty: c(l.countedQty ?? ""),
+        productId: l.productId, quantity: isSerialLine(l) ? undefined : c(l.quantity ?? ""), unitCost: c(l.unitCost ?? ""), countedQty: isSerialLine(l) ? undefined : c(l.countedQty ?? ""),
         newAvgCost: c(l.newAvgCost ?? ""), lotNo: c(l.lotNo ?? "") ?? null, expiryDate: c(l.expiryDate ?? "") ?? null,
+        ...(isSerialLine(l) ? { serials: parseSerials(l.serialsText) } : {}),
       })),
     };
   }
@@ -197,7 +201,7 @@ function Editor({ meta, id }: { meta: InvDocMeta; id: string }) {
       </Card>
 
       <Card title={t("common.lines")}>
-        <LinesEditor columns={columns} lines={lines} onChange={setLines} readOnly={readOnly} />
+        <LinesEditor columns={columns} lines={lines} onChange={setLines} readOnly={readOnly} onProductPick={() => ({ serialsText: "", quantity: "" })} />
         {meta.type === "COST_ADJUSTMENT" && !readOnly && <p className="mt-3 text-xs text-gray-500">{t("inventory.costAdjHint")}</p>}
       </Card>
 

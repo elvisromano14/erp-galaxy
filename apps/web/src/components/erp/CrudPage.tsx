@@ -8,12 +8,16 @@ import { PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
 import { ApiError, del, patch, post } from "@/lib/api";
 import { fmtDate, fmtNumber } from "@/lib/format";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 import ConfirmDialog from "./ConfirmDialog";
 import type { ColumnDef, CrudDef, FieldDef } from "./crud-types";
 import DataTable, { type Column } from "./DataTable";
-import { CheckField, DecimalField, IntField, SelectField, TextAreaField, TextField } from "./FormFields";
-import { RefSelect } from "./RefSelect";
+import { CheckField } from "./FormFields";
+import { RCheck, RDecimal, RInt, RRef, RSelect, RText, RTextArea } from "./rhf";
+import { optDecimal, optEmail, optInt, optText, reqDecimal, reqEmail, reqInt, reqSelect, reqText, rif } from "@/lib/validators";
 import { BoolBadge, Card, ErrorBox, PageHeader } from "./ui";
 import { useFetch } from "./useFetch";
 
@@ -205,21 +209,36 @@ function renderCell(c: ColumnDef, r: Row, t: ReturnType<typeof useTranslations>)
   }
 }
 
+/** Esquema Zod generado desde la definición de campos del catálogo (misma fuente que el formulario). */
+function schemaFor(fields: FieldDef[]) {
+  const shape: Record<string, z.ZodTypeAny> = {};
+  for (const f of fields) {
+    switch (f.type) {
+      case "boolean": shape[f.name] = z.boolean(); break;
+      case "decimal": shape[f.name] = f.required ? reqDecimal : optDecimal; break;
+      case "int": shape[f.name] = f.required ? reqInt : optInt; break;
+      case "select": shape[f.name] = f.required ? reqSelect : z.string(); break;
+      case "ref": shape[f.name] = f.required ? reqSelect : z.string(); break;
+      case "email": shape[f.name] = f.required ? reqEmail : optEmail; break;
+      case "date": shape[f.name] = f.required ? z.string().min(1, "Obligatorio") : z.string(); break;
+      default:
+        shape[f.name] = f.name === "rif" ? rif : f.required ? reqText("maxLength" in f && f.maxLength ? f.maxLength : 200) : optText(500);
+    }
+  }
+  return z.object(shape);
+}
+
 function CrudForm({ def, row, onClose, onSaved }: { def: CrudDef; row?: Row; onClose: () => void; onSaved: () => void }) {
   const t = useTranslations();
   const notice = useNotice();
   const isCreate = !row;
-  const [values, setValues] = useState<Values>(() => initialValues(def.fields, row));
-  const [busy, setBusy] = useState(false);
+  const schema = useMemo(() => schemaFor(def.fields), [def.fields]);
+  const form = useForm<Values>({ defaultValues: initialValues(def.fields, row), resolver: zodResolver(schema) as never });
   const [error, setError] = useState<ApiError | null>(null);
-  const set = (name: string, v: string | boolean) => setValues((s) => ({ ...s, [name]: v }));
 
-  const fieldError = (name: string) => error?.details.find((d) => d.field === name || d.field?.startsWith(`${name}.`))?.message
-    ?? (error?.details.find((d) => d.field === name) ? error.message : null);
+  const serverError = (name: string) => error?.details.find((d) => d.field === name || d.field?.startsWith(`${name}.`))?.message ?? (error?.details.find((d) => d.field === name) ? error.message : null);
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
+  const submit = form.handleSubmit(async (values) => {
     setError(null);
     try {
       const body = toPayload(def.fields, values, isCreate, def.immutableOnEdit);
@@ -229,10 +248,9 @@ function CrudForm({ def, row, onClose, onSaved }: { def: CrudDef; row?: Row; onC
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err : new ApiError(0, "ERROR", String(err)));
-    } finally {
-      setBusy(false);
     }
-  }
+  });
+  const busy = form.formState.isSubmitting;
 
   return (
     <Modal isOpen onClose={onClose} className="m-4 max-w-3xl p-6 lg:p-8">
@@ -244,48 +262,18 @@ function CrudForm({ def, row, onClose, onSaved }: { def: CrudDef; row?: Row; onC
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {def.fields.map((f) => {
             const label = t(`fields.${f.name}`);
-            const err = fieldError(f.name);
+            const sErr = serverError(f.name);
             const disabled = !isCreate && !!def.immutableOnEdit?.includes(f.name);
             const wide = "wide" in f && f.wide ? "sm:col-span-2" : undefined;
+            const c = form.control;
             switch (f.type) {
-              case "boolean":
-                return <CheckField key={f.name} label={label} checked={!!values[f.name]} onChange={(v) => set(f.name, v)} disabled={disabled} className={wide} />;
-              case "decimal":
-                return <DecimalField key={f.name} label={label} required={f.required} hint={f.hint} error={err} disabled={disabled} value={String(values[f.name])} onChange={(v) => set(f.name, v)} />;
-              case "int":
-                return <IntField key={f.name} label={label} required={f.required} error={err} disabled={disabled} value={String(values[f.name])} onChange={(v) => set(f.name, v)} />;
-              case "textarea":
-                return <TextAreaField key={f.name} label={label} required={f.required} error={err} disabled={disabled} className="sm:col-span-2" value={String(values[f.name])} onChange={(v) => set(f.name, v)} />;
-              case "select":
-                return (
-                  <SelectField
-                    key={f.name}
-                    label={label}
-                    required={f.required}
-                    error={err}
-                    disabled={disabled}
-                    value={String(values[f.name])}
-                    onChange={(v) => set(f.name, v)}
-                    options={f.options.map((o) => ({ value: o, label: t(`enums.${f.name}.${o}`) }))}
-                  />
-                );
-              case "ref":
-                return (
-                  <RefSelect
-                    key={f.name}
-                    label={label}
-                    required={f.required}
-                    error={err}
-                    disabled={disabled}
-                    value={String(values[f.name])}
-                    onChange={(v) => set(f.name, v)}
-                    resource={`/${f.resource}`}
-                    labelKey={f.labelKey}
-                    filter={f.filter}
-                  />
-                );
-              default:
-                return <TextField key={f.name} label={label} type={f.type} required={f.required} error={err} disabled={disabled} maxLength={f.maxLength} placeholder={f.placeholder} className={wide} value={String(values[f.name])} onChange={(v) => set(f.name, v)} />;
+              case "boolean": return <RCheck key={f.name} control={c} name={f.name} label={label} disabled={disabled} className={wide} />;
+              case "decimal": return <RDecimal key={f.name} control={c} name={f.name} label={label} required={f.required} hint={f.hint} disabled={disabled} serverError={sErr} />;
+              case "int": return <RInt key={f.name} control={c} name={f.name} label={label} required={f.required} disabled={disabled} serverError={sErr} />;
+              case "textarea": return <RTextArea key={f.name} control={c} name={f.name} label={label} required={f.required} disabled={disabled} className="sm:col-span-2" serverError={sErr} />;
+              case "select": return <RSelect key={f.name} control={c} name={f.name} label={label} required={f.required} disabled={disabled} serverError={sErr} options={f.options.map((o) => ({ value: o, label: t(`enums.${f.name}.${o}`) }))} />;
+              case "ref": return <RRef key={f.name} control={c} name={f.name} label={label} required={f.required} disabled={disabled} serverError={sErr} resource={`/${f.resource}`} labelKey={f.labelKey} filter={f.filter} />;
+              default: return <RText key={f.name} control={c} name={f.name} label={label} type={f.type} required={f.required} disabled={disabled} maxLength={f.maxLength} placeholder={f.placeholder} className={wide} serverError={sErr} />;
             }
           })}
         </div>

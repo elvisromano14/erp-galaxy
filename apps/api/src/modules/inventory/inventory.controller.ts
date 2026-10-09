@@ -5,7 +5,7 @@ import { uuid } from '@erp/contracts';
 import { RequirePermissions } from '../../common/auth/decorators';
 import { ZodPipe } from '../../common/http/zod.pipe';
 import { cancelSchema, INV_DOC_ROUTES, InventoryDocsService, invDocListSchema, invDocSchema, invDocUpdateSchema } from './inventory-docs.service';
-import { InventoryQueriesService, kardexQuerySchema, periodSchema, stockQuerySchema, valuationQuerySchema } from './inventory-queries.service';
+import { InventoryQueriesService, kardexQuerySchema, periodSchema, serialHistorySchema, serialsQuerySchema, stockQuerySchema, valuationQuerySchema } from './inventory-queries.service';
 import { ZBody, ZQuery } from '../../common/http/zod.decorators';
 
 const id = new ZodPipe(uuid);
@@ -55,6 +55,12 @@ export class InventoryQueriesController {
 
   @Get('kardex') @RequirePermissions('inventory:kardex:read')
   kardex(@ZQuery(kardexQuerySchema) q: z.infer<typeof kardexQuerySchema>) { return this.q.kardex(q); }
+
+  @Get('serials') @RequirePermissions('inventory:serials:read')
+  serials(@ZQuery(serialsQuerySchema) q: z.infer<typeof serialsQuerySchema>) { return this.q.serials(q); }
+
+  @Get('serials/history') @RequirePermissions('inventory:serials:read')
+  serialHistory(@ZQuery(serialHistorySchema) q: z.infer<typeof serialHistorySchema>) { return this.q.serialHistory(q); }
 
   @Get('valuation') @RequirePermissions('inventory:valuation:read')
   valuation(@ZQuery(valuationQuerySchema) q: z.infer<typeof valuationQuerySchema>) { return this.q.valuation(q); }

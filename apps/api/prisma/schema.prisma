@@ -215,11 +215,14 @@ model ExchangeRate {
   currencyId String   @map("currency_id") @db.Uuid
   rate       Decimal  @db.Decimal(18, 8) // Bs por unidad de moneda
   date       DateTime @db.Date
-  source     String   @default("MANUAL")
+  source     String   @default("MANUAL") // MANUAL (por empresa) | BCV | API (globales)
+  /// NULL = tasa global (BCV); con valor = tasa manual de esa empresa.
+  companyId  String?  @map("company_id") @db.Uuid
   createdBy  String?  @map("created_by") @db.Uuid
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   @@index([currencyId, date, createdAt])
+  @@index([companyId, currencyId, date])
   @@map("exchange_rates")
 }
 
@@ -694,6 +697,7 @@ model InventoryDocumentLine {
   newAvgCost  Decimal? @map("new_avg_cost") @db.Decimal(18, 6)
   lotNo       String?  @map("lot_no")
   expiryDate  DateTime? @map("expiry_date") @db.Date
+  serials     String[]
   notes       String?
 
   @@unique([companyId, id])
@@ -789,6 +793,7 @@ model PurchaseDocumentLine {
   total       Decimal   @default(0) @db.Decimal(18, 4)
   lotNo       String?   @map("lot_no")
   expiryDate  DateTime? @map("expiry_date") @db.Date
+  serials     String[]
 
   @@unique([companyId, id])
   @@index([companyId, documentId])
@@ -854,4 +859,31 @@ model PayableEntry {
   @@index([companyId, supplierId, status])
   @@index([companyId, purchaseDocumentId])
   @@map("payable_entries")
+}
+
+/// Una fila por unidad con control por serial. `status` IN_STOCK ⇔ tiene depósito.
+model ProductSerial {
+  id          String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  serialNo    String   @map("serial_no")
+  warehouseId String?  @map("warehouse_id") @db.Uuid
+  status      String   @default("IN_STOCK") // IN_STOCK | SOLD | RETURNED | SCRAPPED
+  lastDocType String?  @map("last_doc_type")
+  lastDocId   String?  @map("last_doc_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, productId, serialNo])
+  @@unique([companyId, id])
+  @@map("product_serials")
+}
+
+model MovementSerial {
+  movementId String @map("movement_id") @db.Uuid
+  companyId  String @map("company_id") @db.Uuid
+  serialId   String @map("serial_id") @db.Uuid
+
+  @@id([movementId, serialId])
+  @@map("movement_serials")
 }

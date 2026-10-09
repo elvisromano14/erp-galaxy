@@ -97,7 +97,9 @@
       "users": "Usuarios",
       "roles": "Roles y permisos",
       "companies": "Empresas",
-      "organizations": "Clientes"
+      "organizations": "Clientes",
+      "sequences": "Numeración",
+      "serials": "Seriales"
     }
   },
   "header": {
@@ -273,7 +275,10 @@
     "password": "Contraseña",
     "fiscalAddress": "Domicilio fiscal",
     "isVatWithholdingAgent": "Agente de retención de IVA",
-    "isIgtfCollector": "Cobra IGTF"
+    "isIgtfCollector": "Cobra IGTF",
+    "serials": "Seriales",
+    "serial": "Serial",
+    "updatedAt": "Actualizado"
   },
   "enums": {
     "personType": {
@@ -348,9 +353,19 @@
     "totalQty": "Existencia total"
   },
   "fx": {
-    "subtitle": "Tasa en bolívares por unidad de moneda extranjera. Cada carga agrega una fila; no se sobrescribe el historial.",
+    "subtitle": "Bs por unidad de moneda extranjera. Cada carga agrega una fila; el historial no se sobrescribe.",
     "add": "Cargar tasa",
-    "rateHint": "Bs por unidad"
+    "rateHint": "Bs por unidad",
+    "sourceBcv": "BCV (oficial)",
+    "sourceManual": "Manual",
+    "syncNow": "Sincronizar BCV ahora",
+    "syncing": "Consultando…",
+    "syncDone": "Tasas actualizadas: {detail}",
+    "syncNoChanges": "Sin cambios: las tasas del BCV ya estaban al día",
+    "addManual": "Tasa manual",
+    "manualHelp": "La tasa manual es solo de esta empresa y prevalece sobre la del BCV de la misma fecha. La del BCV se sincroniza automáticamente desde DolarApi.",
+    "saveManual": "Guardar tasa manual",
+    "rate": "Tasa (Bs)"
   },
   "inventory": {
     "stockSubtitle": "Existencias por producto y depósito, valoradas al costo promedio.",
@@ -385,7 +400,12 @@
     "confirmMessage": "Se asignará el número y se afectará el inventario. Un documento confirmado no se edita: se anula.",
     "cancelMessage": "Se generarán los movimientos inversos y el documento quedará anulado.",
     "confirmed": "Documento confirmado",
-    "cancelled": "Documento anulado"
+    "cancelled": "Documento anulado",
+    "serialsPlaceholder": "Un serial por línea",
+    "serialsSubtitle": "Una fila por unidad: estado y ubicación actuales. Haga clic en un serial para ver su trazabilidad.",
+    "allStatuses": "Todos los estados",
+    "history": "Trazabilidad del serial",
+    "location": "Ubicación"
   },
   "purchases": {
     "newDoc": "Nuevo documento: {type}",
@@ -444,7 +464,7 @@
     "expiry": "Control de vencimiento",
     "expiryHint": "Requiere lotes. Alertas y ordenamiento FEFO.",
     "serials": "Control por seriales",
-    "serialsHint": "Aún no disponible.",
+    "serialsHint": "Una fila por unidad con su trazabilidad. Se activa por empresa y luego por producto.",
     "roles": "Roles",
     "editUser": "Editar usuario",
     "newUser": "Nuevo usuario",
@@ -470,6 +490,36 @@
     "newClient": "Nuevo cliente",
     "clientName": "Nombre del cliente",
     "clientAdmin": "Administrador del cliente (opcional)",
-    "clientAdminHint": "Verá todas las empresas de este cliente y podrá crear nuevas."
+    "clientAdminHint": "Verá todas las empresas de este cliente y podrá crear nuevas.",
+    "editCompany": "Editar empresa",
+    "companyDeactivated": "Empresa dada de baja",
+    "companyActivated": "Empresa reactivada"
+  },
+  "sequences": {
+    "subtitle": "Prefijo, relleno y próximo número de cada documento. El correlativo se asigna al confirmar y solo puede subir.",
+    "prefix": "Prefijo",
+    "padding": "Dígitos",
+    "next": "Próximo número",
+    "example": "Ejemplo",
+    "notUsed": "sin usar",
+    "editHint": "El próximo número solo puede aumentar (evita duplicados).",
+    "nextHint": "Mínimo {min}",
+    "PURCHASE_QUOTE": "Cotización de compra",
+    "PURCHASE_ORDER": "Orden de compra",
+    "PURCHASE_DELIVERY_NOTE": "Nota de entrega",
+    "PURCHASE_DELIVERY_NOTE_RETURN": "Devolución de nota de entrega",
+    "PURCHASE": "Compra",
+    "PURCHASE_RETURN": "Devolución de compra",
+    "INVENTORY_TRANSFER": "Traslado",
+    "INVENTORY_CHARGE": "Cargo",
+    "INVENTORY_DISCHARGE": "Descargo",
+    "INVENTORY_ADJUSTMENT": "Ajuste de inventario",
+    "INVENTORY_COST_ADJUSTMENT": "Ajuste de costo"
+  },
+  "serialStatus": {
+    "IN_STOCK": "En existencia",
+    "SOLD": "Vendido",
+    "RETURNED": "Devuelto al proveedor",
+    "SCRAPPED": "Dado de baja"
   }
 }

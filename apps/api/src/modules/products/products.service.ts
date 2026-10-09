@@ -32,6 +32,7 @@ export const createProductSchema = z.object({
 });
 export const updateProductSchema = createProductSchema.partial().extend({ version: z.number().int().optional() });
 export const listProductsSchema = paginationQuery.extend({
+  trackingMode: z.enum(['NONE', 'LOT', 'SERIAL']).optional(),
   categoryId: uuid.optional(), isActive: z.coerce.boolean().optional(), isService: z.coerce.boolean().optional(), includeDeleted: z.coerce.boolean().optional(),
 });
 export const addPriceSchema = price;
@@ -43,7 +44,7 @@ export class ProductsService {
   private async assertFeatures(d: { trackingMode?: string; hasExpiry?: boolean; isService?: boolean }) {
     const company = await this.prisma.company.findUniqueOrThrow({ where: { id: this.prisma.companyId } });
     const f = company.features as Record<string, boolean>;
-    if (d.trackingMode === 'SERIAL') throw new BusinessRuleException('El control por seriales aún no está implementado', 'FEATURE_NOT_AVAILABLE');
+    if (d.trackingMode === 'SERIAL' && !f.serials) throw new BusinessRuleException('La empresa no tiene habilitado el control por seriales', 'FEATURE_DISABLED', [{ field: 'trackingMode', code: 'SERIALS_DISABLED' }]);
     if (d.trackingMode === 'LOT' && !f.lots) throw new BusinessRuleException('La empresa no tiene habilitado el control por lotes', 'FEATURE_DISABLED', [{ field: 'trackingMode', code: 'LOTS_DISABLED' }]);
     if (d.hasExpiry && !f.expiry) throw new BusinessRuleException('La empresa no tiene habilitado el vencimiento', 'FEATURE_DISABLED', [{ field: 'hasExpiry', code: 'EXPIRY_DISABLED' }]);
     if (d.hasExpiry && d.trackingMode !== 'LOT') throw new BusinessRuleException('El vencimiento requiere control por lotes', 'INVALID_TRACKING');
@@ -55,6 +56,7 @@ export class ProductsService {
     const where: any = {};
     if (!q.includeDeleted) where.deletedAt = null;
     if (q.categoryId) where.categoryId = q.categoryId;
+    if (q.trackingMode) where.trackingMode = q.trackingMode;
     if (q.isActive !== undefined) where.isActive = q.isActive;
     if (q.isService !== undefined) where.isService = q.isService;
     if (q.search) {

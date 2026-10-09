@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { AllowNoCompany, AuthUser, CurrentUser, RequirePermissions } from '../../common/auth/decorators';
@@ -21,6 +21,10 @@ const updateCompany = z.object({
   features: features.optional(),
 }).strict();
 const createUser = z.object({ email: z.string().email(), fullName: z.string().min(2), password: z.string().min(10).optional(), roleCodes: z.array(z.string()).min(1) });
+const updateCompanyById = z.object({
+  legalName: z.string().min(2).optional(), tradeName: z.string().nullable().optional(), fiscalAddress: z.string().nullable().optional(),
+  isSpecialTaxpayer: z.boolean().optional(), isVatWithholdingAgent: z.boolean().optional(), isIgtfCollector: z.boolean().optional(), isActive: z.boolean().optional(),
+}).strict();
 const updateUser = z.object({ fullName: z.string().min(2).optional(), isActive: z.boolean().optional(), roleCodes: z.array(z.string()).optional(), isOrgAdmin: z.boolean().optional() }).strict();
 const createRole = z.object({ code: z.string().min(2).max(30), name: z.string().min(2), permissions: z.array(z.string()) });
 const updateRole = z.object({ name: z.string().min(2).optional(), permissions: z.array(z.string()).optional() }).strict();
@@ -38,8 +42,8 @@ export class CompaniesController {
 
   /** Solo las empresas visibles para el usuario; nunca las de otros clientes. */
   @Get() @AllowNoCompany()
-  list(@CurrentUser() u: AuthUser) {
-    return this.svc.listVisible(u);
+  list(@CurrentUser() u: AuthUser, @Query('includeInactive') includeInactive?: string) {
+    return this.svc.listVisible(u, includeInactive === 'true');
   }
 
   @Get('current') @RequirePermissions('security:companies:read')
@@ -47,6 +51,10 @@ export class CompaniesController {
 
   @Patch('current') @RequirePermissions('security:companies:update')
   update(@ZBody(updateCompany) b: z.infer<typeof updateCompany>) { return this.svc.updateCurrent(b); }
+
+  /** Edición/baja de cualquier empresa de MI cliente (no requiere tenerla seleccionada). */
+  @Patch(':id') @AllowNoCompany()
+  updateById(@CurrentUser() u: AuthUser, @Param('id', new ZodPipe(uuid)) id: string, @ZBody(updateCompanyById) b: z.infer<typeof updateCompanyById>) { return this.svc.updateById(id, b, u); }
 }
 
 @ApiTags('users') @ApiBearerAuth()

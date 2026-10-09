@@ -55,7 +55,7 @@ export class PurchasesService {
     const lineLinks = await tx.documentLinkLine.findMany({ where: { childLineId: { in: lines.map(l => l.id) } } });
     const parentLineOf = new Map(lineLinks.map(x => [x.childLineId, x.parentLineId]));
     const [products, supplier, parents, children] = await Promise.all([
-      tx.product.findMany({ where: { id: { in: lines.map(l => l.productId) } }, select: { id: true, sku: true, name: true } }),
+      tx.product.findMany({ where: { id: { in: lines.map(l => l.productId) } }, select: { id: true, sku: true, name: true, trackingMode: true } }),
       tx.supplier.findFirst({ where: { id: doc.supplierId }, select: { id: true, rif: true, legalName: true } }),
       tx.documentLink.findMany({ where: { childId: id } }),
       tx.documentLink.findMany({ where: { parentId: id } }),
@@ -134,6 +134,15 @@ export class PurchasesService {
       if (taxId && !tax) throw bad('TAX_NOT_FOUND', 'Impuesto inexistente');
       if (tax && (tax.validFrom > today || (tax.validTo && tax.validTo < today))) throw bad('TAX_NOT_VALID', `El impuesto ${tax.code} no está vigente en la fecha del documento`);
       if (p.trackingMode === 'LOT' && ['DELIVERY_NOTE', 'PURCHASE'].includes(docType) && !l.parentLineId && !l.lotNo) throw bad('LOT_REQUIRED', `El producto ${p.sku} requiere lote`);
+      // Seriales: obligatorios en lo que mueve inventario (recepciones/compras directas y devoluciones); cantidad = nº de seriales.
+      const nos = (l.serials ?? []).map(x => x.trim());
+      if (p.trackingMode !== 'SERIAL' && nos.length) throw bad('SERIALS_NOT_ALLOWED', `El producto ${p.sku} no se controla por seriales`);
+      if (p.trackingMode === 'SERIAL') {
+        if (new Set(nos).size !== nos.length) throw bad('DUPLICATE_SERIAL', `Hay seriales repetidos para ${p.sku}`);
+        const movesStock = ['DELIVERY_NOTE', 'DELIVERY_NOTE_RETURN', 'PURCHASE_RETURN'].includes(docType) || (docType === 'PURCHASE' && !l.parentLineId);
+        if (movesStock && !nos.length) throw bad('SERIALS_REQUIRED', `El producto ${p.sku} se controla por seriales: indique los seriales`);
+        if (nos.length && !D(l.quantity).eq(nos.length)) throw bad('SERIAL_COUNT_MISMATCH', `La cantidad (${l.quantity}) no coincide con los seriales indicados (${nos.length}) para ${p.sku}`);
+      }
       return { l, p, tax, taxId };
     });
 
@@ -147,6 +156,7 @@ export class PurchasesService {
       taxId: r.taxId, taxRate: totals.lines[i].taxRate.toString(),
       net: totals.lines[i].net.toFixed(4), tax: totals.lines[i].tax.toFixed(4), total: totals.lines[i].total.toFixed(4),
       lotNo: r.l.lotNo ?? null, expiryDate: r.l.expiryDate ? new Date(r.l.expiryDate) : null, parentLineId: r.l.parentLineId ?? null,
+      serials: (r.l.serials ?? []).map(x => x.trim()),
     }));
     return { lines, totals };
   }
@@ -265,7 +275,7 @@ export class PurchasesService {
     const created = await tx.purchaseDocumentLine.createManyAndReturn({
       data: lines.map((l, i) => ({
         companyId, documentId: docId, lineNo: i + 1, productId: l.productId, description: l.description, quantity: l.quantity, unitCost: l.unitCost,
-        discountPct: l.discountPct, taxId: l.taxId, taxRate: l.taxRate, net: l.net, tax: l.tax, total: l.total, lotNo: l.lotNo, expiryDate: l.expiryDate,
+        discountPct: l.discountPct, taxId: l.taxId, taxRate: l.taxRate, net: l.net, tax: l.tax, total: l.total, lotNo: l.lotNo, expiryDate: l.expiryDate, serials: l.serials,
       })),
     });
     created.sort((a, b) => a.lineNo - b.lineNo);
@@ -303,7 +313,7 @@ export class PurchasesService {
       parentId: input.parentId === undefined ? link?.parentId ?? null : input.parentId,
       lines: input.lines ?? existingLines.map(l => ({
         productId: l.productId, description: l.description, quantity: l.quantity.toString(), unitCost: l.unitCost.toString(), discountPct: l.discountPct.toString(),
-        taxId: l.taxId, lotNo: l.lotNo, expiryDate: l.expiryDate?.toISOString().slice(0, 10) ?? null,
+        taxId: l.taxId, lotNo: l.lotNo, expiryDate: l.expiryDate?.toISOString().slice(0, 10) ?? null, serials: l.serials,
         parentLineId: linkLines.find(x => x.childLineId === l.id)?.parentLineId ?? null,
       })),
     };
@@ -439,7 +449,7 @@ export class PurchasesService {
     for (const l of lines) {
       moves.push({
         kind: 'ENTRY', productId: l.productId, warehouseId: doc.warehouseId, quantity: l.quantity.toString(),
-        unitCost: (await this.valuationCost(doc, l)).toString(), docLineId: l.id, lotNo: l.lotNo, expiryDate: l.expiryDate?.toISOString().slice(0, 10) ?? null,
+        unitCost: (await this.valuationCost(doc, l)).toString(), docLineId: l.id, lotNo: l.lotNo, expiryDate: l.expiryDate?.toISOString().slice(0, 10) ?? null, serials: l.serials,
       });
     }
     await this.posting.post({ docType: 'DELIVERY_NOTE', docId: doc.id, moves });
@@ -456,7 +466,7 @@ export class PurchasesService {
       for (const l of direct) {
         moves.push({
           kind: 'ENTRY', productId: l.productId, warehouseId: doc.warehouseId, quantity: l.quantity.toString(),
-          unitCost: (await this.valuationCost(doc, l)).toString(), docLineId: l.id, lotNo: l.lotNo, expiryDate: l.expiryDate?.toISOString().slice(0, 10) ?? null,
+          unitCost: (await this.valuationCost(doc, l)).toString(), docLineId: l.id, lotNo: l.lotNo, expiryDate: l.expiryDate?.toISOString().slice(0, 10) ?? null, serials: l.serials,
         });
       }
       await this.posting.post({ docType: 'PURCHASE', docId: doc.id, moves });
@@ -503,7 +513,7 @@ export class PurchasesService {
     const moves: MoveRequest[] = lines.map((l, i) => ({
       kind: 'RETURN_OUT', productId: l.productId, warehouseId: doc.warehouseId, quantity: l.quantity.toString(),
       unitCost: costs.get(parentLineIds[i])?.toString(), // si no hay costo original, el motor usa el promedio vigente
-      docLineId: l.id, lotNo: l.lotNo,
+      docLineId: l.id, lotNo: l.lotNo, serials: l.serials,
     }));
     await this.posting.post({ docType: type, docId: doc.id, moves });
 
@@ -577,7 +587,7 @@ export class PurchasesService {
         if (!ol) throw new BusinessRuleException('La línea no pertenece a la orden', 'INVALID_PARENT_LINE', [{ field: `lines[${i}]`, code: 'INVALID_PARENT_LINE' }]);
         return {
           productId: ol.productId, description: ol.description, quantity: r.quantity, unitCost: ol.unitCost.toString(), discountPct: ol.discountPct.toString(),
-          taxId: ol.taxId, lotNo: r.lotNo ?? ol.lotNo, expiryDate: r.expiryDate ?? ol.expiryDate?.toISOString().slice(0, 10) ?? null, parentLineId: ol.id,
+          taxId: ol.taxId, lotNo: r.lotNo ?? ol.lotNo, expiryDate: r.expiryDate ?? ol.expiryDate?.toISOString().slice(0, 10) ?? null, parentLineId: ol.id, serials: r.serials,
         };
       }),
     });
@@ -598,7 +608,7 @@ export class PurchasesService {
       paymentCondition: dn.paymentCondition as 'CASH' | 'CREDIT', creditDays: dn.creditDays, supplierDocNo: dn.supplierDocNo, notes: dn.notes, parentId: dnId,
       lines: pending.map(x => ({
         productId: x.l.productId, description: x.l.description, quantity: x.q.toString(), unitCost: x.l.unitCost.toString(), discountPct: x.l.discountPct.toString(),
-        taxId: x.l.taxId, lotNo: x.l.lotNo, expiryDate: x.l.expiryDate?.toISOString().slice(0, 10) ?? null, parentLineId: x.l.id,
+        taxId: x.l.taxId, lotNo: x.l.lotNo, expiryDate: x.l.expiryDate?.toISOString().slice(0, 10) ?? null, parentLineId: x.l.id, serials: x.q.eq(D(x.l.quantity.toString())) ? x.l.serials : [],
       })),
     });
   }

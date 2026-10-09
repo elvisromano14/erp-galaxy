@@ -60,9 +60,10 @@ async function main() {
     const galaxy = await org('Galaxy (demo)');
     const demo = await makeCompany(galaxy.id, { userId: globalAdmin.id, isSuperAdmin: true }, 'J-12345678-4', 'Repuestos Demo, C.A.');
     const usd = await prisma.currency.findUniqueOrThrow({ where: { code: 'USD' } });
+    // Tasa manual de la empresa demo (las oficiales del BCV las trae la sincronización con DolarApi).
     const today = new Date(new Date().toISOString().slice(0, 10));
-    if (!(await prisma.exchangeRate.findFirst({ where: { currencyId: usd.id, date: today } }))) {
-      await prisma.exchangeRate.create({ data: { currencyId: usd.id, rate: '36.52', date: today, source: 'MANUAL' } });
+    if (!(await prisma.exchangeRate.findFirst({ where: { currencyId: usd.id, date: today, companyId: demo.id } }))) {
+      await prisma.exchangeRate.create({ data: { currencyId: usd.id, rate: '36.52', date: today, source: 'MANUAL', companyId: demo.id } });
     }
     if (!(await prisma.runWithTenant(demo.id, tx => tx.product.count()))) {
       await prisma.runWithTenant(demo.id, async tx => {

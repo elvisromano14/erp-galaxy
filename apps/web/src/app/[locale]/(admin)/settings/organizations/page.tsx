@@ -1,7 +1,7 @@
 "use client";
 
 import DataTable, { type Column } from "@/components/erp/DataTable";
-import { TextField } from "@/components/erp/FormFields";
+import { RText } from "@/components/erp/rhf";
 import { BoolBadge, Card, ErrorBox, PageHeader } from "@/components/erp/ui";
 import { useFetch } from "@/components/erp/useFetch";
 import Button from "@/components/ui/button/Button";
@@ -10,8 +10,12 @@ import { useAuth } from "@/context/AuthContext";
 import { useNotice } from "@/context/NoticeContext";
 import { PlusIcon } from "@/icons";
 import { ApiError, patch, post } from "@/lib/api";
+import { optEmail, optPassword, optText, reqText } from "@/lib/validators";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 
 type Row = Record<string, any>;
 
@@ -57,25 +61,26 @@ export default function OrganizationsPage() {
   );
 }
 
+const schema = z.object({ name: reqText(), email: optEmail, fullName: optText(), password: optPassword }).superRefine((v, ctx) => {
+  if (v.email && !v.fullName) ctx.addIssue({ code: "custom", path: ["fullName"], message: "Obligatorio si indica un administrador" });
+  if (v.email && !v.password) ctx.addIssue({ code: "custom", path: ["password"], message: "Obligatorio para un usuario nuevo" });
+});
+
 function OrgForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const t = useTranslations();
-  const [f, setF] = useState({ name: "", email: "", fullName: "", password: "" });
+  const form = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema) as never, defaultValues: { name: "", email: "", fullName: "", password: "" } });
   const [error, setError] = useState<ApiError | null>(null);
-  const [busy, setBusy] = useState(false);
+  const c = form.control;
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
+  const submit = form.handleSubmit(async (v) => {
     setError(null);
     try {
-      await post("/organizations", { name: f.name.trim(), ...(f.email.trim() ? { admin: { email: f.email.trim(), fullName: f.fullName.trim(), ...(f.password ? { password: f.password } : {}) } } : {}) });
+      await post("/organizations", { name: v.name, ...(v.email ? { admin: { email: v.email, fullName: v.fullName, ...(v.password ? { password: v.password } : {}) } } : {}) });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err : new ApiError(0, "ERROR", String(err)));
-    } finally {
-      setBusy(false);
     }
-  }
+  });
 
   return (
     <Modal isOpen onClose={onClose} className="m-4 max-w-xl p-6">
@@ -83,15 +88,15 @@ function OrgForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
         <h3 className="mb-4 pe-10 text-lg font-semibold text-gray-800 dark:text-white/90">{t("settings.newClient")}</h3>
         <ErrorBox error={error} />
         <div className="grid grid-cols-1 gap-4">
-          <TextField label={t("settings.clientName")} required value={f.name} onChange={(v) => setF({ ...f, name: v })} />
+          <RText control={c} name="name" label={t("settings.clientName")} required />
           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t("settings.clientAdmin")}</p>
-          <TextField label={t("fields.email")} type="email" value={f.email} onChange={(v) => setF({ ...f, email: v })} hint={t("settings.clientAdminHint")} />
-          <TextField label={t("fields.fullName")} value={f.fullName} onChange={(v) => setF({ ...f, fullName: v })} />
-          <TextField label={t("fields.password")} value={f.password} onChange={(v) => setF({ ...f, password: v })} hint={t("settings.passwordHint")} />
+          <RText control={c} name="email" type="email" label={t("fields.email")} hint={t("settings.clientAdminHint")} />
+          <RText control={c} name="fullName" label={t("fields.fullName")} />
+          <RText control={c} name="password" label={t("fields.password")} hint={t("settings.passwordHint")} />
         </div>
         <div className="mt-6 flex justify-end gap-3">
           <Button variant="outline" size="sm" onClick={onClose}>{t("common.cancel")}</Button>
-          <Button type="submit" size="sm" disabled={busy || !f.name || (!!f.email && (!f.fullName || !f.password))}>{busy ? t("common.saving") : t("common.save")}</Button>
+          <Button type="submit" size="sm" disabled={form.formState.isSubmitting}>{form.formState.isSubmitting ? t("common.saving") : t("common.save")}</Button>
         </div>
       </form>
     </Modal>

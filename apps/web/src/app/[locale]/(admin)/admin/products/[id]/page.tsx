@@ -1,8 +1,9 @@
 "use client";
 
 import ConfirmDialog from "@/components/erp/ConfirmDialog";
-import { CheckField, DecimalField, SelectField, TextAreaField, TextField } from "@/components/erp/FormFields";
-import { RefSelect, useOptions } from "@/components/erp/RefSelect";
+import { DecimalField, SelectField, TextField } from "@/components/erp/FormFields";
+import { RCheck, RDecimal, RRef, RSelect, RText, RTextArea } from "@/components/erp/rhf";
+import { useOptions } from "@/components/erp/RefSelect";
 import { Card, ErrorBox, Loading, PageHeader } from "@/components/erp/ui";
 import { useFetch } from "@/components/erp/useFetch";
 import Button from "@/components/ui/button/Button";
@@ -13,14 +14,20 @@ import { ApiError, del, patch, post } from "@/lib/api";
 import { fmtDate, fmtNumber, fmtQty } from "@/lib/format";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { optDecimal, optText, reqSelect, reqText } from "@/lib/validators";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 
 type Row = Record<string, any>;
-interface Form {
-  sku: string; name: string; description: string; categoryId: string; unitId: string; taxId: string;
-  trackingMode: string; hasExpiry: boolean; isService: boolean; minStock: string; maxStock: string; isActive: boolean;
-  barcodes: string[]; references: { refType: string; code: string; brand: string }[];
-}
+
+const productSchema = z.object({
+  sku: reqText(60), name: reqText(250), description: optText(2000), categoryId: z.string(), unitId: reqSelect, taxId: z.string(),
+  trackingMode: z.string(), hasExpiry: z.boolean(), isService: z.boolean(), minStock: optDecimal, maxStock: optDecimal, isActive: z.boolean(),
+  barcodes: z.array(z.string()), references: z.array(z.object({ refType: z.string(), code: z.string(), brand: z.string() })),
+});
+type Form = z.infer<typeof productSchema>;
 
 const empty: Form = {
   sku: "", name: "", description: "", categoryId: "", unitId: "", taxId: "", trackingMode: "NONE", hasExpiry: false, isService: false,
@@ -35,38 +42,36 @@ export default function ProductEditor() {
   const router = useRouter();
   const notice = useNotice();
   const product = useFetch<Row>(isNew ? null : `/products/${id}`);
-  const [form, setForm] = useState<Form>(empty);
+  const form = useForm<Form>({ resolver: zodResolver(productSchema), defaultValues: empty });
   const [version, setVersion] = useState<number | undefined>();
   const [error, setError] = useState<ApiError | null>(null);
-  const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
   const canEdit = isNew ? can("admin:products:create") : can("admin:products:update");
+  const c = form.control;
+  const v = form.watch();
 
   useEffect(() => {
     const p = product.data;
     if (!p) return;
     setVersion(p.version);
-    setForm({
+    form.reset({
       sku: p.sku, name: p.name, description: p.description ?? "", categoryId: p.categoryId ?? "", unitId: p.unitId, taxId: p.taxId ?? "",
       trackingMode: p.trackingMode, hasExpiry: p.hasExpiry, isService: p.isService, minStock: String(p.minStock), maxStock: String(p.maxStock), isActive: p.isActive,
       barcodes: p.barcodes ?? [], references: (p.references ?? []).map((r: Row) => ({ refType: r.refType, code: r.code, brand: r.brand ?? "" })),
     });
-  }, [product.data]);
+  }, [product.data, form]);
 
   const fe = (name: string) => error?.details.find((d) => d.field === name)?.message ?? (error?.details.some((d) => d.field === name) ? error.message : null);
 
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
+  const save = form.handleSubmit(async (f) => {
     setError(null);
     const body: Record<string, unknown> = {
-      sku: form.sku.trim(), name: form.name.trim(), description: form.description.trim() || null,
-      categoryId: form.categoryId || null, unitId: form.unitId, taxId: form.taxId || null,
-      trackingMode: form.trackingMode, hasExpiry: form.hasExpiry, isService: form.isService,
-      minStock: form.minStock || "0", maxStock: form.maxStock || "0", isActive: form.isActive,
-      barcodes: form.barcodes.map((b) => b.trim()).filter(Boolean),
-      references: form.references.filter((r) => r.code.trim()).map((r) => ({ refType: r.refType, code: r.code.trim(), brand: r.brand.trim() || null })),
+      sku: f.sku.trim(), name: f.name.trim(), description: f.description.trim() || null,
+      categoryId: f.categoryId || null, unitId: f.unitId, taxId: f.taxId || null,
+      trackingMode: f.trackingMode, hasExpiry: f.hasExpiry, isService: f.isService,
+      minStock: f.minStock || "0", maxStock: f.maxStock || "0", isActive: f.isActive,
+      barcodes: f.barcodes.map((b) => b.trim()).filter(Boolean),
+      references: f.references.filter((r) => r.code.trim()).map((r) => ({ refType: r.refType, code: r.code.trim(), brand: r.brand.trim() || null })),
     };
     try {
       if (isNew) {
@@ -80,10 +85,9 @@ export default function ProductEditor() {
       }
     } catch (err) {
       setError(err instanceof ApiError ? err : new ApiError(0, "ERROR", String(err)));
-    } finally {
-      setBusy(false);
     }
-  }
+  });
+  const busy = form.formState.isSubmitting;
 
   async function remove() {
     try {
@@ -98,10 +102,12 @@ export default function ProductEditor() {
 
   if (!isNew && product.loading && !product.data) return <Loading />;
 
+  const trackingOptions = ["NONE", ...(feature("lots") ? ["LOT"] : []), ...(feature("serials") ? ["SERIAL"] : [])];
+
   return (
     <div>
       <PageHeader
-        title={isNew ? t("products.new") : `${form.sku} — ${form.name}`}
+        title={isNew ? t("products.new") : `${v.sku} — ${v.name}`}
         actions={
           <>
             <Button variant="outline" size="sm" onClick={() => router.push("/admin/products")}>{t("common.back")}</Button>
@@ -113,37 +119,30 @@ export default function ProductEditor() {
       <form onSubmit={save} noValidate className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <Card title={t("products.general")} className="xl:col-span-2">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <TextField label={t("fields.sku")} required value={form.sku} onChange={(v) => set("sku", v)} error={fe("sku")} disabled={!canEdit} />
-            <TextField label={t("fields.name")} required value={form.name} onChange={(v) => set("name", v)} error={fe("name")} disabled={!canEdit} />
-            <TextAreaField className="sm:col-span-2" label={t("fields.description")} value={form.description} onChange={(v) => set("description", v)} disabled={!canEdit} />
-            <RefSelect label={t("fields.categoryId")} resource="/categories" labelKey={(r) => `${r.code} — ${r.name}`} value={form.categoryId} onChange={(v) => set("categoryId", v)} disabled={!canEdit} error={fe("categoryId")} />
-            <RefSelect label={t("fields.unitId")} required resource="/units" labelKey={(r) => `${r.code} — ${r.name}`} value={form.unitId} onChange={(v) => set("unitId", v)} disabled={!canEdit} error={fe("unitId")} />
-            <RefSelect label={t("fields.taxId")} resource="/taxes" labelKey={(r) => `${r.name} (${fmtNumber(r.rate)}%)`} value={form.taxId} onChange={(v) => set("taxId", v)} disabled={!canEdit} error={fe("taxId")} />
-            <DecimalField label={t("fields.minStock")} value={form.minStock} onChange={(v) => set("minStock", v)} disabled={!canEdit} />
-            <DecimalField label={t("fields.maxStock")} value={form.maxStock} onChange={(v) => set("maxStock", v)} disabled={!canEdit} />
-            {feature("lots") && (
-              <SelectField
-                label={t("fields.trackingMode")}
-                value={form.trackingMode}
-                onChange={(v) => set("trackingMode", v)}
-                disabled={!canEdit || form.isService}
-                options={["NONE", "LOT"].map((o) => ({ value: o, label: t(`enums.trackingMode.${o}`) }))}
-                error={fe("trackingMode")}
-                hint={t("products.trackingHint")}
-              />
+            <RText control={c} name="sku" label={t("fields.sku")} required disabled={!canEdit} serverError={fe("sku")} />
+            <RText control={c} name="name" label={t("fields.name")} required disabled={!canEdit} serverError={fe("name")} />
+            <RTextArea control={c} name="description" label={t("fields.description")} className="sm:col-span-2" disabled={!canEdit} />
+            <RRef control={c} name="categoryId" label={t("fields.categoryId")} resource="/categories" labelKey={(r) => `${r.code} — ${r.name}`} disabled={!canEdit} serverError={fe("categoryId")} />
+            <RRef control={c} name="unitId" label={t("fields.unitId")} required resource="/units" labelKey={(r) => `${r.code} — ${r.name}`} disabled={!canEdit} serverError={fe("unitId")} />
+            <RRef control={c} name="taxId" label={t("fields.taxId")} resource="/taxes" labelKey={(r) => `${r.name} (${fmtNumber(r.rate)}%)`} disabled={!canEdit} serverError={fe("taxId")} />
+            <RDecimal control={c} name="minStock" label={t("fields.minStock")} disabled={!canEdit} />
+            <RDecimal control={c} name="maxStock" label={t("fields.maxStock")} disabled={!canEdit} />
+            {(feature("lots") || feature("serials")) && (
+              <RSelect control={c} name="trackingMode" label={t("fields.trackingMode")} disabled={!canEdit || v.isService} serverError={fe("trackingMode")} hint={t("products.trackingHint")}
+                options={trackingOptions.map((o) => ({ value: o, label: t(`enums.trackingMode.${o}`) }))} />
             )}
-            {feature("expiry") && <CheckField label={t("fields.hasExpiry")} checked={form.hasExpiry} onChange={(v) => set("hasExpiry", v)} disabled={!canEdit || form.trackingMode !== "LOT"} />}
-            <CheckField label={t("fields.isService")} checked={form.isService} onChange={(v) => set("isService", v)} disabled={!canEdit} />
-            <CheckField label={t("fields.isActive")} checked={form.isActive} onChange={(v) => set("isActive", v)} disabled={!canEdit} />
+            {feature("expiry") && <RCheck control={c} name="hasExpiry" label={t("fields.hasExpiry")} disabled={!canEdit || v.trackingMode !== "LOT"} />}
+            <RCheck control={c} name="isService" label={t("fields.isService")} disabled={!canEdit} />
+            <RCheck control={c} name="isActive" label={t("fields.isActive")} disabled={!canEdit} />
           </div>
         </Card>
 
         <div className="flex flex-col gap-6">
           <Card title={t("products.barcodes")}>
-            <StringList values={form.barcodes} onChange={(v) => set("barcodes", v)} disabled={!canEdit} placeholder={t("products.barcodePlaceholder")} addLabel={t("common.add")} />
+            <StringList values={v.barcodes} onChange={(x) => form.setValue("barcodes", x, { shouldDirty: true })} disabled={!canEdit} placeholder={t("products.barcodePlaceholder")} addLabel={t("common.add")} />
           </Card>
           <Card title={t("products.references")}>
-            <ReferenceList values={form.references} onChange={(v) => set("references", v)} disabled={!canEdit} />
+            <ReferenceList values={v.references} onChange={(x) => form.setValue("references", x, { shouldDirty: true })} disabled={!canEdit} />
           </Card>
         </div>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { api, ApiError, login as apiLogin, logout as apiLogout, refreshSession, selectCompany as apiSelectCompany, setAccessToken, setSessionLostHandler, type SessionResponse } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 export interface Me {
@@ -35,6 +36,7 @@ export const useAuth = () => {
 };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<Status>("loading");
   const [me, setMe] = useState<Me | null>(null);
 
@@ -68,11 +70,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setSessionLostHandler(() => {
       setAccessToken(null);
+      queryClient.clear();
       setMe(null);
       setStatus("anonymous");
     });
     return () => setSessionLostHandler(null);
-  }, []);
+  }, [queryClient]);
 
   const value = useMemo<AuthContextType>(() => {
     const perms = new Set(me?.permissions ?? []);
@@ -88,16 +91,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       selectCompany: async (companyId) => {
         await apiSelectCompany(companyId);
+        queryClient.clear(); // nada de la empresa anterior debe quedar en caché
         await loadMe();
       },
       logout: async () => {
         await apiLogout().catch(() => undefined);
+        queryClient.clear();
         setMe(null);
         setStatus("anonymous");
       },
       reload: loadMe,
     };
-  }, [status, me, loadMe]);
+  }, [status, me, loadMe, queryClient]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -29,6 +29,8 @@ export const purchaseLineSchema = z.object({
   lotNo: z.string().trim().min(1).max(60).nullable().optional(),
   expiryDate: date.nullable().optional(),
   parentLineId: uuid.nullable().optional(),
+  /** Productos con control por serial: lista de seriales (cantidad = cantidad de seriales). */
+  serials: z.array(z.string().trim().min(1).max(100)).max(5000).optional(),
 });
 
 export const purchaseDocSchema = z.object({
@@ -60,6 +62,7 @@ export const receiveSchema = z.object({
   lines: z.array(z.object({
     orderLineId: uuid, quantity: decimalStr.refine(v => Number(v) > 0, 'La cantidad debe ser mayor que cero'),
     lotNo: z.string().trim().min(1).nullable().optional(), expiryDate: date.nullable().optional(),
+    serials: z.array(z.string().trim().min(1).max(100)).optional(),
   })).min(1),
 });
 
