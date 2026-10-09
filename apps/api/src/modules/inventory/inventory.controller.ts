@@ -6,6 +6,7 @@ import { RequirePermissions } from '../../common/auth/decorators';
 import { ZodPipe } from '../../common/http/zod.pipe';
 import { cancelSchema, INV_DOC_ROUTES, InventoryDocsService, invDocListSchema, invDocSchema, invDocUpdateSchema } from './inventory-docs.service';
 import { InventoryQueriesService, kardexQuerySchema, periodSchema, stockQuerySchema, valuationQuerySchema } from './inventory-queries.service';
+import { ZBody, ZQuery } from '../../common/http/zod.decorators';
 
 const id = new ZodPipe(uuid);
 
@@ -16,19 +17,19 @@ function makeDocController(route: (typeof INV_DOC_ROUTES)[number]): Type<unknown
   class DocController {
     constructor(readonly svc: InventoryDocsService) {}
     @Get() @RequirePermissions(P('read'))
-    list(@Query(new ZodPipe(invDocListSchema)) q: z.infer<typeof invDocListSchema>) { return this.svc.list(route.docType, q); }
+    list(@ZQuery(invDocListSchema) q: z.infer<typeof invDocListSchema>) { return this.svc.list(route.docType, q); }
     @Get(':id') @RequirePermissions(P('read'))
     get(@Param('id', id) did: string) { return this.svc.get(route.docType, did); }
     @Post() @RequirePermissions(P('create'))
-    create(@Body(new ZodPipe(invDocSchema)) b: z.infer<typeof invDocSchema>) { return this.svc.create(route.docType, b); }
+    create(@ZBody(invDocSchema) b: z.infer<typeof invDocSchema>) { return this.svc.create(route.docType, b); }
     @Patch(':id') @RequirePermissions(P('update'))
-    update(@Param('id', id) did: string, @Body(new ZodPipe(invDocUpdateSchema)) b: z.infer<typeof invDocUpdateSchema>) { return this.svc.update(route.docType, did, b); }
+    update(@Param('id', id) did: string, @ZBody(invDocUpdateSchema) b: z.infer<typeof invDocUpdateSchema>) { return this.svc.update(route.docType, did, b); }
     @Delete(':id') @RequirePermissions(P('update'))
     remove(@Param('id', id) did: string) { return this.svc.remove(route.docType, did); }
     @Post(':id/confirm') @RequirePermissions(P('confirm'))
     confirm(@Param('id', id) did: string) { return this.svc.confirm(route.docType, did); }
     @Post(':id/cancel') @RequirePermissions(P('cancel'))
-    cancel(@Param('id', id) did: string, @Body(new ZodPipe(cancelSchema)) b: z.infer<typeof cancelSchema>) { return this.svc.cancel(route.docType, did, b.reason); }
+    cancel(@Param('id', id) did: string, @ZBody(cancelSchema) b: z.infer<typeof cancelSchema>) { return this.svc.cancel(route.docType, did, b.reason); }
   }
   Reflect.defineMetadata('design:paramtypes', [InventoryDocsService], DocController);
   return DocController;
@@ -50,22 +51,22 @@ export class InventoryQueriesController {
   constructor(private readonly q: InventoryQueriesService) {}
 
   @Get('stock') @RequirePermissions('inventory:stock:read')
-  stock(@Query(new ZodPipe(stockQuerySchema)) q: z.infer<typeof stockQuerySchema>) { return this.q.stock(q); }
+  stock(@ZQuery(stockQuerySchema) q: z.infer<typeof stockQuerySchema>) { return this.q.stock(q); }
 
   @Get('kardex') @RequirePermissions('inventory:kardex:read')
-  kardex(@Query(new ZodPipe(kardexQuerySchema)) q: z.infer<typeof kardexQuerySchema>) { return this.q.kardex(q); }
+  kardex(@ZQuery(kardexQuerySchema) q: z.infer<typeof kardexQuerySchema>) { return this.q.kardex(q); }
 
   @Get('valuation') @RequirePermissions('inventory:valuation:read')
-  valuation(@Query(new ZodPipe(valuationQuerySchema)) q: z.infer<typeof valuationQuerySchema>) { return this.q.valuation(q); }
+  valuation(@ZQuery(valuationQuerySchema) q: z.infer<typeof valuationQuerySchema>) { return this.q.valuation(q); }
 
   @Get('periods') @RequirePermissions('inventory:periods:read')
   periods() { return this.q.periods(); }
 
   @Post('periods/close') @RequirePermissions('inventory:periods:close')
-  close(@Body(new ZodPipe(periodSchema)) b: z.infer<typeof periodSchema>) { return this.q.closePeriod(b); }
+  close(@ZBody(periodSchema) b: z.infer<typeof periodSchema>) { return this.q.closePeriod(b); }
 
   @Post('periods/reopen') @RequirePermissions('inventory:periods:close')
-  reopen(@Body(new ZodPipe(periodSchema)) b: z.infer<typeof periodSchema>) { return this.q.reopenPeriod(b); }
+  reopen(@ZBody(periodSchema) b: z.infer<typeof periodSchema>) { return this.q.reopenPeriod(b); }
 }
 
 @ApiTags('products') @ApiBearerAuth()
@@ -75,5 +76,5 @@ export class ProductInventoryController {
   @Get(':id/stock') @RequirePermissions('inventory:stock:read')
   stock(@Param('id', id) pid: string) { return this.q.productStock(pid); }
   @Get(':id/kardex') @RequirePermissions('inventory:kardex:read')
-  kardex(@Param('id', id) pid: string, @Query(new ZodPipe(kardexQuerySchema.omit({ productId: true }))) q: any) { return this.q.kardex({ ...q, productId: pid }); }
+  kardex(@Param('id', id) pid: string, @ZQuery(kardexQuerySchema.omit({ productId: true })) q: any) { return this.q.kardex({ ...q, productId: pid }); }
 }

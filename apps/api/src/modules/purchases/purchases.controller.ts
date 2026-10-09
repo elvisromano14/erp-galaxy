@@ -8,6 +8,7 @@ import { PurchasesService } from './purchases.service';
 import {
   cancelSchema, PurchaseRoute, PURCHASE_ROUTES, purchaseDocSchema, purchaseDocUpdateSchema, purchaseListSchema, receiveSchema,
 } from './purchases.types';
+import { ZBody, ZQuery } from '../../common/http/zod.decorators';
 
 const id = new ZodPipe(uuid);
 
@@ -25,22 +26,22 @@ function makeController(route: PurchaseRoute): Type<unknown> {
     constructor(readonly svc: PurchasesService) {}
 
     @Get() @RequirePermissions(P('read'))
-    list(@Query(new ZodPipe(purchaseListSchema)) q: z.infer<typeof purchaseListSchema>) { return this.svc.list(t, q); }
+    list(@ZQuery(purchaseListSchema) q: z.infer<typeof purchaseListSchema>) { return this.svc.list(t, q); }
 
     @Get(':id') @RequirePermissions(P('read'))
     get(@Param('id', id) did: string) { return this.svc.get(t, did); }
 
     @Post() @RequirePermissions(P('create'))
-    create(@Body(new ZodPipe(purchaseDocSchema)) b: z.infer<typeof purchaseDocSchema>) { return this.svc.create(t, b); }
+    create(@ZBody(purchaseDocSchema) b: z.infer<typeof purchaseDocSchema>) { return this.svc.create(t, b); }
 
     @Patch(':id') @RequirePermissions(P('update'))
-    update(@Param('id', id) did: string, @Body(new ZodPipe(purchaseDocUpdateSchema)) b: z.infer<typeof purchaseDocUpdateSchema>) { return this.svc.update(t, did, b as any); }
+    update(@Param('id', id) did: string, @ZBody(purchaseDocUpdateSchema) b: z.infer<typeof purchaseDocUpdateSchema>) { return this.svc.update(t, did, b as any); }
 
     @Delete(':id') @RequirePermissions(P('update'))
     remove(@Param('id', id) did: string) { return this.svc.remove(t, did); }
 
     @Post(':id/cancel') @RequirePermissions(P('cancel'))
-    cancel(@Param('id', id) did: string, @Body(new ZodPipe(cancelSchema)) b: z.infer<typeof cancelSchema>) { return this.svc.cancel(t, did, b.reason); }
+    cancel(@Param('id', id) did: string, @ZBody(cancelSchema) b: z.infer<typeof cancelSchema>) { return this.svc.cancel(t, did, b.reason); }
   }
   Reflect.defineMetadata('design:paramtypes', [PurchasesService], DocController);
   return DocController;
@@ -78,7 +79,7 @@ export class PurchaseActionsController {
   toOrder(@Param('id', id) did: string) { return this.svc.convertQuoteToOrder(did); }
 
   @Post('orders/:id/receive') @RequirePermissions('purchases:delivery-notes:create', 'purchases:delivery-notes:confirm')
-  receive(@Param('id', id) did: string, @Body(new ZodPipe(receiveSchema)) b: z.infer<typeof receiveSchema>) { return this.svc.receive(did, b); }
+  receive(@Param('id', id) did: string, @ZBody(receiveSchema) b: z.infer<typeof receiveSchema>) { return this.svc.receive(did, b); }
 
   @Post('delivery-notes/:id/convert-to-purchase') @RequirePermissions('purchases:invoices:create')
   toPurchase(@Param('id', id) did: string) { return this.svc.convertDeliveryNoteToPurchase(did); }

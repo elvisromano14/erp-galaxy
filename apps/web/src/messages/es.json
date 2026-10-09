@@ -1,0 +1,134 @@
+{
+  "common": {
+    "loading": "Cargando…", "noResults": "No hay resultados", "yes": "Sí", "no": "No",
+    "previous": "Anterior", "next": "Siguiente", "pageOf": "Página {page} de {total}", "totalRecords": "{count} registros",
+    "search": "Buscar…", "searchNumber": "Buscar por número…", "new": "Nuevo", "edit": "Editar", "delete": "Eliminar", "restore": "Restaurar",
+    "restored": "Registro restaurado", "deleted": "Registro eliminado", "saved": "Guardado correctamente", "saving": "Guardando…", "save": "Guardar",
+    "cancel": "Cancelar", "confirm": "Confirmar", "reason": "Motivo", "reasonHint": "Obligatorio (mínimo 3 caracteres)", "showDeleted": "Mostrar eliminados",
+    "newRecord": "Nuevo registro", "editRecord": "Editar registro", "deleteTitle": "¿Eliminar registro?",
+    "deleteMessage": "El registro dejará de aparecer en los listados. Podrá restaurarlo después.",
+    "forbidden": "No tiene permiso para ver esta sección.", "back": "Volver", "add": "Agregar", "all": "Todos", "allStatuses": "Todos los estados",
+    "clear": "Quitar", "loadMore": "Cargar más", "dateFrom": "Desde", "dateTo": "Hasta", "draft": "Borrador", "noLines": "Sin líneas",
+    "addLine": "Agregar línea", "header": "Encabezado", "lines": "Líneas", "confirmedAt": "confirmado el", "cancelReason": "Motivo de anulación",
+    "cancelDocument": "Anular", "cancelTitle": "¿Anular documento?", "confirmDocument": "Confirmar", "saveDraft": "Guardar borrador", "print": "Imprimir"
+  },
+  "sidebar": {
+    "brand": "Mini ERP", "menu": "Menú", "dashboard": "Panel",
+    "sections": { "administration": "Administración", "inventory": "Inventario", "purchases": "Compras", "settings": "Configuración" },
+    "items": {
+      "products": "Productos", "categories": "Instancias", "units": "Unidades", "warehouses": "Depósitos", "suppliers": "Proveedores",
+      "customers": "Clientes", "zones": "Zonas", "sellers": "Vendedores", "price-lists": "Listas de precios", "taxes": "Impuestos",
+      "currencies": "Monedas", "exchange-rates": "Factor cambiario", "payment-methods": "Instrumentos de pago", "bank-accounts": "Cuentas bancarias",
+      "banks": "Bancos", "movement-reasons": "Motivos de movimiento", "operation-types": "Operaciones",
+      "stock": "Existencias", "kardex": "Kardex", "valuation": "Inventario valorizado", "transfers": "Traslados", "charges": "Cargos",
+      "discharges": "Descargos", "adjustments": "Ajustes de inventario", "cost-adjustments": "Ajustes de costo", "periods": "Períodos",
+      "quotes": "Cotizaciones", "orders": "Órdenes de compra", "delivery-notes": "Notas de entrega", "invoices": "Compras",
+      "delivery-note-returns": "Devolución de notas", "returns": "Devoluciones de compra",
+      "company": "Empresa", "users": "Usuarios", "roles": "Roles y permisos"
+    }
+  },
+  "header": { "toggleSidebar": "Mostrar u ocultar el menú lateral" },
+  "userDropdown": { "switchCompany": "Cambiar de empresa", "signOut": "Cerrar sesión" },
+  "notFound": { "error": "Página no encontrada", "message": "No encontramos la página que busca.", "back": "Volver al inicio" },
+  "auth": {
+    "brand": "Mini ERP", "tagline": "Administración, inventario, compras, ventas, bancos e impuestos en un solo sistema.",
+    "signIn": "Iniciar sesión", "signInHint": "Ingrese su correo y contraseña para continuar.", "email": "Correo electrónico", "password": "Contraseña",
+    "passwordPlaceholder": "Su contraseña", "hidePassword": "Ocultar contraseña", "showPassword": "Mostrar contraseña", "signingIn": "Ingresando…",
+    "errors": {
+      "invalidCredentials": "Correo o contraseña incorrectos.", "accountLocked": "Cuenta bloqueada temporalmente por intentos fallidos. Intente más tarde.",
+      "tooManyRequests": "Demasiados intentos. Espere un minuto.", "generic": "No se pudo iniciar sesión. Intente de nuevo."
+    },
+    "selectCompany": "Seleccione una empresa", "selectCompanyHint": "Su usuario tiene acceso a varias empresas. Los datos de cada empresa están completamente separados.",
+    "noCompanies": "Su usuario no tiene empresas asignadas. Contacte al administrador.", "signOut": "Cerrar sesión"
+  },
+  "dashboard": {
+    "title": "Panel de {company}", "subtitle": "Resumen de su operación", "products": "Productos", "suppliers": "Proveedores", "customers": "Clientes",
+    "inventoryValue": "Inventario valorizado", "openOrders": "Órdenes de compra abiertas", "belowMin": "Productos por debajo del mínimo",
+    "noneBelowMin": "Ningún producto está por debajo del mínimo."
+  },
+  "status": {
+    "DRAFT": "Borrador", "SENT": "Enviada", "ACCEPTED": "Aceptada", "REJECTED": "Rechazada", "EXPIRED": "Vencida", "CONFIRMED": "Confirmado",
+    "PARTIALLY_FULFILLED": "Parcialmente recibida", "FULFILLED": "Recibida", "INVOICED": "Facturada", "CLOSED": "Cerrado", "CANCELLED": "Anulado",
+    "VOIDED": "Anulado", "OPEN": "Abierto", "PARTIALLY_PAID": "Pago parcial", "PAID": "Pagado"
+  },
+  "docTypes": {
+    "TRANSFER": "Traslado", "CHARGE": "Cargo", "DISCHARGE": "Descargo", "ADJUSTMENT": "Ajuste", "COST_ADJUSTMENT": "Ajuste de costo",
+    "QUOTE": "Cotización", "ORDER": "Orden de compra", "DELIVERY_NOTE": "Nota de entrega", "DELIVERY_NOTE_RETURN": "Devolución de nota de entrega",
+    "PURCHASE": "Compra", "PURCHASE_RETURN": "Devolución de compra"
+  },
+  "fields": {
+    "code": "Código", "name": "Nombre", "address": "Dirección", "allowNegativeStock": "Permite stock negativo", "isActive": "Activo",
+    "parentId": "Instancia padre", "marginDefault": "Margen por defecto (%)", "kind": "Tipo", "rate": "Alícuota / tasa", "validFrom": "Vigente desde",
+    "validTo": "Vigente hasta", "currencyId": "Moneda", "isDefault": "Por defecto", "commissionRate": "Comisión (%)", "zoneId": "Zona",
+    "monthlyGoal": "Meta mensual", "rif": "RIF", "legalName": "Razón social", "tradeName": "Nombre comercial", "personType": "Tipo de persona",
+    "isSpecialTaxpayer": "Contribuyente especial", "retentionIvaPct": "Retención de IVA (%)", "isIslrSubject": "Sujeto a retención ISLR",
+    "creditDays": "Días de crédito", "email": "Correo", "phone": "Teléfono", "priceListId": "Lista de precios", "creditLimit": "Límite de crédito",
+    "sellerId": "Vendedor", "type": "Tipo", "requiresReference": "Requiere referencia", "appliesIgtf": "Aplica IGTF", "bankAccountId": "Cuenta bancaria",
+    "docType": "Tipo de documento", "inventoryEffect": "Efecto en inventario", "affectsReceivable": "Afecta CxC", "affectsPayable": "Afecta CxP",
+    "affectsBank": "Afecta bancos", "requiresFiscalNumber": "Requiere número fiscal", "series": "Serie", "bankId": "Banco", "number": "Número",
+    "accountType": "Tipo de cuenta", "openingBalance": "Saldo inicial", "symbol": "Símbolo", "decimals": "Decimales",
+    "sku": "SKU", "description": "Descripción", "categoryId": "Instancia", "unitId": "Unidad", "taxId": "Impuesto", "trackingMode": "Control de lotes",
+    "hasExpiry": "Maneja vencimiento", "isService": "Es servicio", "minStock": "Stock mínimo", "maxStock": "Stock máximo", "price": "Precio",
+    "date": "Fecha", "currency": "Moneda", "source": "Fuente", "createdAt": "Registrado", "warehouse": "Depósito", "fromWarehouse": "Depósito origen",
+    "toWarehouse": "Depósito destino", "product": "Producto", "quantity": "Cantidad", "avgCost": "Costo promedio", "value": "Valor", "unitCost": "Costo unitario",
+    "unitCostVal": "Costo unit. (valoración)", "totalCost": "Costo total", "document": "Documento", "status": "Estado", "notes": "Notas",
+    "reason": "Motivo", "lotNo": "Lote", "expiryDate": "Vencimiento", "supplier": "Proveedor", "supplierDocNo": "N.º factura proveedor",
+    "supplierControlNo": "N.º de control", "total": "Total", "subtotal": "Subtotal", "exemptBase": "Exento", "taxTotal": "Impuesto", "totalBase": "Total en Bs",
+    "expiresAt": "Válida hasta", "exchangeRate": "Tasa de cambio", "paymentCondition": "Condición de pago", "discountPct": "Desc. %", "tax": "Impuesto",
+    "dueDate": "Vence", "amount": "Monto", "balance": "Saldo", "fullName": "Nombre completo", "password": "Contraseña", "fiscalAddress": "Domicilio fiscal",
+    "isVatWithholdingAgent": "Agente de retención de IVA", "isIgtfCollector": "Cobra IGTF"
+  },
+  "enums": {
+    "personType": { "LEGAL": "Jurídica", "NATURAL": "Natural" },
+    "kind": { "VAT": "IVA", "EXEMPT": "Exento", "EXONERATED": "Exonerado", "IGTF": "IGTF", "CHARGE": "Cargo", "DISCHARGE": "Descargo", "ADJUSTMENT": "Ajuste" },
+    "type": { "CASH": "Efectivo", "TRANSFER": "Transferencia", "MOBILE_PAYMENT": "Pago móvil", "CARD": "Punto de venta", "ZELLE": "Zelle", "CHECK": "Cheque", "WITHHOLDING": "Retención", "CREDIT": "Crédito" },
+    "inventoryEffect": { "IN": "Entrada", "OUT": "Salida", "NONE": "Ninguno" },
+    "accountType": { "CHECKING": "Corriente", "SAVINGS": "Ahorro", "CASH": "Caja" },
+    "trackingMode": { "NONE": "Sin control", "LOT": "Por lote", "SERIAL": "Por serial" },
+    "refType": { "OEM": "OEM", "EQUIVALENT": "Equivalente", "ALTERNATE": "Alterno" },
+    "paymentCondition": { "CASH": "Contado", "CREDIT": "Crédito" },
+    "entryType": { "INVOICE": "Factura", "RETURN": "Devolución" }
+  },
+  "products": {
+    "searchPlaceholder": "Buscar por SKU, nombre, código OEM o código de barras…", "new": "Nuevo producto", "general": "Datos generales", "barcodes": "Códigos de barras",
+    "barcodePlaceholder": "Escanee o escriba un código", "references": "Referencias OEM / equivalentes", "refType": "Tipo", "refCode": "Código", "refBrand": "Marca",
+    "trackingHint": "Requiere lotes habilitados en la empresa. No cambia si hay existencias.", "prices": "Precios", "noPrices": "Sin precios definidos", "addPrice": "Agregar precio",
+    "priceSaved": "Precio guardado", "priceHistory": "Historial de precios", "stock": "Existencias", "totalQty": "Existencia total"
+  },
+  "fx": { "subtitle": "Tasa en bolívares por unidad de moneda extranjera. Cada carga agrega una fila; no se sobrescribe el historial.", "add": "Cargar tasa", "rateHint": "Bs por unidad" },
+  "inventory": {
+    "stockSubtitle": "Existencias por producto y depósito, valoradas al costo promedio.", "allWarehouses": "Todos los depósitos", "onlyPositive": "Solo con existencia",
+    "belowMin": "Por debajo del mínimo", "kardexSubtitle": "Movimientos inmutables: las anulaciones generan contramovimientos.", "allProducts": "Todos los productos",
+    "reversal": "reverso", "balanceWarehouse": "Saldo depósito", "balanceTotal": "Saldo total", "valuationSubtitle": "Valorización por depósito. Con fecha, se reconstruye desde el kardex.",
+    "asOf": "Al cierre del día", "asOfHint": "Vacío = estado actual", "totalValue": "Valor total", "periodsSubtitle": "Los períodos cerrados congelan existencia y costo por producto.",
+    "period": "Período", "closedAt": "Cerrado el", "reopen": "Reabrir", "closePeriod": "Cerrar {period}", "closeTitle": "¿Cerrar el período?", "reopenTitle": "¿Reabrir el período?",
+    "newDoc": "Nuevo documento: {type}", "searchProduct": "Buscar producto…", "systemQty": "Sistema", "countedQty": "Contado", "difference": "Diferencia", "newAvgCost": "Nuevo costo promedio",
+    "costAdjHint": "Corrige el costo promedio del producto sin mover cantidades. No se puede anular: se corrige con otro ajuste.", "countSheet": "Hoja de conteo",
+    "confirmTitle": "¿Confirmar documento?", "confirmMessage": "Se asignará el número y se afectará el inventario. Un documento confirmado no se edita: se anula.",
+    "cancelMessage": "Se generarán los movimientos inversos y el documento quedará anulado.", "confirmed": "Documento confirmado", "cancelled": "Documento anulado"
+  },
+  "purchases": {
+    "newDoc": "Nuevo documento: {type}", "returnHint": "Las devoluciones se crean desde el documento que se devuelve (botón «Crear devolución»).", "returnNeedsParent": "Abra esta pantalla desde el documento origen (botón «Crear devolución»).",
+    "origin": "Origen", "derived": "Derivado", "searchSupplier": "Buscar por RIF o nombre…", "baseCurrency": "Moneda base: tasa 1", "rateHint": "Vacío = tasa del día",
+    "payable": "Cuenta por pagar", "confirmTitle": "¿Confirmar documento?", "send": "Enviar", "sendTitle": "¿Enviar cotización?", "sendMessage": "Se asignará el número y ya no podrá editarse.",
+    "reject": "Rechazar", "rejectTitle": "¿Rechazar cotización?", "accept": "Aceptar", "convertToOrder": "Convertir en orden", "convertToPurchase": "Facturar (crear compra)",
+    "createReturn": "Crear devolución", "receive": "Recibir", "receiveTitle": "Recepción de mercancía", "pending": "Pendiente", "receiveQty": "Recibido",
+    "confirmedOk": "Documento confirmado", "sentOk": "Cotización enviada", "acceptedOk": "Cotización aceptada", "rejectedOk": "Cotización rechazada",
+    "cancelledOk": "Documento anulado", "convertedOk": "Documento creado", "received": "Recepción registrada",
+    "confirmMessage": {
+      "ORDER": "Se asignará el número. La orden no mueve inventario.", "DELIVERY_NOTE": "Entra la mercancía al inventario al costo indicado.",
+      "PURCHASE": "Entra al inventario lo no recibido por nota de entrega y se genera la cuenta por pagar.", "DELIVERY_NOTE_RETURN": "Sale la mercancía al costo original.",
+      "PURCHASE_RETURN": "Sale la mercancía al costo original y se reduce la cuenta por pagar.", "QUOTE": ""
+    },
+    "cancelMessage": {
+      "QUOTE": "La cotización quedará anulada.", "ORDER": "La orden quedará anulada (no debe tener recepciones).", "DELIVERY_NOTE": "Se revertirá la entrada al inventario.",
+      "PURCHASE": "Se revertirá el inventario y se anulará la cuenta por pagar.", "DELIVERY_NOTE_RETURN": "Se revertirá la salida del inventario.", "PURCHASE_RETURN": "Se revertirá la salida y el ajuste a la cuenta por pagar."
+    }
+  },
+  "settings": {
+    "fiscalData": "Datos fiscales", "fiscalWarning": "Validar estos datos con su contador: determinan retenciones, IGTF y libros fiscales.", "features": "Funciones opcionales",
+    "lots": "Control por lotes", "lotsHint": "Permite productos con lote. Una vez activado, el control por producto se define en su ficha.", "expiry": "Control de vencimiento",
+    "expiryHint": "Requiere lotes. Alertas y ordenamiento FEFO.", "serials": "Control por seriales", "serialsHint": "Aún no disponible.", "roles": "Roles", "editUser": "Editar usuario",
+    "newUser": "Nuevo usuario", "passwordHint": "Mínimo 10 caracteres, con letras y números", "system": "sistema", "permissionCount": "{count} permisos", "editRole": "Editar rol", "newRole": "Nuevo rol"
+  }
+}

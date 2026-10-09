@@ -51,6 +51,9 @@ export class PurchasesService {
     const tx = this.prisma.tx;
     const doc = await this.find(docType, id);
     const lines = await tx.purchaseDocumentLine.findMany({ where: { documentId: id }, orderBy: { lineNo: 'asc' } });
+    // Enlace línea↔línea con el documento origen: necesario para editar borradores sin perder la trazabilidad.
+    const lineLinks = await tx.documentLinkLine.findMany({ where: { childLineId: { in: lines.map(l => l.id) } } });
+    const parentLineOf = new Map(lineLinks.map(x => [x.childLineId, x.parentLineId]));
     const [products, supplier, parents, children] = await Promise.all([
       tx.product.findMany({ where: { id: { in: lines.map(l => l.productId) } }, select: { id: true, sku: true, name: true } }),
       tx.supplier.findFirst({ where: { id: doc.supplierId }, select: { id: true, rif: true, legalName: true } }),
@@ -74,7 +77,7 @@ export class PurchasesService {
     }
     return {
       ...doc, supplier, ...extra,
-      lines: lines.map(l => ({ ...l, product: pm.get(l.productId) })),
+      lines: lines.map(l => ({ ...l, parentLineId: parentLineOf.get(l.id) ?? null, product: pm.get(l.productId) })),
       links: { parents: parents.map(p => ({ type: p.parentType, id: p.parentId })), children: children.map(c => ({ type: c.childType, id: c.childId })) },
     };
   }

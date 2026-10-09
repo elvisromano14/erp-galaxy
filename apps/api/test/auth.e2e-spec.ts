@@ -37,6 +37,11 @@ describe('Auth y seguridad', () => {
     const rot = await ctx.http.post('/api/v1/auth/refresh').send({ refreshToken: r1 });
     expect(rot.status).toBe(200);
     expect(rot.body.data.refreshToken).not.toBe(r1);
+    // Dentro de la ventana de gracia (dos pestañas renovando a la vez) NO es robo: se atiende y la sesión sigue.
+    const racing = await ctx.http.post('/api/v1/auth/refresh').send({ refreshToken: r1 });
+    expect(racing.status).toBe(200);
+    // Fuera de la ventana, reutilizar un token ya rotado revoca toda la familia.
+    await ctx.prisma.$executeRaw`UPDATE refresh_tokens SET revoked_at = now() - interval '1 hour' WHERE token_hash = encode(sha256(${r1}::bytea), 'hex')`;
     const reuse = await ctx.http.post('/api/v1/auth/refresh').send({ refreshToken: r1 });
     expect(reuse.status).toBe(401);
     expect(reuse.body.error).toBe('REFRESH_REUSED');

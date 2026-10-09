@@ -8,3 +8,6 @@ onlyBuiltDependencies:
   - argon2
   - esbuild
   - '@scarf/scarf'
+  - '@parcel/watcher'
+  - '@swc/core'
+  - unrs-resolver

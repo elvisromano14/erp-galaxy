@@ -183,3 +183,29 @@ describe('Compras: cotización → orden → nota de entrega → compra → devo
     expect((await stock(p)).totalQuantity).toBe('5');
   });
 });
+
+describe('Compras: edición de borradores conserva el enlace con el documento origen', () => {
+  let ctx: Ctx; let api: Api; let b: Awaited<ReturnType<typeof seedBasics>>; let supplierId: string;
+  beforeAll(async () => {
+    ctx = await bootstrap();
+    const t = await createTenant(ctx, 'Enlaces'); api = client(ctx, t.token); b = await seedBasics(api);
+    supplierId = (await api.post('/suppliers', { rif: uniqueRif(), legalName: 'Proveedor' })).body.data.id;
+    await api.post('/exchange-rates', { currencyId: b.usd, rate: '40', date: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' }) });
+  });
+  afterAll(async () => { await ctx.close(); });
+
+  it('GET expone parentLineId y reenviarlo en PATCH no duplica el inventario al confirmar', async () => {
+    const p = await b.product('LNK-1');
+    const dn = (await api.post('/purchases/delivery-notes', { supplierId, warehouseId: b.w1, currencyId: b.usd, lines: [{ productId: p, quantity: '5', unitCost: '2' }] })).body.data;
+    await api.post(`/purchases/delivery-notes/${dn.id}/confirm`);
+    const pur = (await api.post(`/purchases/delivery-notes/${dn.id}/convert-to-purchase`)).body.data;
+    expect(pur.lines[0].parentLineId).toBe(dn.lines[0].id);
+    // el cliente edita el borrador reenviando las líneas con su parentLineId
+    const lines = pur.lines.map((l: any) => ({ productId: l.productId, quantity: l.quantity, unitCost: l.unitCost, parentLineId: l.parentLineId }));
+    const up = await api.patch(`/purchases/${pur.id}`, { supplierDocNo: 'F-77', lines, parentId: dn.id });
+    expect(up.status).toBe(200);
+    expect(up.body.data.lines[0].parentLineId).toBe(dn.lines[0].id);
+    expect((await api.post(`/purchases/${pur.id}/confirm`)).status).toBe(201);
+    expect((await api.get(`/products/${p}/stock`)).body.data.totalQuantity).toBe('5'); // no se duplicó la entrada
+  });
+});

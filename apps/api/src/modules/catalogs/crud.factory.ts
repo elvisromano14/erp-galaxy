@@ -8,6 +8,7 @@ import { PrismaService } from '../../common/db/prisma.service';
 import { NotFoundError, ValidationError } from '../../common/errors/errors';
 import { Paged } from '../../common/http/paged';
 import { ZodPipe } from '../../common/http/zod.pipe';
+import { ZBody, ZQuery } from '../../common/http/zod.decorators';
 
 /**
  * Generador de CRUD estándar para catálogos (erp-v3 §11.2):
@@ -127,16 +128,16 @@ export function makeCrud<S extends ZodRawShape>(cfg: CrudConfig<S>): Type<unknow
     constructor(readonly svc: Service) {}
 
     @Get() @RequirePermissions(P('read'))
-    list(@Query(new ZodPipe(listQuery)) q: z.infer<typeof listQuery>) { return this.svc.list(q); }
+    list(@ZQuery(listQuery) q: z.infer<typeof listQuery>) { return this.svc.list(q); }
 
     @Get(':id') @RequirePermissions(P('read'))
     get(@Param('id', idPipe) id: string) { return this.svc.get(id); }
 
     @Post() @RequirePermissions(P('create'))
-    create(@Body(new ZodPipe(createSchema)) b: Record<string, unknown>) { return this.svc.create(b); }
+    create(@ZBody(createSchema) b: Record<string, unknown>) { return this.svc.create(b); }
 
     @Patch(':id') @RequirePermissions(P('update'))
-    update(@Param('id', idPipe) id: string, @Body(new ZodPipe(updateSchema)) b: Record<string, unknown>) { return this.svc.update(id, b); }
+    update(@Param('id', idPipe) id: string, @ZBody(updateSchema) b: Record<string, unknown>) { return this.svc.update(id, b); }
 
     @Delete(':id') @RequirePermissions(P('delete'))
     remove(@Param('id', idPipe) id: string) { return this.svc.remove(id); }

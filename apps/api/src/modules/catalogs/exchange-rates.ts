@@ -8,6 +8,7 @@ import { RequirePermissions } from '../../common/auth/decorators';
 import { BusinessRuleException } from '../../common/errors/errors';
 import { Paged } from '../../common/http/paged';
 import { ZodPipe } from '../../common/http/zod.pipe';
+import { ZBody, ZQuery } from '../../common/http/zod.decorators';
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const createSchema = z.object({
@@ -75,11 +76,11 @@ export class ExchangeRatesService {
 export class ExchangeRatesController {
   constructor(private readonly svc: ExchangeRatesService) {}
   @Get() @RequirePermissions('admin:exchange-rates:read')
-  list(@Query(new ZodPipe(listSchema)) q: z.infer<typeof listSchema>) { return this.svc.list(q); }
+  list(@ZQuery(listSchema) q: z.infer<typeof listSchema>) { return this.svc.list(q); }
   @Get('latest') @RequirePermissions('admin:exchange-rates:read')
-  latest(@Query(new ZodPipe(latestSchema)) q: z.infer<typeof latestSchema>) { return this.svc.latest(q); }
+  latest(@ZQuery(latestSchema) q: z.infer<typeof latestSchema>) { return this.svc.latest(q); }
   @Post() @RequirePermissions('admin:exchange-rates:create')
-  create(@Body(new ZodPipe(createSchema)) b: z.infer<typeof createSchema>) { return this.svc.create(b); }
+  create(@ZBody(createSchema) b: z.infer<typeof createSchema>) { return this.svc.create(b); }
 }
 
 @Module({ controllers: [ExchangeRatesController], providers: [ExchangeRatesService], exports: [ExchangeRatesService] })

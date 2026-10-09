@@ -5,6 +5,7 @@ import { AllowNoCompany, AuthUser, CurrentUser, RequirePermissions } from '../..
 import { ZodPipe } from '../../common/http/zod.pipe';
 import { CompaniesService } from './companies.service';
 import { uuid } from '@erp/contracts';
+import { ZBody } from '../../common/http/zod.decorators';
 
 const features = z.object({ lots: z.boolean(), serials: z.boolean(), expiry: z.boolean(), offline: z.boolean() }).partial();
 const createCompany = z.object({
@@ -30,7 +31,7 @@ export class CompaniesController {
 
   /** Alta de empresas: solo superadministrador de la plataforma. */
   @Post() @AllowNoCompany()
-  create(@CurrentUser() u: AuthUser, @Body(new ZodPipe(createCompany)) b: z.infer<typeof createCompany>) {
+  create(@CurrentUser() u: AuthUser, @ZBody(createCompany) b: z.infer<typeof createCompany>) {
     if (!u.isSuperAdmin) throw new ForbiddenException({ error: 'FORBIDDEN', message: 'Solo el superadministrador puede crear empresas' });
     return this.svc.create(b);
   }
@@ -44,7 +45,7 @@ export class CompaniesController {
   current() { return this.svc.current(); }
 
   @Patch('current') @RequirePermissions('security:companies:update')
-  update(@Body(new ZodPipe(updateCompany)) b: z.infer<typeof updateCompany>) { return this.svc.updateCurrent(b); }
+  update(@ZBody(updateCompany) b: z.infer<typeof updateCompany>) { return this.svc.updateCurrent(b); }
 }
 
 @ApiTags('users') @ApiBearerAuth()
@@ -53,9 +54,9 @@ export class UsersController {
   constructor(private readonly svc: CompaniesService) {}
   @Get() @RequirePermissions('security:users:read') list() { return this.svc.listUsers(); }
   @Post() @RequirePermissions('security:users:create')
-  create(@Body(new ZodPipe(createUser)) b: z.infer<typeof createUser>) { return this.svc.createUser(b); }
+  create(@ZBody(createUser) b: z.infer<typeof createUser>) { return this.svc.createUser(b); }
   @Patch(':id') @RequirePermissions('security:users:update')
-  update(@Param('id', new ZodPipe(uuid)) id: string, @Body(new ZodPipe(updateUser)) b: z.infer<typeof updateUser>) { return this.svc.updateUser(id, b); }
+  update(@Param('id', new ZodPipe(uuid)) id: string, @ZBody(updateUser) b: z.infer<typeof updateUser>) { return this.svc.updateUser(id, b); }
 }
 
 @ApiTags('roles') @ApiBearerAuth()
@@ -64,9 +65,9 @@ export class RolesController {
   constructor(private readonly svc: CompaniesService) {}
   @Get() @RequirePermissions('security:roles:read') list() { return this.svc.listRoles(); }
   @Post() @RequirePermissions('security:roles:create')
-  create(@Body(new ZodPipe(createRole)) b: z.infer<typeof createRole>) { return this.svc.createRole(b); }
+  create(@ZBody(createRole) b: z.infer<typeof createRole>) { return this.svc.createRole(b); }
   @Patch(':id') @RequirePermissions('security:roles:update')
-  update(@Param('id', new ZodPipe(uuid)) id: string, @Body(new ZodPipe(updateRole)) b: z.infer<typeof updateRole>) { return this.svc.updateRole(id, b); }
+  update(@Param('id', new ZodPipe(uuid)) id: string, @ZBody(updateRole) b: z.infer<typeof updateRole>) { return this.svc.updateRole(id, b); }
 }
 
 @ApiTags('permissions') @ApiBearerAuth()

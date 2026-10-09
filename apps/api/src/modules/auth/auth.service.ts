@@ -96,7 +96,8 @@ export class AuthService {
   async refresh(refreshToken: string, ctx: Ctx) {
     const row = await this.prisma.refreshToken.findUnique({ where: { tokenHash: sha256(refreshToken) } });
     if (!row) throw new UnauthorizedException({ error: 'REFRESH_INVALID', message: 'Refresh token inválido' });
-    if (row.revokedAt) {
+    const withinGrace = row.revokedAt && row.replacedById && Date.now() - row.revokedAt.getTime() < env.REFRESH_REUSE_GRACE_SECONDS * 1000;
+    if (row.revokedAt && !withinGrace) {
       // Reutilización de un token ya rotado → se asume robo: se revoca toda la familia.
       await this.prisma.refreshToken.updateMany({ where: { familyId: row.familyId, revokedAt: null }, data: { revokedAt: new Date() } });
       await this.audit.log('auth', row.userId, 'REFRESH_REUSE_DETECTED', { familyId: row.familyId }, { companyId: null, userId: row.userId });
@@ -105,7 +106,8 @@ export class AuthService {
     if (row.expiresAt < new Date()) throw new UnauthorizedException({ error: 'REFRESH_EXPIRED', message: 'Refresh token expirado' });
     const user = await this.prisma.user.findUnique({ where: { id: row.userId } });
     if (!user?.isActive) throw new UnauthorizedException({ error: 'UNAUTHORIZED', message: 'Usuario inactivo' });
-    const tokens = await this.issue(user.id, user.isSuperAdmin, row.companyId ?? undefined, ctx, row);
+    // Dentro de la ventana de gracia el token ya está revocado: se emite otro de la misma familia sin volver a revocarlo.
+    const tokens = await this.issue(user.id, user.isSuperAdmin, row.companyId ?? undefined, ctx, withinGrace ? { id: '', familyId: row.familyId } : row);
     return tokens;
   }
 
@@ -172,7 +174,7 @@ export class AuthService {
         userAgent: ctx.userAgent, ip: ctx.ip,
       },
     });
-    if (previous) {
+    if (previous?.id) {
       await this.prisma.refreshToken.update({ where: { id: previous.id }, data: { revokedAt: new Date(), replacedById: created.id } });
     }
     return { accessToken, refreshToken, expiresIn: ACCESS_TTL_SECONDS };
