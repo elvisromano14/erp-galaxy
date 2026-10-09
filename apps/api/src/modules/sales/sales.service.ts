@@ -14,8 +14,11 @@ import { SalesDocInput, SalesDocType, salesListSchema, SALES_ROUTES, Viewer } fr
 
 /** Estados en los que el documento "cuenta" (para validar hijos activos). */
 const ACTIVE = ['DRAFT', 'SENT', 'ACCEPTED', 'CONFIRMED', 'CONVERTED'];
+/** Estados de pedido/factura que "consumen" cantidades de su documento origen (borradores incluidos al validar). */
+const QTY_STATES = ['DRAFT', 'CONFIRMED'];
 /** Orígenes permitidos por tipo de documento. */
-const PARENTS_OF: Partial<Record<SalesDocType, SalesDocType[]>> = { BUDGET: ['QUOTE'], ORDER: ['QUOTE', 'BUDGET'] };
+const PARENTS_OF: Partial<Record<SalesDocType, SalesDocType[]>> = { BUDGET: ['QUOTE'], ORDER: ['QUOTE', 'BUDGET'], INVOICE: ['ORDER'], CREDIT_NOTE: ['INVOICE'] };
+const QTY_TYPES: SalesDocType[] = ['INVOICE', 'CREDIT_NOTE'];
 
 @Injectable()
 export class SalesService {
@@ -27,8 +30,8 @@ export class SalesService {
     private readonly receivables: ReceivablesService,
   ) {}
 
-  private entity(t: SalesDocType) { return `sales_${t.toLowerCase()}`; }
-  private route(t: SalesDocType) { return SALES_ROUTES.find(r => r.docType === t)!; }
+  entity(t: SalesDocType) { return `sales_${t.toLowerCase()}`; }
+  route(t: SalesDocType) { return SALES_ROUTES.find(r => r.docType === t)!; }
 
   // ═════════════════════════ visibilidad ═════════════════════════
 
@@ -39,7 +42,7 @@ export class SalesService {
     return { OR: [{ createdBy: v.userId }, ...(mine.length ? [{ sellerId: { in: mine.map(s => s.id) } }] : [])] };
   }
 
-  private async find(docType: SalesDocType, id: string, v: Viewer, lock = false) {
+  async find(docType: SalesDocType, id: string, v: Viewer, lock = false) {
     const tx = this.prisma.tx;
     if (lock) await tx.$queryRaw`SELECT id FROM sales_documents WHERE id = ${id}::uuid AND company_id = ${this.prisma.companyId}::uuid FOR UPDATE`;
     const doc = await tx.salesDocument.findFirst({ where: { AND: [{ id, docType }, await this.viewerWhere(v)] } });
@@ -63,8 +66,19 @@ export class SalesService {
       tx.documentLink.findMany({ where: { parentId: id } }),
     ]);
     const pm = new Map(products.map(p => [p.id, p]));
+    const extra: Record<string, unknown> = {};
+    if (docType === 'ORDER') {
+      const inv = await this.consumed(lines.map(l => l.id), ['INVOICE'], ['CONFIRMED']);
+      extra.lineStatus = lines.map(l => ({ lineId: l.id, ordered: l.quantity.toString(), invoiced: (inv.get(l.id) ?? ZERO).toString(), pending: D(l.quantity.toString()).minus(inv.get(l.id) ?? ZERO).toString() }));
+    }
+    if (docType === 'INVOICE') {
+      const cn = await this.consumed(lines.map(l => l.id), ['CREDIT_NOTE'], ['CONFIRMED']);
+      extra.lineStatus = lines.map(l => ({ lineId: l.id, quantity: l.quantity.toString(), credited: (cn.get(l.id) ?? ZERO).toString(), available: D(l.quantity.toString()).minus(cn.get(l.id) ?? ZERO).toString() }));
+      extra.payments = await tx.salesDocumentPayment.findMany({ where: { documentId: id }, orderBy: { createdAt: 'asc' } });
+      extra.receivable = await tx.receivableEntry.findMany({ where: { sourceType: 'SALES_INVOICE', sourceId: id } });
+    }
     return {
-      ...doc, customer, seller,
+      ...doc, ...extra, customer, seller,
       lines: lines.map(l => ({ ...l, parentLineId: parentLineOf.get(l.id) ?? null, product: pm.get(l.productId) })),
       links: { parents: parents.map(p => ({ type: p.parentType, id: p.parentId })), children: children.map(c => ({ type: c.childType, id: c.childId })) },
     };
@@ -94,13 +108,13 @@ export class SalesService {
 
   // ═════════════════════════ precios y líneas ═════════════════════════
 
-  private async rateOf(currencyId: string, date: Date) {
+  async rateOf(currencyId: string, date: Date) {
     const r = await this.rates.rateFor(currencyId, date);
     if (!r) throw new BusinessRuleException('No hay tasa de cambio para la moneda y fecha del documento', 'RATE_NOT_FOUND');
     return D(r.rate);
   }
 
-  private async resolveRate(input: { currencyId: string; exchangeRate?: string }, docDate: Date) {
+  async resolveRate(input: { currencyId: string; exchangeRate?: string }, docDate: Date) {
     if (input.exchangeRate) {
       const cur = await this.prisma.currency.findUnique({ where: { id: input.currencyId } });
       if (!cur) throw new BusinessRuleException('Moneda inexistente', 'CURRENCY_NOT_FOUND');
@@ -120,7 +134,7 @@ export class SalesService {
     return list;
   }
 
-  private async buildLines(input: SalesDocInput, docDate: Date, exchangeRate: string, customerPriceListId: string | null) {
+  async buildLines(docType: SalesDocType, input: SalesDocInput, docDate: Date, exchangeRate: string, customerPriceListId: string | null) {
     const tx = this.prisma.tx;
     const productIds = [...new Set(input.lines.map(l => l.productId))];
     const products = new Map((await tx.product.findMany({ where: { id: { in: productIds }, deletedAt: null } })).map(p => [p.id, p]));
@@ -133,7 +147,7 @@ export class SalesService {
       factor = (await this.rateOf(list.currencyId, docDate)).div(D(exchangeRate));
     }
 
-    const resolved = [] as { l: SalesDocInput['lines'][number]; price: string; taxId: string | null; tax?: (typeof taxes extends Map<string, infer T> ? T : never) }[];
+    const resolved = [] as { l: SalesDocInput['lines'][number]; price: string; taxId: string | null; serials: string[]; tax?: (typeof taxes extends Map<string, infer T> ? T : never) }[];
     for (const [i, l] of input.lines.entries()) {
       const bad = (code: string, msg: string) => new BusinessRuleException(msg, code, [{ field: `lines[${i}]`, code }]);
       const p = products.get(l.productId);
@@ -149,7 +163,17 @@ export class SalesService {
         if (!pp) throw bad('PRICE_NOT_FOUND', `El producto ${p.sku} no tiene precio en la lista${list ? ` ${list.code}` : ''}: indique el precio`);
         price = round(D(pp.price.toString()).mul(factor), 6).toString();
       }
-      resolved.push({ l, price, taxId, tax });
+      // Series: solo facturas/notas; el producto por serial exige tantos seriales como unidades.
+      const nos = (l.serials ?? []).map(x => x.trim());
+      if (QTY_TYPES.includes(docType)) {
+        if (p.trackingMode !== 'SERIAL' && nos.length) throw bad('SERIALS_NOT_ALLOWED', `El producto ${p.sku} no se controla por seriales`);
+        if (p.trackingMode === 'SERIAL' && (docType === 'INVOICE' || docType === 'CREDIT_NOTE')) {
+          if (new Set(nos).size !== nos.length) throw bad('DUPLICATE_SERIAL', `Hay seriales repetidos para ${p.sku}`);
+          // En borrador pueden faltar (se exigen al emitir); si vienen, deben cuadrar con la cantidad.
+          if (nos.length && !D(l.quantity).eq(nos.length)) throw bad('SERIAL_COUNT_MISMATCH', `La cantidad (${l.quantity}) no coincide con los seriales indicados (${nos.length}) para ${p.sku}`);
+        }
+      }
+      resolved.push({ l, price, taxId, tax, serials: QTY_TYPES.includes(docType) ? nos : [] });
     }
 
     const totals = calcDocument(resolved.map(r => ({
@@ -160,12 +184,12 @@ export class SalesService {
       productId: r.l.productId, description: r.l.description ?? null, quantity: r.l.quantity, unitPrice: r.price,
       discountPct: r.l.discountPct ?? '0', taxId: r.taxId, taxRate: totals.lines[i].taxRate.toString(),
       net: totals.lines[i].net.toFixed(4), tax: totals.lines[i].tax.toFixed(4), total: totals.lines[i].total.toFixed(4),
-      parentLineId: r.l.parentLineId ?? null,
+      parentLineId: r.l.parentLineId ?? null, serials: r.serials,
     }));
     return { lines, totals, priceListId: list?.id ?? null };
   }
 
-  private async validateHeader(docType: SalesDocType, input: SalesDocInput) {
+  async validateHeader(docType: SalesDocType, input: SalesDocInput) {
     const tx = this.prisma.tx;
     const customer = await tx.customer.findFirst({ where: { id: input.customerId, deletedAt: null } });
     if (!customer) throw new BusinessRuleException('Cliente inexistente', 'CUSTOMER_NOT_FOUND');
@@ -178,8 +202,9 @@ export class SalesService {
       const wh = await tx.warehouse.findFirst({ where: { id: input.warehouseId, deletedAt: null, isActive: true } });
       if (!wh) throw new BusinessRuleException('Depósito inexistente o inactivo', 'WAREHOUSE_NOT_FOUND');
     }
+    if ((docType === 'INVOICE' || docType === 'CREDIT_NOTE') && !input.warehouseId) throw new BusinessRuleException('La factura requiere depósito', 'WAREHOUSE_REQUIRED', [{ field: 'warehouseId', code: 'REQUIRED' }]);
     if (input.reservesStock) {
-      if (docType === 'QUOTE') throw new BusinessRuleException('Las cotizaciones no reservan existencias', 'RESERVE_NOT_ALLOWED');
+      if (docType === 'QUOTE' || QTY_TYPES.includes(docType)) throw new BusinessRuleException('Las cotizaciones no reservan existencias', 'RESERVE_NOT_ALLOWED');
       if (!input.warehouseId) throw new BusinessRuleException('Para reservar existencias indique el depósito', 'WAREHOUSE_REQUIRED');
     }
     if (input.paymentCondition === 'CREDIT' && input.creditDays === 0) input.creditDays = customer.creditDays;
@@ -187,7 +212,7 @@ export class SalesService {
   }
 
   /** Valida el documento origen (tipo, estado, cliente, líneas y cantidades) y que no tenga otro hijo activo. */
-  private async validateParent(docType: SalesDocType, input: SalesDocInput, excludeDocId?: string) {
+  async validateParent(docType: SalesDocType, input: SalesDocInput, excludeDocId?: string) {
     const allowed = PARENTS_OF[docType];
     const withParent = input.lines.filter(l => l.parentLineId);
     if (!allowed) {
@@ -201,10 +226,11 @@ export class SalesService {
     const tx = this.prisma.tx;
     const parent = await tx.salesDocument.findFirst({ where: { id: input.parentId, docType: { in: allowed } } });
     if (!parent) throw new BusinessRuleException(`El documento origen debe ser ${allowed.join(' o ')}`, 'INVALID_PARENT');
-    const okState = (parent.docType === 'QUOTE' && parent.status === 'ACCEPTED') || (parent.docType === 'BUDGET' && ['CONFIRMED', 'CONVERTED'].includes(parent.status));
+    const okState = (parent.docType === 'QUOTE' && parent.status === 'ACCEPTED') || (parent.docType === 'BUDGET' && ['CONFIRMED', 'CONVERTED'].includes(parent.status))
+      || (parent.docType === 'ORDER' && ['CONFIRMED', 'PARTIALLY_INVOICED'].includes(parent.status)) || (parent.docType === 'INVOICE' && parent.status === 'CONFIRMED');
     if (!okState) throw new BusinessRuleException(`El documento origen está ${parent.status}`, 'INVALID_PARENT_STATE');
     if (parent.customerId !== input.customerId) throw new BusinessRuleException('El cliente no coincide con el documento origen', 'CUSTOMER_MISMATCH');
-    const sibling = await tx.documentLink.findMany({ where: { parentId: parent.id, childId: excludeDocId ? { not: excludeDocId } : undefined } });
+    const sibling = QTY_TYPES.includes(docType) ? [] : await tx.documentLink.findMany({ where: { parentId: parent.id, childId: excludeDocId ? { not: excludeDocId } : undefined } });
     if (sibling.length) {
       const alive = await tx.salesDocument.count({ where: { id: { in: sibling.map(s => s.childId) }, status: { not: 'CANCELLED' } } });
       if (alive) throw new ConflictError('El documento origen ya fue convertido', 'ALREADY_CONVERTED');
@@ -218,10 +244,32 @@ export class SalesService {
       if (pl.productId !== l.productId) throw new BusinessRuleException('El producto no coincide con la línea origen', 'PRODUCT_MISMATCH', [{ field: `lines[${i}]`, code: 'PRODUCT_MISMATCH' }]);
       asked.set(pl.id, (asked.get(pl.id) ?? ZERO).plus(D(l.quantity)));
     });
+    if (docType === 'CREDIT_NOTE' && withParent.length !== input.lines.length) throw new BusinessRuleException('Toda línea de una nota de crédito debe indicar parentLineId', 'PARENT_LINE_REQUIRED');
+    const used = QTY_TYPES.includes(docType) ? await this.consumed([...parentLines.keys()], [docType], QTY_STATES, excludeDocId) : new Map<string, ReturnType<typeof D>>();
     for (const [lineId, qty] of asked) {
-      if (qty.gt(D(parentLines.get(lineId)!.quantity.toString()))) throw new BusinessRuleException('Cantidad excede la del documento origen', 'EXCEEDS_PARENT_QUANTITY', [{ code: 'EXCEEDS_PARENT_QUANTITY', message: lineId }]);
+      const available = D(parentLines.get(lineId)!.quantity.toString()).minus(used.get(lineId) ?? ZERO);
+      if (qty.gt(available)) throw new BusinessRuleException(`Cantidad excede lo disponible del documento origen (${available.toString()})`, 'EXCEEDS_PARENT_QUANTITY', [{ code: 'EXCEEDS_PARENT_QUANTITY', message: lineId }]);
     }
     return parent;
+  }
+
+  /** Σ cantidades de líneas hijas por línea padre (solo hijos de los tipos/estados indicados). */
+  async consumed(parentLineIds: string[], childTypes: string[], statuses: string[], excludeChildDocId?: string) {
+    const out = new Map<string, ReturnType<typeof D>>();
+    if (!parentLineIds.length) return out;
+    const exclude = excludeChildDocId ? Prisma.sql`AND c.id <> ${excludeChildDocId}::uuid` : Prisma.empty;
+    const rows = await this.prisma.tx.$queryRaw<{ parent_line_id: string; q: string }[]>`
+      SELECT ll.parent_line_id, SUM(ll.quantity)::text AS q
+      FROM document_link_lines ll
+      JOIN document_links l ON l.id = ll.link_id
+      JOIN sales_documents c ON c.id = l.child_id AND c.company_id = l.company_id
+      WHERE ll.company_id = ${this.prisma.companyId}::uuid
+        AND ll.parent_line_id = ANY(${parentLineIds}::uuid[])
+        AND c.doc_type = ANY(${childTypes}::text[]) AND c.status = ANY(${statuses}::text[])
+        ${exclude}
+      GROUP BY ll.parent_line_id`;
+    for (const r of rows) out.set(r.parent_line_id, D(r.q));
+    return out;
   }
 
   // ═════════════════════════ borradores ═════════════════════════
@@ -232,7 +280,9 @@ export class SalesService {
     const docDate = new Date(input.docDate ?? caracasToday());
     await this.validateParent(docType, input);
     const exchangeRate = await this.resolveRate(input, docDate);
-    const { lines, totals, priceListId } = await this.buildLines(input, docDate, exchangeRate, customer.priceListId);
+    // Una nota de crédito conserva las alícuotas de la factura: la vigencia del impuesto se evalúa a la fecha de esta.
+    const taxDate = docType === 'CREDIT_NOTE' && input.parentId ? (await this.prisma.tx.salesDocument.findFirst({ where: { id: input.parentId }, select: { docDate: true } }))?.docDate ?? docDate : docDate;
+    const { lines, totals, priceListId } = await this.buildLines(docType, input, taxDate, exchangeRate, customer.priceListId);
     // Vendedor por omisión: el ligado al usuario que crea, o el del cliente.
     let sellerId = input.sellerId ?? null;
     if (!sellerId) sellerId = (await tx.seller.findFirst({ where: { userId: v.userId, deletedAt: null, isActive: true }, select: { id: true } }))?.id ?? customer.sellerId ?? null;
@@ -250,14 +300,14 @@ export class SalesService {
     return this.get(docType, doc.id, v);
   }
 
-  private totalsData(totals: ReturnType<typeof calcDocument>, exchangeRate: string) {
+  totalsData(totals: ReturnType<typeof calcDocument>, exchangeRate: string) {
     return {
       subtotal: totals.subtotal.toFixed(4), taxableBase: totals.taxableBase.toFixed(4), exemptBase: totals.exemptBase.toFixed(4),
       taxTotal: totals.taxTotal.toFixed(4), total: totals.total.toFixed(4), totalBase: toBase(totals.total, exchangeRate).toFixed(4),
     };
   }
 
-  private async saveLines(docId: string, lines: Awaited<ReturnType<SalesService['buildLines']>>['lines'], parentId: string | null, docType: SalesDocType) {
+  async saveLines(docId: string, lines: Awaited<ReturnType<SalesService['buildLines']>>['lines'], parentId: string | null, docType: SalesDocType) {
     const tx = this.prisma.tx;
     const companyId = this.prisma.companyId;
     await tx.documentLink.deleteMany({ where: { childId: docId } }); // cascada a document_link_lines
@@ -265,7 +315,7 @@ export class SalesService {
     const created = await tx.salesDocumentLine.createManyAndReturn({
       data: lines.map((l, i) => ({
         companyId, documentId: docId, lineNo: i + 1, productId: l.productId, description: l.description, quantity: l.quantity, unitPrice: l.unitPrice,
-        discountPct: l.discountPct, taxId: l.taxId, taxRate: l.taxRate, net: l.net, tax: l.tax, total: l.total,
+        discountPct: l.discountPct, taxId: l.taxId, taxRate: l.taxRate, net: l.net, tax: l.tax, total: l.total, serials: l.serials,
       })),
     });
     created.sort((a, b) => a.lineNo - b.lineNo);
@@ -301,14 +351,14 @@ export class SalesService {
       parentId: input.parentId === undefined ? link?.parentId ?? null : input.parentId,
       lines: input.lines ?? existing.map(l => ({
         productId: l.productId, description: l.description, quantity: l.quantity.toString(), unitPrice: l.unitPrice.toString(),
-        discountPct: l.discountPct.toString(), taxId: l.taxId, parentLineId: linkLines.find(x => x.childLineId === l.id)?.parentLineId ?? null,
+        discountPct: l.discountPct.toString(), taxId: l.taxId, serials: l.serials, parentLineId: linkLines.find(x => x.childLineId === l.id)?.parentLineId ?? null,
       })),
     };
     const customer = await this.validateHeader(docType, merged);
     const docDate = new Date(merged.docDate!);
     await this.validateParent(docType, merged, id);
     const exchangeRate = await this.resolveRate(merged, docDate);
-    const { lines, totals, priceListId } = await this.buildLines(merged, docDate, exchangeRate, customer.priceListId);
+    const { lines, totals, priceListId } = await this.buildLines(docType, merged, docDate, exchangeRate, customer.priceListId);
     await tx.salesDocument.update({
       where: { id },
       data: {
@@ -390,20 +440,25 @@ export class SalesService {
 
   // ═════════════════════════ reservas ═════════════════════════
 
-  /** Suma (+1) o libera (-1) la reserva del documento en `inventory_stock.reserved_qty` (bloqueando filas en orden). */
-  private async reserve(doc: { id: string; warehouseId: string | null }, sign: 1 | -1) {
-    const tx = this.prisma.tx;
-    const companyId = this.prisma.companyId;
-    if (!doc.warehouseId) return;
-    const lines = await tx.salesDocumentLine.findMany({ where: { documentId: doc.id } });
+  /** Suma (+1) o libera (-1) la reserva del documento completo en `inventory_stock.reserved_qty`. */
+  async reserve(doc: { id: string; warehouseId: string | null }, sign: 1 | -1) {
+    const lines = await this.prisma.tx.salesDocumentLine.findMany({ where: { documentId: doc.id } });
     const byProduct = new Map<string, ReturnType<typeof D>>();
     for (const l of lines) byProduct.set(l.productId, (byProduct.get(l.productId) ?? ZERO).plus(D(l.quantity.toString())));
-    const wh = await tx.warehouse.findFirstOrThrow({ where: { id: doc.warehouseId } });
+    await this.adjustReservation(doc.warehouseId, byProduct, sign);
+  }
+
+  /** Suma o libera reserva por producto (bloqueando filas en orden). Al sumar valida disponible = existencia − reservado. */
+  async adjustReservation(warehouseId: string | null, byProduct: Map<string, ReturnType<typeof D>>, sign: 1 | -1) {
+    const tx = this.prisma.tx;
+    const companyId = this.prisma.companyId;
+    if (!warehouseId) return;
+    const wh = await tx.warehouse.findFirstOrThrow({ where: { id: warehouseId } });
     for (const [productId, qty] of [...byProduct].sort((a, b) => a[0].localeCompare(b[0]))) {
-      await tx.$executeRaw`INSERT INTO inventory_stock (company_id, product_id, warehouse_id) VALUES (${companyId}::uuid, ${productId}::uuid, ${doc.warehouseId}::uuid) ON CONFLICT DO NOTHING`;
+      await tx.$executeRaw`INSERT INTO inventory_stock (company_id, product_id, warehouse_id) VALUES (${companyId}::uuid, ${productId}::uuid, ${warehouseId}::uuid) ON CONFLICT DO NOTHING`;
       const [row] = await tx.$queryRaw<{ quantity: string; reserved_qty: string }[]>`
         SELECT quantity::text, reserved_qty::text FROM inventory_stock
-        WHERE company_id = ${companyId}::uuid AND product_id = ${productId}::uuid AND warehouse_id = ${doc.warehouseId}::uuid FOR UPDATE`;
+        WHERE company_id = ${companyId}::uuid AND product_id = ${productId}::uuid AND warehouse_id = ${warehouseId}::uuid FOR UPDATE`;
       const reserved = D(row.reserved_qty);
       if (sign === 1) {
         const available = D(row.quantity).minus(reserved);
@@ -414,7 +469,7 @@ export class SalesService {
       }
       const next = sign === 1 ? reserved.plus(qty) : ZERO.plus(reserved.minus(qty).lt(0) ? ZERO : reserved.minus(qty));
       await tx.$executeRaw`UPDATE inventory_stock SET reserved_qty = ${next.toFixed(4)}::numeric, updated_at = now()
-        WHERE company_id = ${companyId}::uuid AND product_id = ${productId}::uuid AND warehouse_id = ${doc.warehouseId}::uuid`;
+        WHERE company_id = ${companyId}::uuid AND product_id = ${productId}::uuid AND warehouse_id = ${warehouseId}::uuid`;
     }
   }
 
@@ -452,13 +507,13 @@ export class SalesService {
    * Límite de crédito (en moneda base): Σ pedidos a crédito confirmados + cuentas por cobrar abiertas del cliente + este pedido.
    * `creditLimit = 0` = sin límite. (Cuando exista facturación, el pedido facturado dejará de contarse como pedido y pasará a CxC.)
    */
-  private async checkCredit(customer: { id: string; creditLimit: { toString(): string } }, doc: { id: string; totalBase: { toString(): string } }, v: Viewer, override: boolean) {
+  async checkCredit(customer: { id: string; creditLimit: { toString(): string } }, doc: { id: string; totalBase: { toString(): string } }, v: Viewer, override: boolean, excludeOrderId?: string) {
     const limit = D(customer.creditLimit.toString());
     if (limit.lte(0)) return;
     const [row] = await this.prisma.tx.$queryRaw<{ s: string }[]>`
       SELECT COALESCE(SUM(total_base), 0)::text AS s FROM sales_documents
       WHERE company_id = ${this.prisma.companyId}::uuid AND customer_id = ${customer.id}::uuid AND doc_type = 'ORDER'
-        AND status = 'CONFIRMED' AND payment_condition = 'CREDIT' AND id <> ${doc.id}::uuid`;
+        AND status = 'CONFIRMED' AND payment_condition = 'CREDIT' AND id <> ${doc.id}::uuid AND id <> COALESCE(${excludeOrderId ?? null}::uuid, '00000000-0000-0000-0000-000000000000'::uuid)`;
     const exposure = D(row.s).plus(D(doc.totalBase.toString())).plus(await this.receivables.exposureBase(customer.id));
     if (exposure.lte(limit)) return;
     if (override && v.creditOverride) return;
@@ -471,6 +526,7 @@ export class SalesService {
   async cancel(docType: SalesDocType, id: string, reason: string, v: Viewer) {
     const tx = this.prisma.tx;
     const doc = await this.find(docType, id, v, true);
+    if (QTY_TYPES.includes(docType)) throw new BusinessRuleException('Las facturas y notas se anulan desde su propio endpoint', 'INVALID_ACTION');
     const cancellable = docType === 'QUOTE' ? ['DRAFT', 'SENT', 'ACCEPTED'] : ['DRAFT', 'CONFIRMED'];
     if (!cancellable.includes(doc.status)) throw new BusinessRuleException(`No se puede anular un documento ${doc.status}`, 'INVALID_STATE');
     const children = await tx.documentLink.findMany({ where: { parentId: id } });

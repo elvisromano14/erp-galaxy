@@ -119,7 +119,9 @@
       "accounts": "Bancos y cajas",
       "price-update": "Actualizar precios",
       "receivables": "Cuentas por cobrar",
-      "receipts": "Cobros a clientes"
+      "receipts": "Cobros a clientes",
+      "sales-invoices": "Facturas",
+      "sales-credit-notes": "Notas de crédito"
     }
   },
   "header": {
@@ -195,7 +197,8 @@
     "OPEN": "Abierto",
     "PARTIALLY_PAID": "Pago parcial",
     "PAID": "Pagado",
-    "CONVERTED": "Convertido"
+    "CONVERTED": "Convertido",
+    "PARTIALLY_INVOICED": "Facturado parcial"
   },
   "docTypes": {
     "TRANSFER": "Traslado",
@@ -656,18 +659,51 @@
     "docTypes": {
       "QUOTE": "Cotización de venta",
       "BUDGET": "Presupuesto",
-      "ORDER": "Pedido"
+      "ORDER": "Pedido",
+      "INVOICE": "Factura",
+      "CREDIT_NOTE": "Nota de crédito"
     },
     "confirmMessage": {
       "BUDGET": "Se asignará el número. Si reserva existencias, se aparta la cantidad en el depósito.",
       "ORDER": "Se asignará el número. Si reserva existencias, se aparta la cantidad en el depósito.",
-      "QUOTE": ""
+      "QUOTE": "",
+      "INVOICE": "Se asignan número de factura y de control, sale la mercancía del inventario y, si es a crédito, nace la cuenta por cobrar.",
+      "CREDIT_NOTE": ""
     },
     "cancelMessage": {
       "QUOTE": "La cotización quedará anulada.",
       "BUDGET": "El presupuesto quedará anulado y se libera la reserva.",
-      "ORDER": "El pedido quedará anulado y se libera la reserva."
-    }
+      "ORDER": "El pedido quedará anulado y se libera la reserva.",
+      "INVOICE": "Se revierte la salida de inventario, los pagos registrados y la cuenta por cobrar. Con cobros o notas de crédito aplicadas no se puede anular.",
+      "CREDIT_NOTE": ""
+    },
+    "controlNo": "N° de control",
+    "issue": "Emitir factura",
+    "issuedOk": "Factura emitida",
+    "facturar": "Facturar",
+    "pdf": "PDF",
+    "pdfTicket": "Ticket",
+    "creditNote": "Nota de crédito",
+    "creditNoteOk": "Nota de crédito emitida",
+    "paymentsTitle": "Pagos de la factura",
+    "payHint": "Los pagos deben cuadrar con el total más el IGTF (3 % sobre lo pagado en divisas con instrumentos que lo apliquen). El IGTF se calcula al emitir.",
+    "addPayment": "Agregar pago",
+    "payMethod": "Instrumento",
+    "payAccount": "Cuenta",
+    "payAmount": "Monto",
+    "payRef": "Referencia",
+    "payTotal": "Total de la factura",
+    "payEntered": "Pagos ingresados",
+    "payFill": "Completar",
+    "emit": "Emitir",
+    "creditNoteTitle": "Nota de crédito (devolución)",
+    "cnHint": "Indique cuánto se devuelve de cada línea. Reingresa al inventario al costo original.",
+    "cnQty": "Devolver",
+    "cnAvailable": "Disponible",
+    "cnSerials": "Seriales que se devuelven",
+    "receivable": "Cuenta por cobrar",
+    "paymentsDone": "Pagos recibidos",
+    "serialsNote": "Indique los seriales que se venden"
   },
   "treasury": {
     "searchHint": "Buscar por número o referencia…",

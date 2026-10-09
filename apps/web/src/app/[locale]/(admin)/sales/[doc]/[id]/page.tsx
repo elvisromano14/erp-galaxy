@@ -3,7 +3,7 @@
 import { calcDocument } from "@erp/domain";
 import ConfirmDialog from "@/components/erp/ConfirmDialog";
 import { CheckField, DecimalField, IntField, SelectField, TextAreaField, TextField } from "@/components/erp/FormFields";
-import LinesEditor, { newKey, type Line, type LineCol } from "@/components/erp/LinesEditor";
+import LinesEditor, { isSerialLine, newKey, parseSerials, type Line, type LineCol } from "@/components/erp/LinesEditor";
 import { AsyncRefField, RefSelect, useOptions } from "@/components/erp/RefSelect";
 import { SALES_DOCS, SALES_SLUG_BY_TYPE, type SalesDocMeta } from "@/components/erp/sales-docs";
 import { Card, ErrorBox, Loading, PageHeader, StatusBadge } from "@/components/erp/ui";
@@ -12,8 +12,9 @@ import Button from "@/components/ui/button/Button";
 import { useAuth } from "@/context/AuthContext";
 import { useNotice } from "@/context/NoticeContext";
 import { Link, useRouter } from "@/i18n/navigation";
-import { ApiError, api, del, patch, post } from "@/lib/api";
-import { fmtDate, fmtDateTime, fmtMoney, fmtNumber, todayCaracas } from "@/lib/format";
+import { Modal } from "@/components/ui/modal";
+import { ApiError, api, del, openPdf, patch, post } from "@/lib/api";
+import { fmtDate, fmtDateTime, fmtMoney, fmtNumber, fmtQty, todayCaracas } from "@/lib/format";
 import { notFound, useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
@@ -51,6 +52,11 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
   const [error, setError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState<null | "cancel" | "delete" | "confirm" | "send" | "reject">(null);
+  const [payModal, setPayModal] = useState(false);
+  const [pays, setPays] = useState<Row[]>([{ paymentMethodId: "", currencyId: "", bankAccountId: "", amount: "", reference: "" }]);
+  const [cnRows, setCnRows] = useState<Row[] | null>(null);
+  const methods = useFetch<Row[]>(meta.type === "INVOICE" ? "/payment-methods" : null, { limit: 100 });
+  const isInvoice = meta.type === "INVOICE";
 
   const doc = loaded.data;
   const status: string = doc?.status ?? "DRAFT";
@@ -71,7 +77,7 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
       (doc.lines as Row[]).map((l) => ({
         _key: l.id, productId: l.productId, productLabel: l.product ? `${l.product.sku} — ${l.product.name}` : l.productId,
         quantity: String(l.quantity), unitPrice: String(l.unitPrice), discountPct: String(l.discountPct), taxId: l.taxId ?? "",
-        parentLineId: l.parentLineId ?? null, product: l.product,
+        parentLineId: l.parentLineId ?? null, product: l.product, serialsText: ((l.serials as string[]) ?? []).join("\n"),
       })),
     );
   }, [doc]);
@@ -118,10 +124,11 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
 
   const columns: LineCol[] = [
     { key: "product", header: t("fields.product"), kind: "product", className: "min-w-72", placeholder: t("inventory.searchProduct"), editable: () => !hasParent },
-    { key: "quantity", header: t("fields.quantity"), kind: "decimal", align: "end", className: "w-28" },
+    { key: "quantity", header: t("fields.quantity"), kind: "decimal", align: "end", className: "w-28", editable: (l) => !isInvoice || !isSerialLine(l) },
     { key: "unitPrice", header: t("fields.unitPrice"), kind: "decimal", align: "end", className: "w-32", placeholder: t("sales.priceFromList"), editable: () => !hasParent },
     { key: "discountPct", header: t("fields.discountPct"), kind: "decimal", align: "end", className: "w-24", editable: () => !hasParent },
     { key: "taxId", header: t("fields.tax"), kind: "select", options: taxes.options, className: "min-w-40", editable: () => !hasParent },
+    ...(isInvoice ? [{ key: "serialsText", header: t("fields.serials"), kind: "serials" as const, placeholder: t("inventory.serialsPlaceholder"), editable: (l: Line) => isSerialLine(l) }] : []),
     { key: "total", header: t("fields.total"), kind: "readonly", align: "end", format: (l) => { const c = live?.byKey.get(l._key); return c && l.unitPrice ? fmtMoney(c.total.toString()) : "—"; } },
   ];
 
@@ -132,9 +139,10 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
     return {
       customerId: h.customerId, sellerId: h.sellerId || null, warehouseId: h.warehouseId || null, priceListId: h.priceListId || null, currencyId: h.currencyId,
       exchangeRate: v(h.exchangeRate), docDate: h.docDate, validUntil: h.validUntil || null, paymentCondition: h.paymentCondition, creditDays: Number(h.creditDays || 0),
-      reservesStock: meta.type === "QUOTE" ? false : h.reservesStock, notes: h.notes.trim() || null, parentId: h.parentId || null, ...(version !== undefined ? { version } : {}),
+      reservesStock: meta.type === "QUOTE" || isInvoice ? false : h.reservesStock, notes: h.notes.trim() || null, parentId: h.parentId || null, ...(version !== undefined ? { version } : {}),
       lines: lines.filter((l) => l.productId).map((l) => ({
         productId: l.productId, quantity: l.quantity, ...(v(l.unitPrice) ? { unitPrice: l.unitPrice } : {}), discountPct: v(l.discountPct) ?? "0", taxId: l.taxId || null, parentLineId: l.parentLineId ?? null,
+        ...(isInvoice && isSerialLine(l) && parseSerials(l.serialsText).length ? { serials: parseSerials(l.serialsText) } : {}),
       })),
     };
   }
@@ -178,13 +186,13 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
   const title = isNew ? t("purchases.newDoc", { type: typeName }) : `${typeName} ${doc?.number ?? t("common.draft")}`;
   const isBs = currencies.rows.find((c) => c.id === h.currencyId)?.code === "VES";
   const totals = live?.calc;
-  const reservable = meta.type !== "QUOTE";
+  const reservable = meta.type === "BUDGET" || meta.type === "ORDER";
 
   return (
     <div>
       <PageHeader
         title={title}
-        subtitle={doc ? `${fmtDate(doc.docDate)}${doc.confirmedAt ? ` · ${t("common.confirmedAt")} ${fmtDateTime(doc.confirmedAt)}` : ""}` : undefined}
+        subtitle={doc ? `${fmtDate(doc.docDate)}${doc.controlNo ? ` · ${t("sales.controlNo")} ${doc.controlNo}` : ""}${doc.confirmedAt ? ` · ${t("common.confirmedAt")} ${fmtDateTime(doc.confirmedAt)}` : ""}` : undefined}
         actions={<>{doc && <StatusBadge status={status} />}<Button variant="outline" size="sm" onClick={() => router.push(`/sales/${meta.slug}`)}>{t("common.back")}</Button></>}
       />
       <ErrorBox error={loaded.error ?? error} />
@@ -210,7 +218,7 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
             onPick={(r) => set({ customerId: r.id, customerDisplay: customerLabel(r), customerPriceListId: r.priceListId ?? "", ...(r.sellerId && !h.sellerId ? { sellerId: r.sellerId } : {}), ...(h.paymentCondition === "CREDIT" ? { creditDays: String(r.creditDays ?? 0) } : {}) })}
             disabled={readOnly || hasParent} error={fe("customerId")} placeholder={t("sales.searchCustomer")} />
           <TextField label={t("fields.date")} type="date" value={h.docDate} onChange={(v) => set({ docDate: v })} disabled={readOnly} error={fe("docDate")} />
-          {meta.type !== "ORDER" && <TextField label={t("fields.validUntil")} type="date" value={h.validUntil} onChange={(v) => set({ validUntil: v })} disabled={readOnly} />}
+          {(meta.type === "QUOTE" || meta.type === "BUDGET") && <TextField label={t("fields.validUntil")} type="date" value={h.validUntil} onChange={(v) => set({ validUntil: v })} disabled={readOnly} />}
           <RefSelect label={t("fields.seller")} resource="/sellers" labelKey={(r) => `${r.code} — ${r.name}`} value={h.sellerId} onChange={(v) => set({ sellerId: v })} disabled={readOnly} error={fe("sellerId")} />
           <RefSelect label={t("fields.warehouse")} resource="/warehouses" labelKey={(r) => `${r.code} — ${r.name}`} value={h.warehouseId} onChange={(v) => set({ warehouseId: v })} disabled={readOnly} error={fe("warehouseId")} />
           <RefSelect label={t("fields.priceList")} resource="/price-lists" labelKey={(r) => `${r.code} — ${r.name}`} value={h.priceListId} onChange={(v) => set({ priceListId: v })} disabled={readOnly || hasParent} hint={readOnly ? undefined : t("sales.priceListHint")} />
@@ -226,7 +234,7 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
       <Card title={t("common.lines")}>
         <LinesEditor
           columns={columns} lines={lines} onChange={setLines} readOnly={readOnly}
-          onProductPick={(i, p) => { suggestPrice(lines[i]._key, p.id); return { taxId: p.taxId ?? "", quantity: "1", discountPct: "0", unitPrice: "" }; }}
+          onProductPick={(i, p) => { suggestPrice(lines[i]._key, p.id); return { taxId: p.taxId ?? "", quantity: p.trackingMode === "SERIAL" ? "" : "1", discountPct: "0", unitPrice: "", serialsText: "" }; }}
           footer={
             <div className="mt-4 flex justify-end">
               <dl className="w-full max-w-sm space-y-1 text-sm">
@@ -254,6 +262,34 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
         />
       </Card>
 
+      {isInvoice && (doc?.payments?.length ?? 0) > 0 && (
+        <Card title={t("sales.paymentsDone")} className="mt-6">
+          <table className="w-full text-sm">
+            <tbody>
+              {(doc!.payments as Row[]).map((p) => (
+                <tr key={p.id} className="border-b border-gray-50 dark:border-gray-800">
+                  <td className="py-2">{methods.data?.find((m) => m.id === p.paymentMethodId)?.name ?? ""}</td>
+                  <td className="tabular-nums text-end">{fmtMoney(p.amount)} {currencies.rows.find((c) => c.id === p.currencyId)?.code ?? ""}</td>
+                  <td className="text-end text-gray-500">{p.reference ?? ""}</td>
+                  <td className="tabular-nums text-end">{Number(p.igtfAmount) > 0 ? `IGTF ${fmtMoney(p.igtfAmount)}` : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
+      {isInvoice && (doc?.receivable?.length ?? 0) > 0 && (
+        <Card title={t("sales.receivable")} className="mt-6">
+          <table className="w-full text-sm">
+            <tbody>
+              {(doc!.receivable as Row[]).map((e) => (
+                <tr key={e.id} className="border-b border-gray-50 dark:border-gray-800"><td className="py-2">{e.documentNo}</td><td>{fmtDate(e.dueDate)}</td><td className="tabular-nums text-end">{fmtMoney(e.amount)}</td><td className="tabular-nums text-end">{fmtMoney(e.balance)}</td><td className="text-end"><StatusBadge status={e.status} /></td></tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
+
       <Actions />
 
       <ConfirmDialog open={dialog === "confirm"} busy={busy} title={t("purchases.confirmTitle")} message={t(`sales.confirmMessage.${meta.type}`)} confirmLabel={t("common.confirmDocument")} onCancel={() => setDialog(null)} onConfirm={() => action(`${meta.api}/:id/confirm`, t("purchases.confirmedOk"), { save: true })} />
@@ -261,8 +297,82 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
       <ConfirmDialog open={dialog === "reject"} busy={busy} danger title={t("purchases.rejectTitle")} confirmLabel={t("purchases.reject")} onCancel={() => setDialog(null)} onConfirm={() => action(`${meta.api}/:id/reject`, t("purchases.rejectedOk"))} />
       <ConfirmDialog open={dialog === "cancel"} busy={busy} danger requireReason title={t("common.cancelTitle")} message={t(`sales.cancelMessage.${meta.type}`)} confirmLabel={t("common.cancelDocument")} onCancel={() => setDialog(null)} onConfirm={(reason) => action(`${meta.api}/:id/cancel`, t("purchases.cancelledOk"), { body: { reason } })} />
       <ConfirmDialog open={dialog === "delete"} busy={busy} danger title={t("common.deleteTitle")} message={t("common.deleteMessage")} confirmLabel={t("common.delete")} onCancel={() => setDialog(null)} onConfirm={removeDraft} />
+
+      {payModal && (
+        <Modal isOpen onClose={() => setPayModal(false)} className="m-4 max-w-3xl p-6">
+          <h3 className="mb-2 pe-10 text-lg font-semibold text-gray-800 dark:text-white/90">{t("sales.paymentsTitle")}</h3>
+          <p className="mb-4 text-sm text-gray-500">{t("sales.payHint")}</p>
+          <ErrorBox error={error} />
+          <p className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">{t("sales.payTotal")}: {fmtMoney(totals?.total.toString() ?? doc?.total)} {currencies.rows.find((c) => c.id === h.currencyId)?.code}</p>
+          {pays.map((p, i) => {
+            const setP = (patchObj: Row) => setPays(pays.map((x, j) => (j === i ? { ...x, ...patchObj } : x)));
+            return (
+              <div key={i} className="mb-3 grid grid-cols-1 gap-3 rounded-lg border border-gray-100 p-3 sm:grid-cols-5 dark:border-gray-800">
+                <RefSelect label={t("sales.payMethod")} resource="/payment-methods" labelKey={(r) => `${r.code} — ${r.name}`} value={p.paymentMethodId} onChange={(v) => setP({ paymentMethodId: v })} />
+                <RefSelect label={t("fields.currency")} resource="/currencies" labelKey={(r) => r.code} value={p.currencyId} onChange={(v) => setP({ currencyId: v, bankAccountId: "" })} />
+                <RefSelect label={t("sales.payAccount")} resource="/bank-accounts" labelKey={(r) => `${r.name} (${r.number.slice(-4)})`} filter={p.currencyId ? { currencyId: p.currencyId } : undefined} value={p.bankAccountId} onChange={(v) => setP({ bankAccountId: v })} />
+                <DecimalField label={t("sales.payAmount")} value={p.amount} onChange={(v) => setP({ amount: v })} align="end" />
+                <TextField label={t("sales.payRef")} value={p.reference} onChange={(v) => setP({ reference: v })} />
+              </div>
+            );
+          })}
+          <div className="flex items-center justify-between">
+            <div className="flex gap-3">
+              <Button variant="outline" size="sm" onClick={() => setPays([...pays, { paymentMethodId: "", currencyId: h.currencyId, bankAccountId: "", amount: "", reference: "" }])}>{t("sales.addPayment")}</Button>
+              {pays.length === 1 && <Button variant="outline" size="sm" onClick={() => setPays([{ ...pays[0], currencyId: pays[0].currencyId || h.currencyId, amount: String(totals?.total ?? doc?.total ?? "") }])}>{t("sales.payFill")}</Button>}
+            </div>
+            <div className="flex gap-3"><Button variant="outline" size="sm" onClick={() => setPayModal(false)}>{t("common.cancel")}</Button><Button size="sm" disabled={busy || !pays.some((p) => p.paymentMethodId && p.currencyId && p.bankAccountId && Number(p.amount) > 0)} onClick={emit}>{t("sales.emit")}</Button></div>
+          </div>
+        </Modal>
+      )}
+
+      {cnRows && (
+        <Modal isOpen onClose={() => setCnRows(null)} className="m-4 max-w-3xl p-6">
+          <h3 className="mb-2 pe-10 text-lg font-semibold text-gray-800 dark:text-white/90">{t("sales.creditNoteTitle")}</h3>
+          <p className="mb-4 text-sm text-gray-500">{t("sales.cnHint")}</p>
+          <ErrorBox error={error} />
+          <table className="w-full text-sm">
+            <thead><tr className="border-b border-gray-100 text-gray-500 dark:border-gray-800"><th className="py-2 text-start">{t("fields.product")}</th><th className="text-end">{t("sales.cnAvailable")}</th><th className="text-end">{t("sales.cnQty")}</th></tr></thead>
+            <tbody>
+              {cnRows.map((r, i) => (
+                <tr key={r.lineId} className="border-b border-gray-50 dark:border-gray-800">
+                  <td className="py-2">{r.label}</td><td className="text-end tabular-nums">{fmtQty(r.available)}</td>
+                  <td className="w-48 py-1">{r.serial
+                    ? <textarea rows={2} aria-label={t("sales.cnSerials")} placeholder={`${t("sales.cnSerials")} (${(r.sold as string[]).join(", ")})`} value={r.serialsText} onChange={(e) => setCnRows(cnRows.map((x, j) => (j === i ? { ...x, serialsText: e.target.value } : x)))} className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 font-mono text-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90" />
+                    : <input inputMode="decimal" aria-label={t("sales.cnQty")} value={r.qty} onChange={(e) => setCnRows(cnRows.map((x, j) => (j === i ? { ...x, qty: e.target.value.replace(",", ".").replace(/[^0-9.]/g, "") } : x)))} className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-end text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90" />}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="mt-6 flex justify-end gap-3"><Button variant="outline" size="sm" onClick={() => setCnRows(null)}>{t("common.cancel")}</Button><Button size="sm" disabled={busy || !cnRows.some((r) => (r.serial ? parseSerials(r.serialsText).length > 0 : Number(r.qty) > 0))} onClick={submitCreditNote}>{t("sales.creditNote")}</Button></div>
+        </Modal>
+      )}
     </div>
   );
+
+  async function openCreditNote() {
+    const st: Row[] = doc?.lineStatus ?? [];
+    setCnRows((doc!.lines as Row[]).map((l) => ({ lineId: l.id, label: l.product ? `${l.product.sku} — ${l.product.name}` : l.productId, available: st.find((x) => x.lineId === l.id)?.available ?? "0", qty: "", serial: l.product?.trackingMode === "SERIAL", sold: (l.serials as string[]) ?? [], serialsText: "" })).filter((x) => Number(x.available) > 0));
+  }
+
+  async function submitCreditNote() {
+    if (!cnRows) return;
+    const rows = cnRows.filter((r) => (r.serial ? parseSerials(r.serialsText).length > 0 : Number(r.qty) > 0));
+    await action(`${meta.api}/:id/credit-note`, t("sales.creditNoteOk"), {
+      body: { lines: rows.map((r) => (r.serial ? { parentLineId: r.lineId, quantity: String(parseSerials(r.serialsText).length), serials: parseSerials(r.serialsText) } : { parentLineId: r.lineId, quantity: r.qty })) },
+      navigateTo: (d) => ["credit-notes", d.id],
+    });
+    setCnRows(null);
+  }
+
+  async function emit() {
+    const rows = pays.filter((p) => p.paymentMethodId && Number(p.amount) > 0);
+    await action(`${meta.api}/:id/confirm`, t("sales.issuedOk"), {
+      save: true,
+      body: doc?.paymentCondition === "CREDIT" || h.paymentCondition === "CREDIT" ? {} : { payments: rows.map((p) => ({ paymentMethodId: p.paymentMethodId, bankAccountId: p.bankAccountId || null, currencyId: p.currencyId, amount: p.amount, reference: p.reference?.trim() || null })) },
+    });
+    setPayModal(false);
+  }
 
   function Actions() {
     const btns: React.ReactNode[] = [];
@@ -270,6 +380,10 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
     const T = meta.type;
     if (status === "DRAFT" && !isNew && can(P("update"))) add("del", <Button variant="danger" size="sm" disabled={busy} onClick={() => setDialog("delete")}>{t("common.delete")}</Button>);
     if (!readOnly) add("save", <Button variant="outline" size="sm" disabled={busy} onClick={saveDraft}>{t("common.saveDraft")}</Button>);
+    if ((T === "INVOICE" || T === "CREDIT_NOTE") && doc && status !== "DRAFT") {
+      add("pdf", <Button variant="outline" size="sm" onClick={() => openPdf(`${meta.api}/${id}/pdf`).catch((e) => setError(e instanceof ApiError ? e : new ApiError(0, "ERROR", String(e))))}>{t("sales.pdf")}</Button>);
+      add("tk", <Button variant="outline" size="sm" onClick={() => openPdf(`${meta.api}/${id}/pdf`, { format: "ticket" }).catch((e) => setError(e instanceof ApiError ? e : new ApiError(0, "ERROR", String(e))))}>{t("sales.pdfTicket")}</Button>);
+    }
     if (T === "QUOTE") {
       if (status === "DRAFT" && can(P("confirm"))) add("send", <Button size="sm" disabled={busy} onClick={() => setDialog("send")}>{t("purchases.send")}</Button>);
       if (status === "SENT" && can(P("confirm"))) {
@@ -281,10 +395,23 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
         if (can("sales:orders:create")) add("toord", <Button variant="outline" size="sm" disabled={busy} onClick={() => action(`${meta.api}/:id/convert-to-order`, t("purchases.convertedOk"), { navigateTo: (d) => ["orders", d.id] })}>{t("sales.convertToOrder")}</Button>);
       }
       if (["SENT", "ACCEPTED"].includes(status) && can(P("cancel"))) add("cx", <Button variant="outline" size="sm" disabled={busy} onClick={() => setDialog("cancel")}>{t("common.cancelDocument")}</Button>);
+    } else if (T === "INVOICE") {
+      if (status === "DRAFT" && can(P("confirm"))) {
+        const credit = h.paymentCondition === "CREDIT";
+        add("emit", <Button size="sm" disabled={busy} onClick={() => (credit ? action(`${meta.api}/:id/confirm`, t("sales.issuedOk"), { save: true, body: {} }) : setPayModal(true))}>{t("sales.issue")}</Button>);
+        if (error?.code === "CREDIT_LIMIT_EXCEEDED" && can("sales:orders:credit-override")) add("ovr", <Button variant="danger" size="sm" disabled={busy} onClick={() => action(`${meta.api}/:id/confirm`, t("sales.issuedOk"), { save: true, body: { overrideCredit: true } })}>{t("sales.confirmOverCredit")}</Button>);
+      }
+      if (status === "CONFIRMED") {
+        if (can("sales:credit-notes:create")) add("cn", <Button variant="outline" size="sm" disabled={busy} onClick={openCreditNote}>{t("sales.creditNote")}</Button>);
+        if (can(P("cancel"))) add("cx", <Button variant="outline" size="sm" disabled={busy} onClick={() => setDialog("cancel")}>{t("common.cancelDocument")}</Button>);
+      }
+    } else if (T === "CREDIT_NOTE") {
+      // las notas de crédito no se editan ni se anulan: se corrigen con otro documento
     } else {
       if (status === "DRAFT" && error?.code === "CREDIT_LIMIT_EXCEEDED" && can("sales:orders:credit-override")) add("ovr", <Button variant="danger" size="sm" disabled={busy} onClick={() => action(`${meta.api}/:id/confirm`, t("purchases.confirmedOk"), { save: true, body: { overrideCredit: true } })}>{t("sales.confirmOverCredit")}</Button>);
       if (status === "DRAFT" && can(P("confirm"))) add("conf", <Button size="sm" disabled={busy} onClick={() => setDialog("confirm")}>{t("common.confirmDocument")}</Button>);
       if (T === "BUDGET" && status === "CONFIRMED" && can("sales:orders:create")) add("toord", <Button size="sm" disabled={busy} onClick={() => action(`${meta.api}/:id/convert-to-order`, t("purchases.convertedOk"), { navigateTo: (d) => ["orders", d.id] })}>{t("sales.convertToOrder")}</Button>);
+      if (T === "ORDER" && ["CONFIRMED", "PARTIALLY_INVOICED"].includes(status) && can("sales:invoices:create")) add("toinv", <Button size="sm" disabled={busy} onClick={() => action(`${meta.api}/:id/convert-to-invoice`, t("purchases.convertedOk"), { navigateTo: (d) => ["invoices", d.id] })}>{t("sales.facturar")}</Button>);
       if (status === "CONFIRMED" && can(P("cancel"))) add("cx", <Button variant="outline" size="sm" disabled={busy} onClick={() => setDialog("cancel")}>{t("common.cancelDocument")}</Button>);
     }
     return <div className="mt-6 flex flex-wrap justify-end gap-3">{btns}</div>;

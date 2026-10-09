@@ -226,6 +226,20 @@ export async function downloadFile(path: string, query?: Query): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+/** Abre un PDF autenticado en una pestaña nueva (la abre antes de la espera para no chocar con el bloqueo de ventanas). */
+export async function openPdf(path: string, query?: Query): Promise<void> {
+  const w = window.open("", "_blank");
+  try {
+    const res = await authedFetch(path, { method: "GET", query });
+    const url = URL.createObjectURL(new Blob([await res.blob()], { type: "application/pdf" }));
+    if (w) w.location.href = url; else window.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (e) {
+    w?.close();
+    throw e;
+  }
+}
+
 /** Sube un archivo (multipart) y devuelve la respuesta JSON de la API. */
 export async function uploadFile<T = unknown>(path: string, file: File, query?: Query): Promise<ApiResult<T>> {
   const form = new FormData();

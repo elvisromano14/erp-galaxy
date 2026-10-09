@@ -65,7 +65,7 @@ export function Empty({ text }: { text?: string }) {
 
 const STATUS_COLOR: Record<string, "primary" | "success" | "error" | "warning" | "info" | "light" | "dark"> = {
   DRAFT: "light", SENT: "info", ACCEPTED: "primary", REJECTED: "error", EXPIRED: "warning",
-  CONFIRMED: "primary", PARTIALLY_FULFILLED: "warning", FULFILLED: "success", INVOICED: "success", CLOSED: "dark",
+  CONFIRMED: "primary", PARTIALLY_FULFILLED: "warning", FULFILLED: "success", INVOICED: "success", PARTIALLY_INVOICED: "warning", CLOSED: "dark",
   CANCELLED: "error", VOIDED: "error", OPEN: "info", PARTIALLY_PAID: "warning", PAID: "success", CONVERTED: "success",
 };
 

@@ -1,4 +1,5 @@
-import { Controller, Delete, Get, Param, Patch, Post, Type } from '@nestjs/common';
+import { Controller, Delete, Get, Param, Patch, Post, Res, StreamableFile, Type } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { uuid } from '@erp/contracts';
@@ -6,9 +7,10 @@ import { AuthUser, CurrentUser, RequirePermissions } from '../../common/auth/dec
 import { PermissionsService } from '../../common/auth/permissions.service';
 import { ZodPipe } from '../../common/http/zod.pipe';
 import { ZBody, ZQuery } from '../../common/http/zod.decorators';
+import { InvoicingService } from './invoicing.service';
 import { SalesService } from './sales.service';
 import {
-  SalesRoute, SALES_ROUTES, salesCancelSchema, salesDocSchema, salesDocUpdateSchema, salesListSchema, confirmSchema, Viewer,
+  SalesRoute, SALES_ROUTES, salesCancelSchema, salesDocSchema, salesDocUpdateSchema, salesListSchema, confirmSchema, confirmInvoiceSchema, creditNoteSchema, pdfQuery, Viewer,
 } from './sales.types';
 
 const id = new ZodPipe(uuid);
@@ -19,14 +21,14 @@ async function viewerOf(perms: PermissionsService, u: AuthUser): Promise<Viewer>
   return { userId: u.userId, all: have.includes('sales:documents:read-all'), creditOverride: have.includes('sales:orders:credit-override') };
 }
 
-/** Un controlador por tipo de documento; los vendedores sin `sales:documents:read-all` solo ven los suyos. */
-function makeController(route: SalesRoute): Type<unknown> {
+/** Lectura por tipo de documento; los vendedores sin `sales:documents:read-all` solo ven los suyos. */
+function makeReadController(route: SalesRoute): Type<unknown> {
   const P = (a: string) => `${route.permission}:${a}`;
   const t = route.docType;
 
   @ApiTags(route.path) @ApiBearerAuth()
   @Controller(route.path)
-  class DocController {
+  class ReadController {
     constructor(readonly svc: SalesService, readonly perms: PermissionsService) {}
 
     @Get() @RequirePermissions(P('read'))
@@ -34,6 +36,20 @@ function makeController(route: SalesRoute): Type<unknown> {
 
     @Get(':id') @RequirePermissions(P('read'))
     async get(@CurrentUser() u: AuthUser, @Param('id', id) did: string) { return this.svc.get(t, did, await viewerOf(this.perms, u)); }
+  }
+  Reflect.defineMetadata('design:paramtypes', [SalesService, PermissionsService], ReadController);
+  return ReadController;
+}
+
+/** Alta/edición/baja de borradores. Las notas de crédito solo nacen de una factura (endpoint propio) y las facturas se anulan por el suyo. */
+function makeWriteController(route: SalesRoute): Type<unknown> {
+  const P = (a: string) => `${route.permission}:${a}`;
+  const t = route.docType;
+
+  @ApiTags(route.path) @ApiBearerAuth()
+  @Controller(route.path)
+  class WriteController {
+    constructor(readonly svc: SalesService, readonly perms: PermissionsService) {}
 
     @Post() @RequirePermissions(P('create'))
     async create(@CurrentUser() u: AuthUser, @ZBody(salesDocSchema) b: z.infer<typeof salesDocSchema>) { return this.svc.create(t, b, await viewerOf(this.perms, u)); }
@@ -51,14 +67,14 @@ function makeController(route: SalesRoute): Type<unknown> {
       return this.svc.cancel(t, did, b.reason, await viewerOf(this.perms, u));
     }
   }
-  Reflect.defineMetadata('design:paramtypes', [SalesService, PermissionsService], DocController);
-  return DocController;
+  Reflect.defineMetadata('design:paramtypes', [SalesService, PermissionsService], WriteController);
+  return WriteController;
 }
 
 @ApiTags('sales/actions') @ApiBearerAuth()
 @Controller('sales')
 export class SalesActionsController {
-  constructor(private readonly svc: SalesService, private readonly perms: PermissionsService) {}
+  constructor(private readonly svc: SalesService, private readonly inv: InvoicingService, private readonly perms: PermissionsService) {}
 
   @Post('quotes/:id/send') @RequirePermissions('sales:quotes:confirm')
   async send(@CurrentUser() u: AuthUser, @Param('id', id) did: string) { return this.svc.quoteAction(did, 'send', await viewerOf(this.perms, u)); }
@@ -78,6 +94,40 @@ export class SalesActionsController {
 
   @Post('orders/:id/confirm') @RequirePermissions('sales:orders:confirm')
   async confirmOrder(@CurrentUser() u: AuthUser, @Param('id', id) did: string, @ZBody(confirmSchema) b: z.infer<typeof confirmSchema>) { return this.svc.confirm('ORDER', did, await viewerOf(this.perms, u), b.overrideCredit); }
+
+  // ── facturación
+  @Post('orders/:id/convert-to-invoice') @RequirePermissions('sales:invoices:create')
+  async orderToInvoice(@CurrentUser() u: AuthUser, @Param('id', id) did: string) { return this.inv.invoiceFromOrder(did, await viewerOf(this.perms, u)); }
+
+  @Post('invoices/:id/confirm') @RequirePermissions('sales:invoices:confirm')
+  async confirmInvoice(@CurrentUser() u: AuthUser, @Param('id', id) did: string, @ZBody(confirmInvoiceSchema) b: z.infer<typeof confirmInvoiceSchema>) { return this.inv.confirmInvoice(did, await viewerOf(this.perms, u), b); }
+
+  @Post('invoices/:id/cancel') @RequirePermissions('sales:invoices:cancel')
+  async cancelInvoice(@CurrentUser() u: AuthUser, @Param('id', id) did: string, @ZBody(salesCancelSchema) b: z.infer<typeof salesCancelSchema>) { return this.inv.cancelInvoice(did, b.reason, await viewerOf(this.perms, u)); }
+
+  @Post('invoices/:id/credit-note') @RequirePermissions('sales:credit-notes:create', 'sales:credit-notes:confirm')
+  async creditNote(@CurrentUser() u: AuthUser, @Param('id', id) did: string, @ZBody(creditNoteSchema) b: z.infer<typeof creditNoteSchema>) { return this.inv.createCreditNote(did, b, await viewerOf(this.perms, u)); }
+
+  @Get('invoices/:id/pdf') @RequirePermissions('sales:invoices:read')
+  async invoicePdf(@CurrentUser() u: AuthUser, @Param('id', id) did: string, @ZQuery(pdfQuery) q: z.infer<typeof pdfQuery>, @Res({ passthrough: true }) res: Response) {
+    return this.sendPdf(res, await this.inv.pdf('INVOICE', did, q.format, await viewerOf(this.perms, u)));
+  }
+
+  @Get('credit-notes/:id/pdf') @RequirePermissions('sales:credit-notes:read')
+  async creditNotePdf(@CurrentUser() u: AuthUser, @Param('id', id) did: string, @ZQuery(pdfQuery) q: z.infer<typeof pdfQuery>, @Res({ passthrough: true }) res: Response) {
+    return this.sendPdf(res, await this.inv.pdf('CREDIT_NOTE', did, q.format, await viewerOf(this.perms, u)));
+  }
+
+  private sendPdf(res: Response, r: { buffer: Buffer; filename: string }) {
+    res.setHeader('Content-Disposition', `inline; filename="${r.filename}"`);
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
+    return new StreamableFile(r.buffer, { type: 'application/pdf' });
+  }
 }
 
-export const SalesControllers: Type<unknown>[] = [SalesActionsController, ...SALES_ROUTES.map(makeController)];
+// Orden de registro: acciones primero (rutas más específicas), luego lectura/escritura por tipo.
+export const SalesControllers: Type<unknown>[] = [
+  SalesActionsController,
+  ...SALES_ROUTES.map(makeReadController),
+  ...SALES_ROUTES.filter(r => r.docType !== 'CREDIT_NOTE').map(makeWriteController),
+];

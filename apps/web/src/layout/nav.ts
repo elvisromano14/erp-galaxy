@@ -63,6 +63,8 @@ export const NAV: NavSection[] = [
       { key: "sales-quotes", path: "/sales/quotes", perm: "sales:quotes:read" },
       { key: "sales-budgets", path: "/sales/budgets", perm: "sales:budgets:read" },
       { key: "sales-orders", path: "/sales/orders", perm: "sales:orders:read" },
+      { key: "sales-invoices", path: "/sales/invoices", perm: "sales:invoices:read" },
+      { key: "sales-credit-notes", path: "/sales/credit-notes", perm: "sales:credit-notes:read" },
     ],
   },
   {

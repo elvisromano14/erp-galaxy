@@ -928,6 +928,10 @@ model SalesDocument {
   totalBase        Decimal   @default(0) @map("total_base") @db.Decimal(18, 4)
   reservesStock    Boolean   @default(false) @map("reserves_stock")
   stockReserved    Boolean   @default(false) @map("stock_reserved")
+  controlNo        String?   @map("control_no")
+  igtfPct          Decimal   @default(0) @map("igtf_pct") @db.Decimal(7, 4)
+  igtfAmount       Decimal   @default(0) @map("igtf_amount") @db.Decimal(18, 4)
+  fiscalSnapshot   Json?     @map("fiscal_snapshot")
   notes            String?
   confirmedAt      DateTime? @map("confirmed_at") @db.Timestamptz
   confirmedBy      String?   @map("confirmed_by") @db.Uuid
@@ -961,6 +965,8 @@ model SalesDocumentLine {
   net         Decimal @default(0) @db.Decimal(18, 4)
   tax         Decimal @default(0) @db.Decimal(18, 4)
   total       Decimal @default(0) @db.Decimal(18, 4)
+  unitCost    Decimal? @map("unit_cost") @db.Decimal(18, 6)
+  serials     String[] @default([])
 
   @@unique([companyId, id])
   @@index([companyId, documentId])
@@ -1118,4 +1124,23 @@ model CustomerReceiptApplication {
   @@unique([companyId, receiptId, receivableEntryId])
   @@index([companyId, receivableEntryId])
   @@map("customer_receipt_applications")
+}
+
+model SalesDocumentPayment {
+  id              String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId       String   @map("company_id") @db.Uuid
+  documentId      String   @map("document_id") @db.Uuid
+  paymentMethodId String   @map("payment_method_id") @db.Uuid
+  bankAccountId   String?  @map("bank_account_id") @db.Uuid
+  currencyId      String   @map("currency_id") @db.Uuid
+  exchangeRate    Decimal  @default(1) @map("exchange_rate") @db.Decimal(18, 8)
+  amount          Decimal  @db.Decimal(18, 4)
+  amountDoc       Decimal  @map("amount_doc") @db.Decimal(18, 4)
+  appliesIgtf     Boolean  @default(false) @map("applies_igtf")
+  igtfAmount      Decimal  @default(0) @map("igtf_amount") @db.Decimal(18, 4)
+  reference       String?
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([companyId, documentId])
+  @@map("sales_document_payments")
 }

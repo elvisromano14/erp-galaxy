@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { decimalStr, paginationQuery, uuid } from '@erp/contracts';
 
-export type SalesDocType = 'QUOTE' | 'BUDGET' | 'ORDER';
+export type SalesDocType = 'QUOTE' | 'BUDGET' | 'ORDER' | 'INVOICE' | 'CREDIT_NOTE';
 
 export interface SalesRoute { path: string; docType: SalesDocType; seq: string; permission: string }
 
@@ -9,6 +9,8 @@ export const SALES_ROUTES: SalesRoute[] = [
   { path: 'sales/quotes', docType: 'QUOTE', seq: 'SALES_QUOTE', permission: 'sales:quotes' },
   { path: 'sales/budgets', docType: 'BUDGET', seq: 'SALES_BUDGET', permission: 'sales:budgets' },
   { path: 'sales/orders', docType: 'ORDER', seq: 'SALES_ORDER', permission: 'sales:orders' },
+  { path: 'sales/invoices', docType: 'INVOICE', seq: 'SALES_INVOICE', permission: 'sales:invoices' },
+  { path: 'sales/credit-notes', docType: 'CREDIT_NOTE', seq: 'SALES_CREDIT_NOTE', permission: 'sales:credit-notes' },
 ];
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato AAAA-MM-DD');
@@ -22,6 +24,8 @@ export const salesLineSchema = z.object({
   discountPct: decimalStr.refine(v => Number(v) >= 0 && Number(v) <= 100, '0–100').optional(),
   taxId: uuid.nullable().optional(),
   parentLineId: uuid.nullable().optional(),
+  /** Facturas con productos por serial: seriales que se venden (cantidad = nº de seriales). */
+  serials: z.array(z.string().trim().min(1).max(100)).max(5000).optional(),
 });
 
 export const salesDocSchema = z.object({
@@ -52,3 +56,21 @@ export type SalesLineInput = z.infer<typeof salesLineSchema>;
 /** Quién consulta: `all` = puede ver documentos de todos los vendedores. */
 export interface Viewer { userId: string; all: boolean; /** puede confirmar por encima del límite de crédito */ creditOverride?: boolean }
 export const confirmSchema = z.object({ overrideCredit: z.boolean().optional() }).default({});
+
+export const invoicePaymentSchema = z.object({
+  paymentMethodId: uuid,
+  bankAccountId: uuid.nullable().optional(),
+  currencyId: uuid,
+  exchangeRate: decimalStr.refine(v => Number(v) > 0, 'La tasa debe ser positiva').optional(),
+  /** Monto entregado en la moneda del pago. */
+  amount: decimalStr.refine(v => Number(v) > 0, 'El monto debe ser mayor que cero'),
+  reference: z.string().trim().max(60).nullable().optional(),
+});
+/** Emisión de factura: si es de contado se registran los pagos (cuadrar con total + IGTF); si es a crédito nace la cuenta por cobrar. */
+export const confirmInvoiceSchema = z.object({ overrideCredit: z.boolean().optional(), payments: z.array(invoicePaymentSchema).max(10).optional() }).default({});
+export const creditNoteSchema = z.object({
+  lines: z.array(z.object({ parentLineId: uuid, quantity: decimalStr.refine(v => Number(v) > 0, 'La cantidad debe ser mayor que cero'), serials: z.array(z.string().trim().min(1).max(100)).optional() })).min(1, 'Indique al menos una línea'),
+  notes: z.string().max(1000).nullable().optional(),
+});
+export const pdfQuery = z.object({ format: z.enum(['a4', 'ticket']).default('a4') });
+export type InvoicePaymentInput = z.infer<typeof invoicePaymentSchema>;

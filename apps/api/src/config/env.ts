@@ -17,6 +17,8 @@ const schema = z.object({
   WORKER_ENABLED: z.coerce.boolean().default(false),
   /** Sincronización de la tasa oficial (BCV) con DolarApi. */
   FX_API_URL: z.string().url().default('https://ve.dolarapi.com/v1'),
+  /** Leyenda al pie de facturas/notas mientras la numeración sea interna (antes de la imprenta digital). */
+  INVOICE_LEGEND: z.string().default('Documento sin validez fiscal: numeración interna provisional'),
   /** Tareas periódicas de mantenimiento (vencimiento de cotizaciones). */
   JOBS_ENABLED: z.enum(['true', 'false']).default('false').transform(v => v === 'true'),
   FX_SYNC_ENABLED: z.enum(['true', 'false']).default('false').transform(v => v === 'true'),

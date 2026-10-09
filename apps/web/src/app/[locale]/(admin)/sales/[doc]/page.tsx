@@ -25,7 +25,9 @@ export default function SalesDocList() {
 const STATUSES: Record<string, string[]> = {
   QUOTE: ["DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED", "CANCELLED"],
   BUDGET: ["DRAFT", "CONFIRMED", "CONVERTED", "CANCELLED"],
-  ORDER: ["DRAFT", "CONFIRMED", "CANCELLED"],
+  ORDER: ["DRAFT", "CONFIRMED", "PARTIALLY_INVOICED", "INVOICED", "CANCELLED"],
+  INVOICE: ["DRAFT", "CONFIRMED", "CANCELLED"],
+  CREDIT_NOTE: ["CONFIRMED"],
 };
 
 function List({ slug }: { slug: string }) {
@@ -42,7 +44,8 @@ function List({ slug }: { slug: string }) {
     { key: "number", header: t("fields.number"), render: (r) => r.number ?? <span className="text-gray-400">{t("common.draft")}</span> },
     { key: "docDate", header: t("fields.date"), render: (r) => fmtDate(r.docDate) },
     { key: "customerId", header: t("fields.customer"), render: (r) => r.customer?.legalName ?? "" },
-    ...(meta.type !== "ORDER" ? [{ key: "validUntil", header: t("fields.validUntil"), render: (r: Row) => (r.validUntil ? fmtDate(r.validUntil) : "—") }] : []),
+    ...(meta.type === "INVOICE" || meta.type === "CREDIT_NOTE" ? [{ key: "controlNo", header: t("sales.controlNo"), render: (r: Row) => r.controlNo ?? "—" }] : []),
+    ...(meta.type === "QUOTE" || meta.type === "BUDGET" ? [{ key: "validUntil", header: t("fields.validUntil"), render: (r: Row) => (r.validUntil ? fmtDate(r.validUntil) : "—") }] : []),
     { key: "status", header: t("fields.status"), render: (r) => <StatusBadge status={r.status} /> },
     { key: "total", header: t("fields.total"), align: "end", render: (r) => fmtMoney(r.total) },
   ];
@@ -53,7 +56,7 @@ function List({ slug }: { slug: string }) {
     <div>
       <PageHeader
         title={t(`sidebar.items.sales-${slug}`)}
-        actions={can(`${meta.permission}:create`) && (
+        actions={meta.type !== "CREDIT_NOTE" && can(`${meta.permission}:create`) && (
           <Button size="sm" startIcon={<PlusIcon />} onClick={() => router.push(`/sales/${slug}/new`)}>{t("common.new")}</Button>
         )}
       />

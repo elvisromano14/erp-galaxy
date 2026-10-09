@@ -604,6 +604,31 @@ export const REPORTS: ReportDef[] = [
     },
   },
   {
+    category: 'sales', id: 'book', title: 'Libro de ventas', description: 'Facturas y notas de crédito del período en Bs (las notas restan). Las facturas anuladas figuran sin montos. Referencial: el formato oficial lo valida el contador.',
+    filters: ['dateFrom', 'dateTo', 'customerId'],
+    columns: [col('doc_date', 'Fecha', 'date'), col('type', 'Tipo'), col('number', 'Número'), col('control_no', 'N° control'), col('rif', 'RIF'), col('customer', 'Cliente'),
+      col('exempt_bs', 'Exento Bs', 'money'), col('base_bs', 'Base imponible Bs', 'money'), col('tax_bs', 'IVA Bs', 'money'), col('igtf_bs', 'IGTF Bs', 'money'), col('total_bs', 'Total Bs', 'money')],
+    async run(c) {
+      const rows = await raw<Row>(c.tx, Prisma.sql`
+        SELECT d.doc_date, CASE d.doc_type WHEN 'INVOICE' THEN CASE WHEN d.status = 'CANCELLED' THEN 'Factura anulada' ELSE 'Factura' END ELSE 'Nota de crédito' END AS type,
+               d.number, d.control_no, COALESCE(d.fiscal_snapshot->'customer'->>'rif', cu.rif) AS rif, COALESCE(d.fiscal_snapshot->'customer'->>'legalName', cu.legal_name) AS customer,
+               (CASE WHEN d.status = 'CANCELLED' THEN 0 ELSE d.exempt_base * d.exchange_rate * (CASE WHEN d.doc_type = 'CREDIT_NOTE' THEN -1 ELSE 1 END) END) AS exempt_n,
+               (CASE WHEN d.status = 'CANCELLED' THEN 0 ELSE d.taxable_base * d.exchange_rate * (CASE WHEN d.doc_type = 'CREDIT_NOTE' THEN -1 ELSE 1 END) END) AS base_n,
+               (CASE WHEN d.status = 'CANCELLED' THEN 0 ELSE d.tax_total * d.exchange_rate * (CASE WHEN d.doc_type = 'CREDIT_NOTE' THEN -1 ELSE 1 END) END) AS tax_n,
+               (CASE WHEN d.status = 'CANCELLED' THEN 0 ELSE d.igtf_amount * d.exchange_rate END) AS igtf_n
+        FROM sales_documents d JOIN customers cu ON cu.id = d.customer_id AND cu.company_id = d.company_id
+        WHERE d.company_id = ${cid(c)} AND d.doc_type IN ('INVOICE', 'CREDIT_NOTE') AND d.status IN ('CONFIRMED', 'CANCELLED')
+          ${when(c.f.dateFrom, Prisma.sql`AND d.doc_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND d.doc_date <= ${c.f.dateTo}::date`)}
+          ${when(c.f.customerId, Prisma.sql`AND d.customer_id = ${c.f.customerId}::uuid`)}
+        ORDER BY d.doc_date, d.number`);
+      const out = rows.map(({ exempt_n, base_n, tax_n, igtf_n, ...r }) => {
+        const e = Number(exempt_n), b = Number(base_n), t = Number(tax_n), g = Number(igtf_n);
+        return { ...r, exempt_bs: e.toFixed(2), base_bs: b.toFixed(2), tax_bs: t.toFixed(2), igtf_bs: g.toFixed(2), total_bs: (e + b + t + g).toFixed(2) };
+      });
+      return { rows: out, totals: { exempt_bs: sum(out, 'exempt_bs'), base_bs: sum(out, 'base_bs'), tax_bs: sum(out, 'tax_bs'), igtf_bs: sum(out, 'igtf_bs'), total_bs: sum(out, 'total_bs') } };
+    },
+  },
+  {
     category: 'sales', id: 'quotes-conversion', title: 'Efectividad de cotizaciones', description: 'Cotizaciones por estado y tasa de aceptación y de conversión a pedido.',
     filters: ['dateFrom', 'dateTo'],
     columns: [col('seller', 'Vendedor'), col('quotes', 'Emitidas', 'int'), col('accepted', 'Aceptadas', 'int'), col('rejected', 'Rechazadas', 'int'), col('expired', 'Vencidas', 'int'),

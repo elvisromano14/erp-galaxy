@@ -8,7 +8,7 @@ export const ADMIN_RESOURCES = [
   'exchange-rates', 'movement-reasons', 'banks', 'bank-accounts',
 ] as const;
 export const INVENTORY_DOCS = ['transfers', 'charges', 'discharges', 'adjustments', 'cost-adjustments'] as const;
-export const SALES_DOCS = ['quotes', 'budgets', 'orders'] as const;
+export const SALES_DOCS = ['quotes', 'budgets', 'orders', 'invoices', 'credit-notes'] as const;
 export const PURCHASE_DOCS = ['quotes', 'orders', 'delivery-notes', 'delivery-note-returns', 'invoices', 'returns'] as const;
 
 export const REPORT_CATEGORIES = ['inventory', 'categories', 'suppliers', 'purchases', 'customers', 'sellers', 'sales'] as const;
@@ -60,7 +60,10 @@ export const ROLE_TEMPLATES: Record<string, { name: string; permissions: string[
       'reports:inventory:read', 'reports:categories:read',
     ],
   },
-  CAJERO: { name: 'Cajero', permissions: [...readCatalogs, ...SALES_DOCS.map(r => `sales:${r}:read`), 'sales:documents:read-all'] },
+  CAJERO: {
+    name: 'Cajero',
+    permissions: [...readCatalogs, ...SALES_DOCS.map(r => `sales:${r}:read`), 'sales:documents:read-all', ...build('sales', 'invoices', ['create', 'update', 'confirm']), 'treasury:receipts:read', 'treasury:receipts:create'],
+  },
   CONTADOR: {
     name: 'Contador',
     permissions: ALL_PERMISSIONS.filter(p => p.endsWith(':read')).concat(['inventory:periods:close']),

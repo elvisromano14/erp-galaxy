@@ -119,3 +119,6 @@ export async function toPdf(o: ReportOutput): Promise<Buffer> {
   };
   return pdfmake.createPdf(doc).getBuffer();
 }
+
+/** Renderiza una definición pdfmake con las fuentes y la política de URLs de este módulo. */
+export const renderPdf = (definition: unknown): Promise<Buffer> => pdfmake.createPdf(definition).getBuffer();
