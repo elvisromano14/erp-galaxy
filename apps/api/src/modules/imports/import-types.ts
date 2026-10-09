@@ -396,5 +396,56 @@ const openingReceivables: ImportTypeDef = {
   },
 };
 
-export const IMPORT_TYPES: ImportTypeDef[] = [categories, products, thirdParty('suppliers'), thirdParty('customers'), openingStock, prices, openingReceivables];
+// ═══════════════════════════ SALDOS INICIALES DE CUENTAS POR PAGAR ═══════════════════════════
+const openingPayables: ImportTypeDef = {
+  key: 'payables-opening', title: 'Saldos iniciales de cuentas por pagar', description: 'Deudas existentes con proveedores (migración). Una fila por documento; monto negativo = saldo a favor de la empresa.',
+  permission: 'treasury:payables:create', supportsExisting: false,
+  columns: [
+    c('rif', 'rif', 'RIF de un proveedor existente', 'J-12345678-9', true), c('documento', 'documento', 'Número de la factura del proveedor', 'F-0001234', true),
+    c('emision', 'emision', 'Fecha de emisión AAAA-MM-DD', '2026-01-15', true), c('vencimiento', 'vencimiento', 'AAAA-MM-DD (por defecto emisión + días de crédito del proveedor)', ''),
+    c('moneda', 'moneda', 'Código de moneda (por defecto VES)', 'VES'), c('monto', 'monto', 'Saldo pendiente (en la moneda indicada)', '1500,00', true),
+    c('tasa', 'tasa', 'Tasa de cambio del documento (obligatoria si la moneda no es VES)', ''), c('notas', 'notas', 'Observación opcional', ''),
+  ],
+  async plan(ctx, rows) {
+    const { tx } = ctx;
+    const [customers, currencies, existing] = await Promise.all([
+      tx.supplier.findMany({ where: { deletedAt: null }, select: { id: true, rif: true, creditDays: true } }), ctx.prisma.currency.findMany(),
+      tx.payableEntry.findMany({ where: { entryType: 'OPENING', status: { not: 'CANCELLED' } }, select: { supplierId: true, documentNo: true } }),
+    ]);
+    const custBy = new Map(customers.map(x => [formatRif(x.rif), x])); const curBy = new Map(currencies.map(x => [x.code.toLowerCase(), x]));
+    const has = new Set(existing.map(e => `${e.supplierId}|${(e.documentNo ?? '').toLowerCase()}`)); const seen = new Map<string, number>();
+    const day = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+    return rows.map(r => {
+      const p: Planned = { row: r.row, action: 'create', errors: [], warnings: [], data: {}, label: `${v(r, 'rif')} ${v(r, 'documento')}` };
+      const rif = v(r, 'rif');
+      const cust = rif ? custBy.get(isValidRif(rif) ? formatRif(rif) : rif) : undefined;
+      if (!rif) p.errors.push('El RIF es obligatorio'); else if (!cust) p.errors.push(`El proveedor con RIF «${rif}» no existe (impórtelo antes)`);
+      if (!v(r, 'documento')) p.errors.push('El documento es obligatorio');
+      if (!day(v(r, 'emision'))) p.errors.push('emision debe ser AAAA-MM-DD');
+      if (v(r, 'vencimiento') && !day(v(r, 'vencimiento'))) p.errors.push('vencimiento debe ser AAAA-MM-DD');
+      const cur = curBy.get((v(r, 'moneda') || 'VES').toLowerCase()); if (!cur) p.errors.push(`La moneda «${v(r, 'moneda')}» no existe`);
+      const amount = parseDecimal(v(r, 'monto')); if (amount === null || Number(amount) === 0) p.errors.push('monto no es un número válido (distinto de cero)');
+      let rate = '1';
+      if (cur && cur.code !== 'VES') { const t = parseDecimal(v(r, 'tasa')); if (t === null || Number(t) <= 0) p.errors.push('La tasa es obligatoria y positiva para monedas distintas de VES'); else rate = t; }
+      if (cust && v(r, 'documento')) { dup(seen, `${cust.id}|${v(r, 'documento').toLowerCase()}`, r.row, p, 'Documento'); if (has.has(`${cust.id}|${v(r, 'documento').toLowerCase()}`)) p.errors.push('Ya existe un saldo inicial con ese documento para el proveedor'); }
+      let due = v(r, 'vencimiento');
+      if (!due && cust && day(v(r, 'emision'))) due = new Date(new Date(v(r, 'emision')).getTime() + cust.creditDays * 86_400_000).toISOString().slice(0, 10);
+      if (due && day(v(r, 'emision')) && due < v(r, 'emision')) p.errors.push('El vencimiento no puede ser anterior a la emisión');
+      p.data = { supplierId: cust?.id, documentNo: v(r, 'documento'), issueDate: v(r, 'emision'), dueDate: due, currencyId: cur?.id, exchangeRate: rate, amount, notes: v(r, 'notas') || null };
+      return p;
+    });
+  },
+  async apply(ctx, planned) {
+    for (const p of planned) {
+      const d = p.data;
+      await ctx.tx.payableEntry.create({
+        data: { companyId: ctx.companyId, supplierId: d.supplierId, entryType: 'OPENING', documentNo: d.documentNo, issueDate: new Date(d.issueDate), dueDate: new Date(d.dueDate), currencyId: d.currencyId, exchangeRate: d.exchangeRate, amount: d.amount, balance: d.amount, status: 'OPEN', notes: d.notes, },
+      });
+    }
+    return { created: planned.length, updated: 0 };
+  },
+};
+
+
+export const IMPORT_TYPES: ImportTypeDef[] = [categories, products, thirdParty('suppliers'), thirdParty('customers'), openingStock, prices, openingReceivables, openingPayables];
 export const findImportType = (key: string) => IMPORT_TYPES.find(t => t.key === key);

@@ -121,13 +121,13 @@ export const CRUD_REGISTRY: Record<string, CrudDef> = {
   },
   "bank-accounts": {
     resource: "bank-accounts", permission: "admin:bank-accounts", softDelete: true, defaultSort: "name",
-    columns: [{ key: "name", sort: true }, { key: "number" }, { key: "accountType", type: "enum" }, { key: "openingBalance", type: "decimal" }, { key: "isActive", type: "bool" }],
+    columns: [{ key: "name", sort: true }, { key: "number" }, { key: "accountType", type: "enum" }, { key: "openingBalance", type: "decimal" }, { key: "overdraftLimit", type: "decimal" }, { key: "isActive", type: "bool" }],
     fields: [
       { name: "bankId", type: "ref", resource: "banks", labelKey: (r) => `${r.code} — ${r.name}`, required: true },
       name, { name: "number", type: "text", required: true, maxLength: 30 },
       { name: "currencyId", type: "ref", resource: "currencies", labelKey: (r) => `${r.code} — ${r.name}`, required: true },
       { name: "accountType", type: "select", options: ["CHECKING", "SAVINGS", "CASH"], default: "CHECKING" },
-      { name: "openingBalance", type: "decimal", default: "0" }, active,
+      { name: "openingBalance", type: "decimal", default: "0" }, { name: "overdraftLimit", type: "decimal", default: "0" }, active,
     ],
     immutableOnEdit: ["bankId", "currencyId", "openingBalance"],
   },

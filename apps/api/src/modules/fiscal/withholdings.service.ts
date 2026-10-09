@@ -140,7 +140,7 @@ export class WithholdingsService {
     const tx = this.prisma.tx;
     if (direction === 'ISSUED') {
       const entries = await tx.payableEntry.findMany({ where: { supplierId: partyId, entryType: 'INVOICE', status: { in: ['OPEN', 'PARTIALLY_PAID'] }, balance: { gt: 0 } }, orderBy: { dueDate: 'asc' } });
-      const docs = await tx.purchaseDocument.findMany({ where: { id: { in: entries.map(e => e.purchaseDocumentId) } } });
+      const docs = await tx.purchaseDocument.findMany({ where: { id: { in: entries.map(e => e.purchaseDocumentId).filter(Boolean) as string[] } } });
       const done = await tx.withholding.findMany({ where: { purchaseDocumentId: { in: docs.map(d => d.id) }, status: 'CONFIRMED' }, select: { purchaseDocumentId: true, kind: true } });
       return docs.map(d => { const e = entries.find(x => x.purchaseDocumentId === d.id)!; return { documentId: d.id, number: d.number, ref: d.supplierDocNo, date: d.docDate, taxBs: round(D(d.taxTotal.toString()).mul(D(d.exchangeRate.toString())), 2).toString(), balance: e.balance.toString(), withheld: done.filter(x => x.purchaseDocumentId === d.id).map(x => x.kind) }; });
     }

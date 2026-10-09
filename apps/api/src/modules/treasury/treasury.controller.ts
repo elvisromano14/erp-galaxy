@@ -1,14 +1,18 @@
-import { Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, Param, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { uuid } from '@erp/contracts';
 import { RequirePermissions } from '../../common/auth/decorators';
 import { ZodPipe } from '../../common/http/zod.pipe';
 import { ZBody, ZQuery } from '../../common/http/zod.decorators';
+import { PayablesService } from './payables.service';
+import { StatementService, statementQuery } from './statement.service';
 import { ReceivablesService } from './receivables.service';
 import { TreasuryService } from './treasury.service';
 import {
-  cancelPaymentSchema, ledgerQuery, openingReceivableSchema, openReceivablesQuery, receiptListSchema, receiptSchema, receivableListSchema, movementSchema, openPayablesQuery, paymentListSchema, paymentSchema, reconcileSchema, transferSchema,
+  cancelPaymentSchema, ledgerQuery, openingPayableSchema, openingReceivableSchema, openReceivablesQuery, payableListSchema, receiptListSchema, receiptSchema, receivableListSchema, movementSchema, openPayablesQuery, paymentListSchema, paymentSchema, reconcileSchema, transferSchema,
 } from './treasury.types';
 
 const id = new ZodPipe(uuid);
@@ -16,7 +20,7 @@ const id = new ZodPipe(uuid);
 @ApiTags('treasury') @ApiBearerAuth()
 @Controller('treasury')
 export class TreasuryController {
-  constructor(private readonly svc: TreasuryService, private readonly recv: ReceivablesService) {}
+  constructor(private readonly svc: TreasuryService, private readonly recv: ReceivablesService, private readonly pay: PayablesService, private readonly statement: StatementService) {}
 
   // ── pagos a proveedores
   @Get('payments') @RequirePermissions('treasury:payments:read')
@@ -27,6 +31,12 @@ export class TreasuryController {
   createPayment(@ZBody(paymentSchema) b: z.infer<typeof paymentSchema>) { return this.svc.createPayment(b); }
   @Post('payments/:id/cancel') @RequirePermissions('treasury:payments:cancel')
   cancelPayment(@Param('id', id) pid: string, @ZBody(cancelPaymentSchema) b: z.infer<typeof cancelPaymentSchema>) { return this.svc.cancelPayment(pid, b.reason); }
+  @Get('payables') @RequirePermissions('treasury:payables:read')
+  payables(@ZQuery(payableListSchema) q: z.infer<typeof payableListSchema>) { return this.pay.list(q); }
+  @Post('payables/opening') @RequirePermissions('treasury:payables:create')
+  openingPayable(@ZBody(openingPayableSchema) b: z.infer<typeof openingPayableSchema>) { return this.pay.createOpening(b); }
+  @Post('payables/:id/cancel') @RequirePermissions('treasury:payables:create')
+  cancelOpeningPayable(@Param('id', id) pid: string, @ZBody(cancelPaymentSchema) b: z.infer<typeof cancelPaymentSchema>) { return this.pay.cancelOpening(pid, b.reason); }
   @Get('payables/open') @RequirePermissions('treasury:payments:read')
   openPayables(@ZQuery(openPayablesQuery) q: z.infer<typeof openPayablesQuery>) { return this.svc.openPayables(q.supplierId); }
 
@@ -41,6 +51,12 @@ export class TreasuryController {
   transfer(@ZBody(transferSchema) b: z.infer<typeof transferSchema>) { return this.svc.transfer(b); }
 
   // ── conciliación
+  /** Importa el extracto del banco (.xlsx/.csv: fecha, referencia, descripción y monto —o débito/crédito—). `mode=validate` propone parejas; `mode=commit` concilia. */
+  @Post('accounts/:id/statement') @RequirePermissions('treasury:reconciliations:create')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
+  importStatement(@Param('id', id) aid: string, @UploadedFile() file: Express.Multer.File | undefined, @ZQuery(statementQuery) q: z.infer<typeof statementQuery>) { return this.statement.run(aid, file, q); }
+
   @Get('reconciliations') @RequirePermissions('treasury:reconciliations:read')
   reconciliations(@Query('bankAccountId') accountId?: string) { return this.svc.listReconciliations(accountId); }
   @Post('reconciliations') @RequirePermissions('treasury:reconciliations:create')

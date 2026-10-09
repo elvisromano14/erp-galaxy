@@ -126,8 +126,10 @@ export class ReceivablesService {
     const entries = new Map((await tx.receivableEntry.findMany({ where: { id: { in: ids } } })).map(e => [e.id, e]));
 
     let total = ZERO;
-    const apps = [] as { entryId: string; amount: Decimal; amountReceipt: Decimal; newBalance: Decimal; entryAmount: Decimal }[];
+    const apps = [] as { entryId: string; amount: Decimal; amountReceipt: Decimal; newBalance: Decimal; entryAmount: Decimal; rateDoc: Decimal; ratePay: Decimal; fx: Decimal }[];
     const rateCache = new Map<string, Decimal>();
+    const fxCache = new Map<string, Decimal | null>();
+    const fxRate = async (currencyId: string) => { if (!fxCache.has(currencyId)) { const r = await this.rates.rateFor(currencyId, date); fxCache.set(currencyId, r ? D(r.rate) : null); } return fxCache.get(currencyId)!; };
     for (const [i, a] of input.applications.entries()) {
       const bad = (code: string, msg: string) => new BusinessRuleException(msg, code, [{ field: `applications[${i}]`, code }]);
       const e = entries.get(a.receivableEntryId);
@@ -143,7 +145,10 @@ export class ReceivablesService {
         amountReceipt = round(amount.mul(rateCache.get(e.currencyId)!).div(rcRate), 4);
       }
       total = total.plus(amountReceipt);
-      apps.push({ entryId: e.id, amount, amountReceipt, newBalance: balance.minus(amount), entryAmount: D(e.amount.toString()) });
+      // Diferencial cambiario realizado (ganancia +, pérdida −): lo cobrado hoy en Bs frente al valor en Bs con que se registró la deuda.
+      const rateDoc = D(e.exchangeRate.toString());
+      const ratePay = (await fxRate(e.currencyId)) ?? rateDoc;
+      apps.push({ entryId: e.id, amount, amountReceipt, newBalance: balance.minus(amount), entryAmount: D(e.amount.toString()), rateDoc, ratePay, fx: round(ratePay.minus(rateDoc).mul(amount), 4) });
     }
     if (total.isNegative()) throw new BusinessRuleException('Los saldos a favor aplicados superan lo que se cobra', 'NEGATIVE_RECEIPT');
 
@@ -171,7 +176,7 @@ export class ReceivablesService {
         exchangeRate: rcRate.toFixed(8), amount: handed.toFixed(4), igtfPct: igtfPct.toFixed(4), igtfAmount: igtfAmount.toFixed(4), reference: input.reference?.trim() || null, notes: input.notes ?? null, createdBy: this.prisma.userId,
       },
     });
-    await tx.customerReceiptApplication.createMany({ data: apps.map(a => ({ companyId, receiptId: rc.id, receivableEntryId: a.entryId, amount: a.amount.toFixed(4), amountReceipt: a.amountReceipt.toFixed(4) })) });
+    await tx.customerReceiptApplication.createMany({ data: apps.map(a => ({ companyId, receiptId: rc.id, receivableEntryId: a.entryId, amount: a.amount.toFixed(4), amountReceipt: a.amountReceipt.toFixed(4), rateDoc: a.rateDoc.toFixed(8), ratePay: a.ratePay.toFixed(8), fxDiffBs: a.fx.toFixed(4) })) });
     for (const a of apps) await tx.receivableEntry.update({ where: { id: a.entryId }, data: { balance: a.newBalance.toFixed(4), status: entryStatus(a.newBalance, a.entryAmount) } });
     if (account) {
       await this.treasury.addMovement({ bankAccountId: account.id, date, kind: 'CUSTOMER_RECEIPT', amount: handed, reference: input.reference ?? number, description: `Cobro ${number} de ${customer.legalName}`, sourceType: 'CUSTOMER_RECEIPT', sourceId: rc.id });

@@ -125,7 +125,8 @@
       "sales-credit-notes": "Notas de crédito",
       "withholdings": "Retenciones",
       "sales-debit-notes": "Notas de débito",
-      "report-fiscal": "Fiscal"
+      "report-fiscal": "Fiscal",
+      "payables-list": "Cuentas por pagar"
     }
   },
   "header": {
@@ -327,7 +328,8 @@
     "customer": "Cliente",
     "seller": "Vendedor",
     "unitPrice": "Precio unitario",
-    "validUntil": "Válido hasta"
+    "validUntil": "Válido hasta",
+    "overdraftLimit": "Límite de sobregiro"
   },
   "enums": {
     "personType": {
@@ -790,7 +792,20 @@
     "signHint": "Positivo = el cliente debe; negativo = saldo a favor",
     "searchDoc": "Buscar por número de documento…",
     "onlyOpen": "Solo con saldo",
-    "cancelOpeningMessage": "El saldo inicial quedará anulado (no debe tener cobros aplicados)."
+    "cancelOpeningMessage": "El saldo inicial quedará anulado (no debe tener cobros aplicados).",
+    "openingPayableHint": "Cargue deudas existentes con el proveedor (migración). Las compras crean sus propias cuentas por pagar.",
+    "importStatement": "Importar extracto",
+    "statementTitle": "Importar extracto bancario",
+    "statementHint": "Archivo .xlsx o .csv con fecha, referencia, descripción y monto (o débito/crédito). Se empareja con los movimientos aún sin conciliar por monto y fecha.",
+    "statementFile": "Archivo del extracto",
+    "tolerance": "Tolerancia de fecha (días)",
+    "createMissing": "Registrar las líneas sin pareja (comisiones, intereses, depósitos no registrados)",
+    "validate": "Validar y emparejar",
+    "applyReconcile": "Aplicar y conciliar",
+    "stSummary": "{matched} emparejadas · {unmatched} sin movimiento en el libro · {pending} movimientos del libro sin línea en el extracto · {errors} filas con error",
+    "stUnmatched": "Líneas del extracto sin pareja",
+    "stDone": "Extracto conciliado: {created} movimiento(s) creados, {reconciled} conciliados",
+    "stNeedBalance": "Indique fecha y saldo final del extracto para aplicar."
   },
   "priceUpdate": {
     "subtitle": "Cambie los precios de una lista por porcentaje, margen sobre costo o precio fijo. Siempre se muestra una vista previa antes de aplicar.",

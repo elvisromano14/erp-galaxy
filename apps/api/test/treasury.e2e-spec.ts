@@ -12,8 +12,8 @@ describe('Tesorería: pagos a proveedores, bancos y conciliación', () => {
     supplierId = (await api.post('/suppliers', { rif: uniqueRif(), legalName: 'Proveedor Pagos', creditDays: 15 })).body.data.id;
     product = await b.product('TES-1');
     const bank = (await api.get('/banks?limit=5')).body.data[0].id;
-    bankVes = (await api.post('/bank-accounts', { bankId: bank, name: 'Cuenta Bs', number: '01020000000000000001', currencyId: b.ves, openingBalance: '1000' })).body.data.id;
-    bankUsd = (await api.post('/bank-accounts', { bankId: bank, name: 'Cuenta USD', number: '01020000000000000002', currencyId: b.usd, openingBalance: '0' })).body.data.id;
+    bankVes = (await api.post('/bank-accounts', { bankId: bank, name: 'Cuenta Bs', number: '01020000000000000001', currencyId: b.ves, openingBalance: '1000', overdraftLimit: '1000000' })).body.data.id;
+    bankUsd = (await api.post('/bank-accounts', { bankId: bank, name: 'Cuenta USD', number: '01020000000000000002', currencyId: b.usd, openingBalance: '0', overdraftLimit: '1000000' })).body.data.id;
     method = (await api.post('/payment-methods', { code: 'TRF', name: 'Transferencia', type: 'TRANSFER' })).body.data.id;
     methodRef = (await api.post('/payment-methods', { code: 'TRF-R', name: 'Transferencia con ref', type: 'TRANSFER', requiresReference: true })).body.data.id;
     methodCredit = (await api.post('/payment-methods', { code: 'CRD', name: 'Crédito', type: 'CREDIT' })).body.data.id;

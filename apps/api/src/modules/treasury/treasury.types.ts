@@ -76,3 +76,16 @@ export type NewReceivable = {
   customerId: string; entryType: 'OPENING' | 'INVOICE' | 'CREDIT_NOTE' | 'DEBIT_NOTE'; sourceType?: string; sourceId?: string; documentNo: string;
   issueDate: Date; dueDate: Date; currencyId: string; exchangeRate: string; amount: string; notes?: string | null;
 };
+
+export const openingPayableSchema = z.object({
+  supplierId: uuid,
+  documentNo: z.string().trim().min(1).max(60),
+  issueDate: date,
+  dueDate: date.optional(),
+  currencyId: uuid,
+  exchangeRate: decimalStr.refine(v => Number(v) > 0, 'La tasa debe ser positiva').optional(),
+  /** Positivo = la empresa debe; negativo = saldo a favor de la empresa con el proveedor. */
+  amount: nonZero,
+  notes: z.string().max(500).nullable().optional(),
+});
+export const payableListSchema = paginationQuery.extend({ supplierId: uuid.optional(), status: z.string().optional(), onlyOpen: z.coerce.boolean().optional() });

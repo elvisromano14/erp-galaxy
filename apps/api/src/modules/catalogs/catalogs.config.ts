@@ -125,7 +125,7 @@ export const CATALOGS: CrudConfig<any>[] = [
     path: 'bank-accounts', entity: 'bank_account', model: 'bankAccount', permission: 'admin:bank-accounts',
     create: z.object({
       bankId: uuid, name, number: z.string().trim().min(5).max(30), currencyId: uuid,
-      accountType: z.enum(['CHECKING', 'SAVINGS', 'CASH']).optional(), openingBalance: decimalStr.optional(), isActive: z.boolean().optional(),
+      accountType: z.enum(['CHECKING', 'SAVINGS', 'CASH']).optional(), openingBalance: decimalStr.optional(), overdraftLimit: decimalStr.refine(v => Number(v) >= 0, 'No puede ser negativo').optional(), isActive: z.boolean().optional(),
     }),
     searchFields: ['name', 'number'], sortable: ['name', 'number'], defaultSort: 'name', filterable: ['bankId', 'currencyId', 'isActive'], softDelete: true,
   },

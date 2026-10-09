@@ -111,14 +111,14 @@ export class PostingService {
     const rows: Row[] = [];
 
     // Estado en memoria de los seriales tocados por este documento (se persiste al final).
-    interface SerialSt { id?: string; productId: string; serialNo: string; status: string; warehouseId: string | null; isNew: boolean; dirty: boolean }
+    interface SerialSt { id?: string; productId: string; serialNo: string; status: string; warehouseId: string | null; unitCost: Decimal | null; isNew: boolean; dirty: boolean }
     const serialState = new Map<string, SerialSt>();
     const sKey = (productId: string, no: string) => `${productId}|${no}`;
     const loadSerials = async (productId: string, nos: string[]) => {
       const missing = nos.filter(n => !serialState.has(sKey(productId, n)));
       if (missing.length) {
         const found = await tx.productSerial.findMany({ where: { productId, serialNo: { in: missing } } });
-        for (const f of found) serialState.set(sKey(productId, f.serialNo), { id: f.id, productId, serialNo: f.serialNo, status: f.status, warehouseId: f.warehouseId, isNew: false, dirty: false });
+        for (const f of found) serialState.set(sKey(productId, f.serialNo), { id: f.id, productId, serialNo: f.serialNo, status: f.status, warehouseId: f.warehouseId, unitCost: f.unitCost === null ? null : D(f.unitCost.toString()), isNew: false, dirty: false });
       }
       return nos.map(n => serialState.get(sKey(productId, n)));
     };
@@ -175,8 +175,9 @@ export class PostingService {
             const cur = await loadSerials(m.productId, nos);
             cur.forEach((c, idx) => {
               if (c?.status === 'IN_STOCK') throw fail('SERIAL_ALREADY_IN_STOCK', `El serial ${nos[idx]} de ${product.sku} ya está en existencia`);
-              if (c) { c.status = 'IN_STOCK'; c.warehouseId = m.warehouseId; c.dirty = true; }
-              else serialState.set(sKey(m.productId, nos[idx]), { productId: m.productId, serialNo: nos[idx], status: 'IN_STOCK', warehouseId: m.warehouseId, isNew: true, dirty: true });
+              // Costo propio de cada unidad: el de su entrada (identificación específica en productos por serial).
+              if (c) { c.status = 'IN_STOCK'; c.warehouseId = m.warehouseId; c.unitCost = r.unitCost; c.dirty = true; }
+              else serialState.set(sKey(m.productId, nos[idx]), { productId: m.productId, serialNo: nos[idx], status: 'IN_STOCK', warehouseId: m.warehouseId, unitCost: r.unitCost, isNew: true, dirty: true });
             });
           }
           const lotId = lots ? await this.resolveLot(tx, companyId, product, m, true) : null;
@@ -206,7 +207,13 @@ export class PostingService {
             const cur = cost.get(m.productId)!;
             const wNow = whQty.get(key)!;
             let r;
-            if (m.kind === 'EXIT') r = applyExit(cur, part.qty);
+            if (m.kind === 'EXIT' && nos) {
+              // Productos por serial: la salida lleva el costo de ESAS unidades (si todas lo tienen) y el promedio del resto se recalcula.
+              const costs = nos.map(no => serialState.get(sKey(m.productId, no))?.unitCost ?? null);
+              r = costs.every(c => c !== null)
+                ? applyPurchaseReturn(cur, part.qty, costs.reduce((a, c) => a.plus(c!), ZERO).div(costs.length))
+                : applyExit(cur, part.qty);
+            } else if (m.kind === 'EXIT') r = applyExit(cur, part.qty);
             else if (m.kind === 'RETURN_OUT') r = applyPurchaseReturn(cur, part.qty, m.unitCost ?? cur.avgCost);
             else r = { state: { qty: cur.qty, avgCost: cur.avgCost }, unitCost: cur.avgCost }; // traslado: C y Q globales no cambian
             if (m.kind === 'EXIT' && cur.avgCost.isZero() && cur.qty.lte(0)) costPending.add(m.productId);
@@ -288,10 +295,10 @@ export class PostingService {
     for (const sr of serialState.values()) {
       if (!sr.dirty) continue;
       if (sr.isNew) {
-        const c = await tx.productSerial.create({ data: { companyId, productId: sr.productId, serialNo: sr.serialNo, status: sr.status, warehouseId: sr.warehouseId, lastDocType: p.docType, lastDocId: p.docId } });
+        const c = await tx.productSerial.create({ data: { companyId, productId: sr.productId, serialNo: sr.serialNo, status: sr.status, warehouseId: sr.warehouseId, unitCost: sr.unitCost?.toFixed(6) ?? null, lastDocType: p.docType, lastDocId: p.docId } });
         sr.id = c.id;
       } else {
-        await tx.productSerial.update({ where: { id: sr.id! }, data: { status: sr.status, warehouseId: sr.warehouseId, lastDocType: p.docType, lastDocId: p.docId } });
+        await tx.productSerial.update({ where: { id: sr.id! }, data: { status: sr.status, warehouseId: sr.warehouseId, unitCost: sr.unitCost?.toFixed(6) ?? null, lastDocType: p.docType, lastDocId: p.docId } });
       }
     }
     // 4) persistir: kardex, saldos, costos, lotes

@@ -506,6 +506,7 @@ model BankAccount {
   currencyId     String    @map("currency_id") @db.Uuid
   accountType    String    @default("CHECKING") @map("account_type") // CHECKING | SAVINGS | CASH
   openingBalance Decimal   @default(0) @map("opening_balance") @db.Decimal(18, 4)
+  overdraftLimit Decimal   @default(0) @map("overdraft_limit") @db.Decimal(18, 4)
   isActive       Boolean   @default(true) @map("is_active")
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz
@@ -845,8 +846,11 @@ model PayableEntry {
   id                 String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
   companyId          String   @map("company_id") @db.Uuid
   supplierId         String   @map("supplier_id") @db.Uuid
-  purchaseDocumentId String   @map("purchase_document_id") @db.Uuid
-  entryType          String   @default("INVOICE") @map("entry_type") // INVOICE | RETURN
+  purchaseDocumentId String?  @map("purchase_document_id") @db.Uuid
+  documentNo         String?  @map("document_no")
+  issueDate          DateTime? @map("issue_date") @db.Date
+  notes              String?
+  entryType          String   @default("INVOICE") @map("entry_type") // INVOICE | RETURN | OPENING
   dueDate            DateTime @map("due_date") @db.Date
   currencyId         String   @map("currency_id") @db.Uuid
   exchangeRate       Decimal  @map("exchange_rate") @db.Decimal(18, 8)
@@ -869,6 +873,7 @@ model ProductSerial {
   serialNo    String   @map("serial_no")
   warehouseId String?  @map("warehouse_id") @db.Uuid
   status      String   @default("IN_STOCK") // IN_STOCK | SOLD | RETURNED | SCRAPPED
+  unitCost    Decimal? @map("unit_cost") @db.Decimal(18, 6)
   lastDocType String?  @map("last_doc_type")
   lastDocId   String?  @map("last_doc_id") @db.Uuid
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
@@ -1028,6 +1033,9 @@ model SupplierPaymentApplication {
   payableEntryId String  @map("payable_entry_id") @db.Uuid
   amount         Decimal @db.Decimal(18, 4)
   amountPayment  Decimal @map("amount_payment") @db.Decimal(18, 4)
+  rateDoc        Decimal? @map("rate_doc") @db.Decimal(18, 8)
+  ratePay        Decimal? @map("rate_pay") @db.Decimal(18, 8)
+  fxDiffBs       Decimal @default(0) @map("fx_diff_bs") @db.Decimal(18, 4)
 
   @@unique([companyId, paymentId, payableEntryId])
   @@index([companyId, payableEntryId])
@@ -1122,6 +1130,9 @@ model CustomerReceiptApplication {
   receivableEntryId String  @map("receivable_entry_id") @db.Uuid
   amount            Decimal @db.Decimal(18, 4)
   amountReceipt     Decimal @map("amount_receipt") @db.Decimal(18, 4)
+  rateDoc           Decimal? @map("rate_doc") @db.Decimal(18, 8)
+  ratePay           Decimal? @map("rate_pay") @db.Decimal(18, 8)
+  fxDiffBs          Decimal @default(0) @map("fx_diff_bs") @db.Decimal(18, 4)
 
   @@unique([companyId, receiptId, receivableEntryId])
   @@index([companyId, receivableEntryId])

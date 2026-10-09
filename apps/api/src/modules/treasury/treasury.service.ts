@@ -41,10 +41,25 @@ export class TreasuryService {
     return a;
   }
 
-  addMovement(m: { bankAccountId: string; date: Date; kind: string; amount: Decimal; reference?: string | null; description?: string | null; sourceType?: string; sourceId?: string; reversalOf?: string }) {
-    return this.prisma.tx.bankMovement.create({
+  /**
+   * Inserta un movimiento del libro. Las salidas no pueden dejar la cuenta por debajo de −`overdraftLimit` (0 = sin sobregiro);
+   * los reversos y lo que ya ocurrió en el banco (`force`, p. ej. líneas del extracto) están exentos. Bloquea la cuenta para serializar saldos.
+   */
+  async addMovement(m: { bankAccountId: string; date: Date; kind: string; amount: Decimal; reference?: string | null; description?: string | null; sourceType?: string; sourceId?: string; reversalOf?: string; force?: boolean }) {
+    const tx = this.prisma.tx;
+    const companyId = this.prisma.companyId;
+    if (m.amount.isNegative() && m.kind !== 'REVERSAL' && !m.force) {
+      await tx.$queryRaw`SELECT id FROM bank_accounts WHERE id = ${m.bankAccountId}::uuid AND company_id = ${companyId}::uuid FOR UPDATE`;
+      const acc = await tx.bankAccount.findFirstOrThrow({ where: { id: m.bankAccountId } });
+      const [r] = await tx.$queryRaw<{ s: string }[]>`SELECT COALESCE(SUM(amount), 0)::text AS s FROM bank_movements WHERE company_id = ${companyId}::uuid AND bank_account_id = ${m.bankAccountId}::uuid`;
+      const available = D(acc.openingBalance.toString()).plus(D(r.s)).plus(D(acc.overdraftLimit.toString()));
+      if (available.plus(m.amount).isNegative()) {
+        throw new BusinessRuleException(`Fondos insuficientes en ${acc.name}: disponible ${available.toFixed(2)}${D(acc.overdraftLimit.toString()).gt(0) ? ` (incluye sobregiro ${D(acc.overdraftLimit.toString()).toFixed(2)})` : ''}, solicitado ${m.amount.abs().toFixed(2)}`, 'INSUFFICIENT_FUNDS', [{ code: 'INSUFFICIENT_FUNDS', message: available.toFixed(4) }]);
+      }
+    }
+    return tx.bankMovement.create({
       data: {
-        companyId: this.prisma.companyId, bankAccountId: m.bankAccountId, movementDate: m.date, kind: m.kind, amount: m.amount.toFixed(4),
+        companyId, bankAccountId: m.bankAccountId, movementDate: m.date, kind: m.kind, amount: m.amount.toFixed(4),
         reference: m.reference ?? null, description: m.description ?? null, sourceType: m.sourceType ?? null, sourceId: m.sourceId ?? null,
         reversalOf: m.reversalOf ?? null, createdBy: this.prisma.userId,
       },
@@ -56,9 +71,9 @@ export class TreasuryService {
   async openPayables(supplierId: string) {
     const tx = this.prisma.tx;
     const entries = await tx.payableEntry.findMany({ where: { supplierId, status: { in: ['OPEN', 'PARTIALLY_PAID'] }, NOT: { balance: 0 } }, orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }] });
-    const docs = new Map((await tx.purchaseDocument.findMany({ where: { id: { in: entries.map(e => e.purchaseDocumentId) } }, select: { id: true, number: true, supplierDocNo: true, docType: true } })).map(d => [d.id, d]));
+    const docs = new Map((await tx.purchaseDocument.findMany({ where: { id: { in: entries.map(e => e.purchaseDocumentId).filter(Boolean) as string[] } }, select: { id: true, number: true, supplierDocNo: true, docType: true } })).map(d => [d.id, d]));
     const cur = new Map((await this.prisma.currency.findMany({ where: { id: { in: [...new Set(entries.map(e => e.currencyId))] } } })).map(c => [c.id, c.code]));
-    return entries.map(e => ({ ...e, currency: cur.get(e.currencyId), document: docs.get(e.purchaseDocumentId) ?? null }));
+    return entries.map(e => ({ ...e, currency: cur.get(e.currencyId), document: (e.purchaseDocumentId ? docs.get(e.purchaseDocumentId) : null) ?? { id: null, number: e.documentNo, supplierDocNo: e.documentNo, docType: 'OPENING' } }));
   }
 
   async createPayment(input: PaymentInput) {
@@ -82,8 +97,10 @@ export class TreasuryService {
     const entries = new Map((await tx.payableEntry.findMany({ where: { id: { in: ids } } })).map(e => [e.id, e]));
 
     let total = ZERO;
-    const apps = [] as { entryId: string; amount: Decimal; amountPayment: Decimal; newBalance: Decimal; entryAmount: Decimal }[];
+    const apps = [] as { entryId: string; amount: Decimal; amountPayment: Decimal; newBalance: Decimal; entryAmount: Decimal; rateDoc: Decimal; ratePay: Decimal; fx: Decimal }[];
     const rateCache = new Map<string, Decimal>();
+    const fxCache = new Map<string, Decimal | null>();
+    const fxRate = async (currencyId: string) => { if (!fxCache.has(currencyId)) { const r = await this.rates.rateFor(currencyId, date); fxCache.set(currencyId, r ? D(r.rate) : null); } return fxCache.get(currencyId)!; };
     for (const [i, a] of input.applications.entries()) {
       const bad = (code: string, msg: string) => new BusinessRuleException(msg, code, [{ field: `applications[${i}]`, code }]);
       const e = entries.get(a.payableEntryId);
@@ -99,7 +116,10 @@ export class TreasuryService {
         amountPayment = round(amount.mul(rateCache.get(e.currencyId)!).div(payRate), 4);
       }
       total = total.plus(amountPayment);
-      apps.push({ entryId: e.id, amount, amountPayment, newBalance: balance.minus(amount), entryAmount: D(e.amount.toString()) });
+      // Diferencial cambiario realizado (ganancia +, pérdida −): lo que se paga hoy en Bs frente al valor en Bs con que se registró la deuda.
+      const rateDoc = D(e.exchangeRate.toString());
+      const ratePay = (await fxRate(e.currencyId)) ?? rateDoc; // bolívares: tasa 1
+      apps.push({ entryId: e.id, amount, amountPayment, newBalance: balance.minus(amount), entryAmount: D(e.amount.toString()), rateDoc, ratePay, fx: round(rateDoc.minus(ratePay).mul(amount), 4) });
     }
     if (total.isNegative()) throw new BusinessRuleException('Los saldos a favor aplicados superan lo que se paga', 'NEGATIVE_PAYMENT');
     let account = null;
@@ -118,7 +138,7 @@ export class TreasuryService {
       },
     });
     await tx.supplierPaymentApplication.createMany({
-      data: apps.map(a => ({ companyId, paymentId: pay.id, payableEntryId: a.entryId, amount: a.amount.toFixed(4), amountPayment: a.amountPayment.toFixed(4) })),
+      data: apps.map(a => ({ companyId, paymentId: pay.id, payableEntryId: a.entryId, amount: a.amount.toFixed(4), amountPayment: a.amountPayment.toFixed(4), rateDoc: a.rateDoc.toFixed(8), ratePay: a.ratePay.toFixed(8), fxDiffBs: a.fx.toFixed(4) })),
     });
     for (const a of apps) {
       await tx.payableEntry.update({ where: { id: a.entryId }, data: { balance: a.newBalance.toFixed(4), status: entryStatus(a.newBalance, a.entryAmount) } });
@@ -136,7 +156,7 @@ export class TreasuryService {
     if (!pay) throw new NotFoundError('Pago', id);
     const apps = await tx.supplierPaymentApplication.findMany({ where: { paymentId: id } });
     const entries = new Map((await tx.payableEntry.findMany({ where: { id: { in: apps.map(a => a.payableEntryId) } } })).map(e => [e.id, e]));
-    const docs = new Map((await tx.purchaseDocument.findMany({ where: { id: { in: [...entries.values()].map(e => e.purchaseDocumentId) } }, select: { id: true, number: true, supplierDocNo: true } })).map(d => [d.id, d]));
+    const docs = new Map((await tx.purchaseDocument.findMany({ where: { id: { in: [...entries.values()].map(e => e.purchaseDocumentId).filter(Boolean) as string[] } }, select: { id: true, number: true, supplierDocNo: true } })).map(d => [d.id, d]));
     const [supplier, method, account] = await Promise.all([
       tx.supplier.findFirst({ where: { id: pay.supplierId }, select: { id: true, rif: true, legalName: true } }),
       tx.paymentMethod.findFirst({ where: { id: pay.paymentMethodId }, select: { id: true, code: true, name: true } }),
@@ -144,7 +164,7 @@ export class TreasuryService {
     ]);
     return {
       ...pay, supplier, method, account,
-      applications: apps.map(a => { const e = entries.get(a.payableEntryId); return { ...a, entryType: e?.entryType, document: e ? docs.get(e.purchaseDocumentId) ?? null : null, balanceNow: e?.balance }; }),
+      applications: apps.map(a => { const e = entries.get(a.payableEntryId); return { ...a, entryType: e?.entryType, document: e ? (e.purchaseDocumentId ? docs.get(e.purchaseDocumentId) : null) ?? { number: e.documentNo, supplierDocNo: e.documentNo } : null, balanceNow: e?.balance }; }),
     };
   }
 

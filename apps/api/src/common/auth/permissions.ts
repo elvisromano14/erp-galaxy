@@ -37,6 +37,7 @@ export const ALL_PERMISSIONS: string[] = [
   ...build('fiscal', 'withholdings', ['read', 'create', 'cancel']),
   ...build('treasury', 'receipts', ['read', 'create', 'cancel']),
   ...build('treasury', 'receivables', ['read', 'create']),
+  ...build('treasury', 'payables', ['read', 'create']),
   ...build('treasury', 'movements', ['read', 'create']),
   ...build('treasury', 'reconciliations', ['read', 'create']),
   ...REPORT_CATEGORIES.flatMap(c => build('reports', c, ['read'])),

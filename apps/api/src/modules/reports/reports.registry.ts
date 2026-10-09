@@ -331,13 +331,13 @@ export const REPORTS: ReportDef[] = [
     async run(c) {
       const asOf = c.f.asOf ?? c.today;
       const rows = await raw(c.tx, Prisma.sql`
-        SELECT s.legal_name AS supplier, d.number, d.supplier_doc_no AS supplier_doc, d.doc_date, e.due_date, cu.code AS currency, e.amount::text AS amount, e.balance::text AS balance,
+        SELECT s.legal_name AS supplier, COALESCE(d.number, e.document_no) AS number, COALESCE(d.supplier_doc_no, e.document_no) AS supplier_doc, COALESCE(d.doc_date, e.issue_date) AS doc_date, e.due_date, cu.code AS currency, e.amount::text AS amount, e.balance::text AS balance,
                round(e.balance * e.exchange_rate, 4)::text AS balance_bs, GREATEST((${asOf}::date - e.due_date), 0) AS days_overdue
         FROM payable_entries e
-        JOIN purchase_documents d ON d.id = e.purchase_document_id AND d.company_id = e.company_id
+        LEFT JOIN purchase_documents d ON d.id = e.purchase_document_id AND d.company_id = e.company_id
         JOIN suppliers s ON s.id = e.supplier_id AND s.company_id = e.company_id
         JOIN currencies cu ON cu.id = e.currency_id
-        WHERE e.company_id = ${cid(c)} AND e.status IN ('OPEN', 'PARTIALLY_PAID') AND e.balance <> 0 AND d.doc_date <= ${asOf}::date
+        WHERE e.company_id = ${cid(c)} AND e.status IN ('OPEN', 'PARTIALLY_PAID') AND e.balance <> 0 AND COALESCE(d.doc_date, e.issue_date) <= ${asOf}::date
           ${when(c.f.supplierId, Prisma.sql`AND e.supplier_id = ${c.f.supplierId}::uuid`)}
         ORDER BY s.legal_name, e.due_date`);
       return { rows, totals: { balance_bs: sum(rows, 'balance_bs') } };
@@ -352,8 +352,8 @@ export const REPORTS: ReportDef[] = [
       const rows = await raw(c.tx, Prisma.sql`
         WITH x AS (SELECT s.legal_name AS supplier, e.balance * e.exchange_rate AS bs, (${asOf}::date - e.due_date) AS late
           FROM payable_entries e JOIN suppliers s ON s.id = e.supplier_id AND s.company_id = e.company_id
-          JOIN purchase_documents d ON d.id = e.purchase_document_id AND d.company_id = e.company_id
-          WHERE e.company_id = ${cid(c)} AND e.status IN ('OPEN', 'PARTIALLY_PAID') AND e.balance <> 0 AND d.doc_date <= ${asOf}::date
+          LEFT JOIN purchase_documents d ON d.id = e.purchase_document_id AND d.company_id = e.company_id
+          WHERE e.company_id = ${cid(c)} AND e.status IN ('OPEN', 'PARTIALLY_PAID') AND e.balance <> 0 AND COALESCE(d.doc_date, e.issue_date) <= ${asOf}::date
             ${when(c.f.supplierId, Prisma.sql`AND e.supplier_id = ${c.f.supplierId}::uuid`)})
         SELECT supplier,
           round(COALESCE(SUM(bs) FILTER (WHERE late <= 0), 0), 4)::text AS current,
@@ -373,13 +373,13 @@ export const REPORTS: ReportDef[] = [
       col('amount', 'Monto', 'money'), col('debit_bs', 'Cargo Bs', 'money'), col('credit_bs', 'Abono Bs', 'money'), col('balance_bs', 'Saldo Bs', 'money')],
     async run(c) {
       const rows = await raw<Row>(c.tx, Prisma.sql`
-        SELECT d.doc_date, e.entry_type AS type, d.number, d.supplier_doc_no AS supplier_doc, cu.code AS currency, e.amount::text AS amount,
+        SELECT COALESCE(d.doc_date, e.issue_date) AS doc_date, e.entry_type AS type, COALESCE(d.number, e.document_no) AS number, COALESCE(d.supplier_doc_no, e.document_no) AS supplier_doc, cu.code AS currency, e.amount::text AS amount,
                round(GREATEST(e.amount, 0) * e.exchange_rate, 4)::text AS debit_bs, round(GREATEST(-e.amount, 0) * e.exchange_rate, 4)::text AS credit_bs
-        FROM payable_entries e JOIN purchase_documents d ON d.id = e.purchase_document_id AND d.company_id = e.company_id
+        FROM payable_entries e LEFT JOIN purchase_documents d ON d.id = e.purchase_document_id AND d.company_id = e.company_id
         JOIN currencies cu ON cu.id = e.currency_id
         WHERE e.company_id = ${cid(c)} AND e.supplier_id = ${c.f.supplierId}::uuid AND e.status <> 'CANCELLED'
-          ${when(c.f.dateFrom, Prisma.sql`AND d.doc_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND d.doc_date <= ${c.f.dateTo}::date`)}
-        ORDER BY d.doc_date, d.created_at`);
+          ${when(c.f.dateFrom, Prisma.sql`AND COALESCE(d.doc_date, e.issue_date) >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND COALESCE(d.doc_date, e.issue_date) <= ${c.f.dateTo}::date`)}
+        ORDER BY COALESCE(d.doc_date, e.issue_date), e.created_at`);
       const pays = await raw<Row>(c.tx, Prisma.sql`
         SELECT p.payment_date AS doc_date, 'PAYMENT' AS type, p.number, p.reference AS supplier_doc, cu.code AS currency, p.amount::text AS amount,
                round(GREATEST(-SUM(a.amount * e.exchange_rate), 0), 4)::text AS debit_bs, round(GREATEST(SUM(a.amount * e.exchange_rate), 0), 4)::text AS credit_bs, p.created_at
@@ -391,7 +391,7 @@ export const REPORTS: ReportDef[] = [
         GROUP BY p.id, cu.code ORDER BY p.payment_date, p.created_at`);
       const all = [...rows, ...pays].sort((a, b) => String(a.doc_date instanceof Date ? a.doc_date.toISOString() : a.doc_date).localeCompare(String(b.doc_date instanceof Date ? b.doc_date.toISOString() : b.doc_date)));
       let bal = D(0);
-      const label: Record<string, string> = { INVOICE: 'Factura', RETURN: 'Devolución', PAYMENT: 'Pago' };
+      const label: Record<string, string> = { INVOICE: 'Factura', RETURN: 'Devolución', PAYMENT: 'Pago', OPENING: 'Saldo inicial' };
       const out = all.map(({ created_at: _c, ...r }) => { bal = bal.plus(D(String(r.debit_bs))).minus(D(String(r.credit_bs))); return { ...r, type: label[String(r.type)] ?? r.type, balance_bs: bal.toFixed(4) }; });
       return { rows: out, totals: { debit_bs: sum(out, 'debit_bs'), credit_bs: sum(out, 'credit_bs'), balance_bs: bal.toFixed(4) } };
     },
@@ -706,6 +706,28 @@ export const REPORTS: ReportDef[] = [
       return { rows, totals: { base_bs: sum(rows.filter(r => r.status === 'Vigente'), 'base_bs'), amount_bs: sum(rows.filter(r => r.status === 'Vigente'), 'amount_bs') } };
     },
   })),
+  {
+    category: 'fiscal', id: 'fx-differences', title: 'Diferencial cambiario realizado', description: 'Ganancia (+) o pérdida (−) en Bs al pagar o cobrar documentos en moneda extranjera frente a la tasa con que se registraron.',
+    filters: ['dateFrom', 'dateTo'],
+    columns: [col('date', 'Fecha', 'date'), col('type', 'Tipo'), col('number', 'Documento'), col('party', 'Tercero'), col('currency', 'Moneda'), col('amount', 'Monto aplicado', 'money'),
+      col('rate_doc', 'Tasa del documento', 'cost'), col('rate_pay', 'Tasa del pago/cobro', 'cost'), col('result_bs', 'Resultado Bs', 'money')],
+    async run(c) {
+      const rows = await raw(c.tx, Prisma.sql`
+        SELECT p.payment_date AS date, 'Pago a proveedor' AS type, p.number, s.legal_name AS party, cu.code AS currency, a.amount::text AS amount, a.rate_doc::text AS rate_doc, a.rate_pay::text AS rate_pay, a.fx_diff_bs::text AS result_bs
+        FROM supplier_payment_applications a JOIN supplier_payments p ON p.id = a.payment_id AND p.company_id = a.company_id AND p.status = 'CONFIRMED'
+        JOIN payable_entries e ON e.id = a.payable_entry_id AND e.company_id = a.company_id JOIN currencies cu ON cu.id = e.currency_id
+        JOIN suppliers s ON s.id = p.supplier_id AND s.company_id = p.company_id
+        WHERE a.company_id = ${cid(c)} AND a.fx_diff_bs <> 0 ${when(c.f.dateFrom, Prisma.sql`AND p.payment_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND p.payment_date <= ${c.f.dateTo}::date`)}
+        UNION ALL
+        SELECT r.receipt_date, 'Cobro a cliente', r.number, cu2.legal_name, cu.code, a.amount::text, a.rate_doc::text, a.rate_pay::text, a.fx_diff_bs::text
+        FROM customer_receipt_applications a JOIN customer_receipts r ON r.id = a.receipt_id AND r.company_id = a.company_id AND r.status = 'CONFIRMED'
+        JOIN receivable_entries e ON e.id = a.receivable_entry_id AND e.company_id = a.company_id JOIN currencies cu ON cu.id = e.currency_id
+        JOIN customers cu2 ON cu2.id = r.customer_id AND cu2.company_id = r.company_id
+        WHERE a.company_id = ${cid(c)} AND a.fx_diff_bs <> 0 ${when(c.f.dateFrom, Prisma.sql`AND r.receipt_date >= ${c.f.dateFrom}::date`)} ${when(c.f.dateTo, Prisma.sql`AND r.receipt_date <= ${c.f.dateTo}::date`)}
+        ORDER BY 1, 3`);
+      return { rows, totals: { result_bs: sum(rows, 'result_bs') } };
+    },
+  },
   {
     category: 'fiscal', id: 'igtf', title: 'IGTF cobrado', description: 'IGTF de pagos en divisas, en facturas de contado y en cobros posteriores, convertido a Bs.',
     filters: ['dateFrom', 'dateTo'],

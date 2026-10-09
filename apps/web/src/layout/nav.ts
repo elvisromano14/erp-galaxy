@@ -74,6 +74,7 @@ export const NAV: NavSection[] = [
     items: [
       { key: "receivables", path: "/treasury/receivables", perm: "treasury:receivables:read" },
       { key: "receipts", path: "/treasury/receipts", perm: "treasury:receipts:read" },
+      { key: "payables-list", path: "/treasury/payables", perm: "treasury:payables:read" },
       { key: "payments", path: "/treasury/payments", perm: "treasury:payments:read" },
       { key: "accounts", path: "/treasury/accounts", perm: "treasury:movements:read" },
     ],

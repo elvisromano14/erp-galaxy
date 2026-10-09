@@ -226,4 +226,31 @@ describe('Facturación: factura, notas de crédito y PDF', () => {
     expect(book.rows[0]).toMatchObject({ number: f1.number, control_no: f1.controlNo });
     expect(Number(book.totals.base_bs)).toBe(100); expect(Number(book.totals.tax_bs)).toBe(16); expect(Number(book.totals.total_bs)).toBe(116);
   });
+
+  it('costo por serial: cada unidad sale a su propio costo y el promedio del resto se recalcula', async () => {
+    const p = await b.product('F-SERCOST', { trackingMode: 'SERIAL' });
+    const charge = async (serial: string, cost: string) => {
+      const ch = await api.post('/inventory/charges', { warehouseId: b.w1, lines: [{ productId: p, unitCost: cost, serials: [serial] }] });
+      expect((await api.post(`/inventory/charges/${ch.body.data.id}/confirm`)).status).toBe(201);
+    };
+    await charge('C1', '10'); await charge('C2', '20');
+    expect((await stock(p)).avgCost).toBe('15');
+    const sell = async (serial: string) => {
+      const d = (await invoice([{ productId: p, quantity: '1', unitPrice: '100', serials: [serial] }])).body.data.id;
+      const r = await api.post(`/sales/invoices/${d}/confirm`, { payments: [{ paymentMethodId: trf, bankAccountId: bankVes, currencyId: b.ves, amount: '116' }] });
+      expect(r.status).toBe(201); return r.body.data;
+    };
+    const f1 = await sell('C1');
+    expect(Number(f1.lines[0].unitCost)).toBe(10); // costo de C1, no el promedio 15
+    expect((await stock(p)).avgCost).toBe('20');   // queda solo C2
+    const f2 = await sell('C2');
+    expect(Number(f2.lines[0].unitCost)).toBe(20);
+    // la devolución reingresa a ESE costo
+    const cn = await api.post(`/sales/invoices/${f1.id}/credit-note`, { lines: [{ parentLineId: f1.lines[0].id, quantity: '1', serials: ['C1'] }] });
+    expect(cn.status).toBe(201);
+    expect((await stock(p)).avgCost).toBe('10');
+    // un serial sin costo registrado (datos previos) cae al promedio
+    const kardex = (await api.get(`/inventory/kardex?productId=${p}&limit=20`)).body.data as any[];
+    expect(kardex.filter(k => Number(k.quantity) < 0).map(k => Number(k.unitCost)).sort()).toEqual([10, 20]);
+  });
 });
