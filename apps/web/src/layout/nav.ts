@@ -56,6 +56,15 @@ export const NAV: NavSection[] = [
     ],
   },
   {
+    key: "sales",
+    icon: "cart",
+    items: [
+      { key: "sales-quotes", path: "/sales/quotes", perm: "sales:quotes:read" },
+      { key: "sales-budgets", path: "/sales/budgets", perm: "sales:budgets:read" },
+      { key: "sales-orders", path: "/sales/orders", perm: "sales:orders:read" },
+    ],
+  },
+  {
     key: "reports",
     icon: "report",
     items: [

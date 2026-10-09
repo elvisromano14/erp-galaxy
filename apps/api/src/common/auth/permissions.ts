@@ -8,6 +8,7 @@ export const ADMIN_RESOURCES = [
   'exchange-rates', 'movement-reasons', 'banks', 'bank-accounts',
 ] as const;
 export const INVENTORY_DOCS = ['transfers', 'charges', 'discharges', 'adjustments', 'cost-adjustments'] as const;
+export const SALES_DOCS = ['quotes', 'budgets', 'orders'] as const;
 export const PURCHASE_DOCS = ['quotes', 'orders', 'delivery-notes', 'delivery-note-returns', 'invoices', 'returns'] as const;
 
 export const REPORT_CATEGORIES = ['inventory', 'categories', 'suppliers', 'purchases', 'customers', 'sellers'] as const;
@@ -28,6 +29,8 @@ export const ALL_PERMISSIONS: string[] = [
   ...build('inventory', 'periods', ['read', 'close']),
   ...INVENTORY_DOCS.flatMap(r => build('inventory', r, DOC)),
   ...PURCHASE_DOCS.flatMap(r => build('purchases', r, DOC)),
+  ...SALES_DOCS.flatMap(r => build('sales', r, DOC)),
+  ...build('sales', 'documents', ['read-all']),
   ...build('payables', 'entries', ['read']),
   ...REPORT_CATEGORIES.flatMap(c => build('reports', c, ['read'])),
 ];
@@ -39,7 +42,8 @@ export const ROLE_TEMPLATES: Record<string, { name: string; permissions: string[
   GERENTE: { name: 'Gerente', permissions: ALL_PERMISSIONS.filter(p => !p.startsWith('security:companies:') && !p.startsWith('security:roles:')) },
   VENDEDOR: {
     name: 'Vendedor',
-    permissions: [...readCatalogs, 'inventory:stock:read'],
+    // Ve y gestiona solo SUS documentos (sin 'sales:documents:read-all').
+    permissions: [...readCatalogs, 'inventory:stock:read', ...SALES_DOCS.flatMap(r => build('sales', r, DOC)), 'admin:customers:create', 'admin:customers:update'],
   },
   ALMACENISTA: {
     name: 'Almacenista',
@@ -50,7 +54,7 @@ export const ROLE_TEMPLATES: Record<string, { name: string; permissions: string[
       'reports:inventory:read', 'reports:categories:read',
     ],
   },
-  CAJERO: { name: 'Cajero', permissions: [...readCatalogs] },
+  CAJERO: { name: 'Cajero', permissions: [...readCatalogs, ...SALES_DOCS.map(r => `sales:${r}:read`), 'sales:documents:read-all'] },
   CONTADOR: {
     name: 'Contador',
     permissions: ALL_PERMISSIONS.filter(p => p.endsWith(':read')).concat(['inventory:periods:close']),

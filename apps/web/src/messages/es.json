@@ -60,7 +60,8 @@
       "inventory": "Inventario",
       "purchases": "Compras",
       "settings": "Configuración",
-      "reports": "Reportes"
+      "reports": "Reportes",
+      "sales": "Ventas"
     },
     "items": {
       "products": "Productos",
@@ -108,7 +109,10 @@
       "report-purchases": "Compras",
       "report-customers": "Clientes",
       "report-sellers": "Vendedores",
-      "import": "Importar datos"
+      "import": "Importar datos",
+      "sales-quotes": "Cotizaciones de venta",
+      "sales-budgets": "Presupuestos",
+      "sales-orders": "Pedidos"
     }
   },
   "header": {
@@ -171,7 +175,8 @@
     "VOIDED": "Anulado",
     "OPEN": "Abierto",
     "PARTIALLY_PAID": "Pago parcial",
-    "PAID": "Pagado"
+    "PAID": "Pagado",
+    "CONVERTED": "Convertido"
   },
   "docTypes": {
     "TRANSFER": "Traslado",
@@ -292,7 +297,11 @@
     "dateTo": "Hasta",
     "asOf": "Al cierre del día",
     "priceList": "Lista de precios",
-    "search": "Búsqueda"
+    "search": "Búsqueda",
+    "customer": "Cliente",
+    "seller": "Vendedor",
+    "unitPrice": "Precio unitario",
+    "validUntil": "Válido hasta"
   },
   "enums": {
     "personType": {
@@ -607,6 +616,33 @@
       "update": "Actualizar",
       "skip": "Omitir",
       "error": "Error"
+    }
+  },
+  "sales": {
+    "searchHint": "Buscar por número o cliente…",
+    "searchCustomer": "Buscar por RIF o nombre…",
+    "priceFromList": "De la lista",
+    "priceListHint": "Vacío = la del cliente o la predeterminada",
+    "unpricedNotice": "Las líneas sin precio se completan al guardar desde la lista de precios.",
+    "reservesStock": "Reservar existencias",
+    "reservesHint": "Aparta la cantidad en el depósito al confirmar",
+    "reservedNotice": "Existencias reservadas en el depósito para este documento.",
+    "convertToBudget": "Convertir en presupuesto",
+    "convertToOrder": "Convertir en pedido",
+    "docTypes": {
+      "QUOTE": "Cotización de venta",
+      "BUDGET": "Presupuesto",
+      "ORDER": "Pedido"
+    },
+    "confirmMessage": {
+      "BUDGET": "Se asignará el número. Si reserva existencias, se aparta la cantidad en el depósito.",
+      "ORDER": "Se asignará el número. Si reserva existencias, se aparta la cantidad en el depósito.",
+      "QUOTE": ""
+    },
+    "cancelMessage": {
+      "QUOTE": "La cotización quedará anulada.",
+      "BUDGET": "El presupuesto quedará anulado y se libera la reserva.",
+      "ORDER": "El pedido quedará anulado y se libera la reserva."
     }
   }
 }
