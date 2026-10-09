@@ -10,7 +10,7 @@ export interface NavLeaf {
 }
 export interface NavSection {
   key: string;
-  icon: "grid" | "box" | "cube" | "cart" | "settings";
+  icon: "grid" | "box" | "cube" | "cart" | "settings" | "report";
   items: NavLeaf[];
 }
 
@@ -56,6 +56,18 @@ export const NAV: NavSection[] = [
     ],
   },
   {
+    key: "reports",
+    icon: "report",
+    items: [
+      { key: "report-inventory", path: "/reports/inventory", perm: "reports:inventory:read" },
+      { key: "report-categories", path: "/reports/categories", perm: "reports:categories:read" },
+      { key: "report-suppliers", path: "/reports/suppliers", perm: "reports:suppliers:read" },
+      { key: "report-purchases", path: "/reports/purchases", perm: "reports:purchases:read" },
+      { key: "report-customers", path: "/reports/customers", perm: "reports:customers:read" },
+      { key: "report-sellers", path: "/reports/sellers", perm: "reports:sellers:read" },
+    ],
+  },
+  {
     key: "settings",
     icon: "settings",
     items: [
@@ -63,6 +75,7 @@ export const NAV: NavSection[] = [
       { key: "companies", path: "/settings/companies", flag: "canCreateCompanies" },
       { key: "organizations", path: "/settings/organizations", flag: "superAdmin" },
       { key: "sequences", path: "/settings/sequences", perm: "admin:sequences:read" },
+      { key: "import", path: "/settings/import", perm: "admin:import:create" },
       { key: "users", path: "/settings/users", perm: "security:users:read" },
       { key: "roles", path: "/settings/roles", perm: "security:roles:read" },
     ],

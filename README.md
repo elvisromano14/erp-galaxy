@@ -28,7 +28,7 @@ Usuarios de **desarrollo** (contraseña de semilla `Admin12345!`, cambiar `SEED_
 
 ```bash
 pnpm --filter @erp/domain test       # 11 pruebas unitarias (totales, IVA, IGTF, costeo, RIF)
-cd apps/api && npx jest --config jest.e2e.config.js   # 65 pruebas e2e contra PostgreSQL/Redis reales (BD `minierp_test`, se recrea sola)
+cd apps/api && npx jest --config jest.e2e.config.js   # 80 pruebas e2e contra PostgreSQL/Redis reales (BD `minierp_test`, se recrea sola)
 ```
 
 Las e2e cubren: autenticación (bloqueo, rotación y reutilización de refresh, revocación), aislamiento multiempresa (RLS + FK compuestas),
@@ -48,7 +48,7 @@ lotes FEFO, períodos, idempotencia y el flujo completo de compras.
 
 Además: tasas BCV automáticas (DolarApi) con tasa manual por empresa, numeración configurable, seriales y edición/baja de empresas.
 
-Reportes de esta etapa: existencias, kardex y valorizado (con fecha). El resto del catálogo de reportes llega con sus módulos (D16).
+**Reportes** (25, exportables a PDF/Excel/CSV) y **importación de datos** desde Excel/CSV (instancias, productos, proveedores, clientes y existencias iniciales). Los reportes de ventas, clientes con CxC y fiscales llegan con sus módulos (D16).
 
 ## Decisiones y desviaciones respecto a `erp-v3.md` (a revisar)
 

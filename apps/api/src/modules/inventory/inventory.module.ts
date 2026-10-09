@@ -9,6 +9,6 @@ import { PostingService } from './posting.service';
   imports: [ExchangeRatesModule],
   controllers: [...DocControllers, CountSheetController, InventoryQueriesController, ProductInventoryController],
   providers: [PostingService, InventoryDocsService, InventoryQueriesService],
-  exports: [PostingService, InventoryQueriesService],
+  exports: [PostingService, InventoryQueriesService, InventoryDocsService],
 })
 export class InventoryModule {}

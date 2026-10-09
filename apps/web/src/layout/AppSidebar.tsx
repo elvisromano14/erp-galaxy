@@ -3,7 +3,7 @@
 import { useAuth } from "@/context/AuthContext";
 import { useSidebar } from "@/context/SidebarContext";
 import { Link, usePathname } from "@/i18n/navigation";
-import { BoxCubeIcon, BoxIcon, ChevronDownIcon, GridIcon, HorizontaLDots, ListIcon, PlugInIcon } from "@/icons";
+import { BoxCubeIcon, BoxIcon, ChevronDownIcon, FileIcon, GridIcon, HorizontaLDots, ListIcon, PlugInIcon } from "@/icons";
 import { cn } from "@/utils";
 import { useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
@@ -15,6 +15,7 @@ const ICONS: Record<NavSection["icon"], React.ReactNode> = {
   cube: <BoxCubeIcon />,
   cart: <ListIcon />,
   settings: <PlugInIcon />,
+  report: <FileIcon />,
 };
 
 const AppSidebar: React.FC = () => {

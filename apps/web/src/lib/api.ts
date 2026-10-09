@@ -188,3 +188,49 @@ export async function logout() {
     accessToken = null;
   }
 }
+
+// ───────── descargas y cargas de archivos ─────────
+async function authedFetch(path: string, init: RequestInit & { query?: Query }): Promise<Response> {
+  const doFetch = () =>
+    fetch(`/api/v1${path}${buildQuery(init.query)}`, {
+      ...init,
+      credentials: "same-origin",
+      headers: { ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...(init.headers as Record<string, string> | undefined) },
+    });
+  let res = await doFetch();
+  if (res.status === 401) {
+    const t = await refreshSession();
+    if (t) res = await doFetch();
+    else onSessionLost?.();
+  }
+  if (!res.ok) {
+    const body = await parse(res);
+    throw new ApiError(res.status, body?.error ?? "ERROR", body?.message ?? `Error ${res.status}`, body?.details ?? [], body?.requestId);
+  }
+  return res;
+}
+
+/** Descarga un archivo generado por la API (reportes, plantillas) y lo entrega al navegador. */
+export async function downloadFile(path: string, query?: Query): Promise<void> {
+  const res = await authedFetch(path, { method: "GET", query });
+  const cd = res.headers.get("Content-Disposition") ?? "";
+  const filename = /filename="?([^";]+)"?/i.exec(cd)?.[1] ?? "descarga";
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** Sube un archivo (multipart) y devuelve la respuesta JSON de la API. */
+export async function uploadFile<T = unknown>(path: string, file: File, query?: Query): Promise<ApiResult<T>> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await authedFetch(path, { method: "POST", body: form, query });
+  const body = await parse(res);
+  return { data: (body && typeof body === "object" && "data" in body ? body.data : body) as T, meta: body?.meta };
+}

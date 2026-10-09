@@ -10,6 +10,7 @@ export const ADMIN_RESOURCES = [
 export const INVENTORY_DOCS = ['transfers', 'charges', 'discharges', 'adjustments', 'cost-adjustments'] as const;
 export const PURCHASE_DOCS = ['quotes', 'orders', 'delivery-notes', 'delivery-note-returns', 'invoices', 'returns'] as const;
 
+export const REPORT_CATEGORIES = ['inventory', 'categories', 'suppliers', 'purchases', 'customers', 'sellers'] as const;
 const build = (module: string, resource: string, actions: string[]) => actions.map(a => `${module}:${resource}:${a}`);
 
 export const ALL_PERMISSIONS: string[] = [
@@ -19,6 +20,7 @@ export const ALL_PERMISSIONS: string[] = [
   ...build('security', 'companies', ['read', 'update']),
   ...build('security', 'audit', ['read']),
   ...build('admin', 'sequences', ['read', 'update']),
+  ...build('admin', 'import', ['create']),
   ...build('inventory', 'stock', ['read']),
   ...build('inventory', 'serials', ['read']),
   ...build('inventory', 'kardex', ['read']),
@@ -27,6 +29,7 @@ export const ALL_PERMISSIONS: string[] = [
   ...INVENTORY_DOCS.flatMap(r => build('inventory', r, DOC)),
   ...PURCHASE_DOCS.flatMap(r => build('purchases', r, DOC)),
   ...build('payables', 'entries', ['read']),
+  ...REPORT_CATEGORIES.flatMap(c => build('reports', c, ['read'])),
 ];
 
 const readCatalogs = ADMIN_RESOURCES.map(r => `admin:${r}:read`);
@@ -44,6 +47,7 @@ export const ROLE_TEMPLATES: Record<string, { name: string; permissions: string[
       ...readCatalogs, 'inventory:stock:read', 'inventory:kardex:read', 'inventory:serials:read',
       ...INVENTORY_DOCS.flatMap(r => build('inventory', r, DOC)),
       'purchases:delivery-notes:read', 'purchases:delivery-notes:create', 'purchases:delivery-notes:confirm',
+      'reports:inventory:read', 'reports:categories:read',
     ],
   },
   CAJERO: { name: 'Cajero', permissions: [...readCatalogs] },
@@ -57,6 +61,7 @@ export const ROLE_TEMPLATES: Record<string, { name: string; permissions: string[
       ...readCatalogs, 'inventory:stock:read', 'inventory:kardex:read', 'payables:entries:read',
       ...PURCHASE_DOCS.flatMap(r => build('purchases', r, DOC)),
       'admin:suppliers:create', 'admin:suppliers:update',
+      'reports:suppliers:read', 'reports:purchases:read', 'reports:inventory:read', 'reports:categories:read',
     ],
   },
 };

@@ -887,3 +887,19 @@ model MovementSerial {
   @@id([movementId, serialId])
   @@map("movement_serials")
 }
+
+/// Bitácora inmutable de exportaciones de reportes.
+model ReportRun {
+  id        String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  category  String
+  report    String
+  format    String
+  filters   Json?
+  rowCount  Int      @default(0) @map("row_count")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([companyId, createdAt(sort: Desc)])
+  @@map("report_runs")
+}

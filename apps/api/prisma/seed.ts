@@ -62,9 +62,11 @@ async function main() {
     const usd = await prisma.currency.findUniqueOrThrow({ where: { code: 'USD' } });
     // Tasa manual de la empresa demo (las oficiales del BCV las trae la sincronización con DolarApi).
     const today = new Date(new Date().toISOString().slice(0, 10));
-    if (!(await prisma.exchangeRate.findFirst({ where: { currencyId: usd.id, date: today, companyId: demo.id } }))) {
-      await prisma.exchangeRate.create({ data: { currencyId: usd.id, rate: '36.52', date: today, source: 'MANUAL', companyId: demo.id } });
-    }
+    await prisma.runWithTenant(demo.id, async tx => {
+      if (!(await tx.exchangeRate.findFirst({ where: { currencyId: usd.id, date: today, companyId: demo.id } }))) {
+        await tx.exchangeRate.create({ data: { currencyId: usd.id, rate: '36.52', date: today, source: 'MANUAL', companyId: demo.id } });
+      }
+    });
     if (!(await prisma.runWithTenant(demo.id, tx => tx.product.count()))) {
       await prisma.runWithTenant(demo.id, async tx => {
         const unit = await tx.unit.findFirstOrThrow({ where: { code: 'UND' } });

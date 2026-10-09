@@ -1,5 +1,6 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
 import { createHash } from 'node:crypto';
+import { StreamableFile } from '@nestjs/common';
 import { from, lastValueFrom, mergeMap, Observable } from 'rxjs';
 import { PrismaService } from '../db/prisma.service';
 import { getStore } from '../db/tenant-context';
@@ -62,6 +63,7 @@ export class ResponseWrapInterceptor implements NestInterceptor {
     return next.handle().pipe(
       mergeMap(async body => {
         let out: unknown;
+        if (body instanceof StreamableFile) return body; // descargas (reportes): sin envoltorio
         if (body instanceof Paged || body instanceof CursorPage) out = { data: body.data, meta: body.meta };
         else if (body === undefined) out = body;
         else if (body && typeof body === 'object' && (body as any).__raw) out = (body as any).value;

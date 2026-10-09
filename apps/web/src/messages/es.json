@@ -48,7 +48,8 @@
     "cancelTitle": "¿Anular documento?",
     "confirmDocument": "Confirmar",
     "saveDraft": "Guardar borrador",
-    "print": "Imprimir"
+    "print": "Imprimir",
+    "default": "Predeterminada"
   },
   "sidebar": {
     "brand": "Mini ERP",
@@ -58,7 +59,8 @@
       "administration": "Administración",
       "inventory": "Inventario",
       "purchases": "Compras",
-      "settings": "Configuración"
+      "settings": "Configuración",
+      "reports": "Reportes"
     },
     "items": {
       "products": "Productos",
@@ -99,7 +101,14 @@
       "companies": "Empresas",
       "organizations": "Clientes",
       "sequences": "Numeración",
-      "serials": "Seriales"
+      "serials": "Seriales",
+      "report-inventory": "Inventario",
+      "report-categories": "Instancias",
+      "report-suppliers": "Proveedores",
+      "report-purchases": "Compras",
+      "report-customers": "Clientes",
+      "report-sellers": "Vendedores",
+      "import": "Importar datos"
     }
   },
   "header": {
@@ -278,7 +287,12 @@
     "isIgtfCollector": "Cobra IGTF",
     "serials": "Seriales",
     "serial": "Serial",
-    "updatedAt": "Actualizado"
+    "updatedAt": "Actualizado",
+    "dateFrom": "Desde",
+    "dateTo": "Hasta",
+    "asOf": "Al cierre del día",
+    "priceList": "Lista de precios",
+    "search": "Búsqueda"
   },
   "enums": {
     "personType": {
@@ -521,5 +535,78 @@
     "SOLD": "Vendido",
     "RETURNED": "Devuelto al proveedor",
     "SCRAPPED": "Dado de baja"
+  },
+  "reports": {
+    "title": "Reportes de {category}",
+    "subtitle": "Consulte en pantalla y exporte a PDF, Excel o CSV. Cada exportación queda registrada.",
+    "open": "Abrir",
+    "filters": "Filtros",
+    "run": "Generar",
+    "running": "Generando…",
+    "exportPdf": "PDF",
+    "exportXlsx": "Excel",
+    "exportCsv": "CSV",
+    "rows": "{count} filas",
+    "truncated": "Se muestran las primeras {count} filas; exporte para ver todo.",
+    "noRows": "Sin datos para los filtros indicados.",
+    "required": "Complete los filtros obligatorios (*).",
+    "generated": "Generado",
+    "exporting": "Descargando…",
+    "total": "TOTAL",
+    "onlyWithStock": "Solo con existencia",
+    "none": "No hay reportes disponibles para su usuario en esta categoría.",
+    "cat": {
+      "inventory": "Inventario",
+      "categories": "Instancias",
+      "suppliers": "Proveedores",
+      "purchases": "Compras",
+      "customers": "Clientes",
+      "sellers": "Vendedores"
+    }
+  },
+  "import": {
+    "title": "Importar datos",
+    "subtitle": "Cargue catálogos y existencias iniciales desde Excel o CSV. Primero se valida; si hay errores no se importa nada.",
+    "type": "¿Qué desea importar?",
+    "template": "Plantilla",
+    "downloadXlsx": "Plantilla Excel",
+    "downloadCsv": "Plantilla CSV",
+    "columns": "Columnas",
+    "column": "Columna",
+    "required": "Obligatoria",
+    "help": "Descripción",
+    "example": "Ejemplo",
+    "file": "Archivo (.xlsx o .csv)",
+    "onExisting": "Si el registro ya existe",
+    "skip": "Omitir",
+    "update": "Actualizar",
+    "validate": "Validar archivo",
+    "validating": "Validando…",
+    "commit": "Importar",
+    "committing": "Importando…",
+    "summary": "Resumen",
+    "total": "Filas",
+    "create": "Nuevas",
+    "updateN": "A actualizar",
+    "skipN": "Omitidas",
+    "errorsN": "Con errores",
+    "warningsN": "Con avisos",
+    "row": "Fila",
+    "detail": "Detalle",
+    "action": "Acción",
+    "okReady": "El archivo es válido. Puede importarlo.",
+    "hasErrors": "Corrija los errores en el archivo y vuelva a validarlo; no se importó nada.",
+    "done": "Importación completada",
+    "truncated": "Se muestran solo las primeras filas con observaciones.",
+    "unknownColumns": "Columnas ignoradas: {cols}",
+    "chooseFile": "Seleccione un archivo para validar.",
+    "fileChanged": "Cambió el archivo: vuelva a validar antes de importar.",
+    "maxRows": "Máximo {count} filas por archivo.",
+    "actions": {
+      "create": "Crear",
+      "update": "Actualizar",
+      "skip": "Omitir",
+      "error": "Error"
+    }
   }
 }
