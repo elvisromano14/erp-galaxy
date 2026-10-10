@@ -60,7 +60,7 @@ Además: tasas BCV automáticas (DolarApi) con tasa manual por empresa, numeraci
 
 - **Prisma 6.19** (no «la última»: el tag `latest` de Prisma es hoy un RC 8). NestJS 11.
 - **Validación Zod con pipe propio** + `nestjs-zod` solo para Swagger (Zod 3.25).
-- **Frontend** con TanStack Query/Table, React Hook Form + Zod y Zustand (instalados con autorización). Dexie y Serwist siguen sin usarse (PWA/offline: S7–S8).
+- **Frontend** con TanStack Query/Table, React Hook Form + Zod y Zustand (instalados con autorización).
 - **Interfaz solo en español** (`es`); el template traía `en`, que se eliminó.
 - **Compras de contado** se registran con la CxP en estado `PAID` (el pago/banco real llega con CxP y Bancos, S11/S13).
 - Si el precio de la factura difiere del de la nota de entrega, **no se revaloriza** el costo ya ingresado (límite documentado).
@@ -71,8 +71,15 @@ Además: tasas BCV automáticas (DolarApi) con tasa manual por empresa, numeraci
 
 ## Pendiente del Sprint 0 / fases (no hecho)
 
-Despliegue al VPS (Caddy, Quadlet, CI/CD en GitHub Actions) y backups con copia externa. El modo offline/móvil se hará en otro proyecto
-(que puede usar `packages/api-client`).
+CI/CD en GitHub Actions, copia externa de los respaldos y dominio propio (el despliegue manual ya está hecho: ver más abajo). El modo offline/móvil
+se hará en otro proyecto (que puede usar `packages/api-client`).
+
+## Despliegue y manual
+
+- **Manual de usuario**: [`docs/MANUAL-DE-USUARIO.md`](docs/MANUAL-DE-USUARIO.md).
+- **Despliegue al VPS** (Podman/Quadlet, imágenes construidas en local y subidas por SSH, Tailscale Funnel): [`deploy/README.md`](deploy/README.md) — `deploy/deploy.sh`.
+- **Pruebas de carga**: `bash apps/api/loadtest/run.sh` (base y API propias); resultados en [`docs/PRUEBAS-DE-CARGA.md`](docs/PRUEBAS-DE-CARGA.md).
+- **Revisión de seguridad**: [`docs/SEGURIDAD.md`](docs/SEGURIDAD.md).
 
 ## Notas operativas
 

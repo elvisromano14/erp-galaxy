@@ -87,4 +87,12 @@ describe('Reportes en segundo plano (BullMQ)', () => {
     const f = await waitFor(api, bad.id);
     expect(f.status).toBe('FAILED'); expect(f.error).toContain('no encontrad');
   });
+
+  it('la exportación CSV neutraliza fórmulas (=, +, -, @) escritas en datos de usuario', async () => {
+    await b.product('=cmd|calc', { name: '=HYPERLINK("http://malo.example","x")' });
+    const csv = await ctx.http.get('/api/v1/reports/inventory/products?format=csv').set(auth(token)).buffer(true).parse(buf);
+    const text = csv.body.toString();
+    expect(text).toContain("'=HYPERLINK");
+    expect(text).not.toMatch(/(^|;)=HYPERLINK/m);
+  });
 });

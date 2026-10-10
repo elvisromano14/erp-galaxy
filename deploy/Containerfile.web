@@ -1,0 +1,31 @@
+# Imagen de la web (Next.js, salida standalone). Se construye desde la raíz del repositorio:
+#   podman build -f deploy/Containerfile.web --build-arg API_URL=http://127.0.0.1:3301 -t erp-web .
+# API_URL se fija al construir: las reescrituras /api/v1/* → API se resuelven en la compilación.
+FROM docker.io/library/node:24-bookworm-slim AS build
+RUN npm install -g pnpm@12.10.1
+WORKDIR /repo
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/domain/package.json packages/domain/
+COPY packages/api-client/package.json packages/api-client/
+RUN pnpm install --frozen-lockfile --filter @erp/web...
+COPY packages/contracts packages/contracts
+COPY packages/domain packages/domain
+COPY apps/web apps/web
+ARG API_URL=http://127.0.0.1:3301
+ENV API_URL=$API_URL NEXT_TELEMETRY_DISABLED=1
+RUN pnpm --filter @erp/contracts build && pnpm --filter @erp/domain build && pnpm --filter @erp/web build
+
+FROM docker.io/library/node:24-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends tini ca-certificates && rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production TZ=America/Caracas NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3300
+WORKDIR /app
+COPY --from=build --chown=node:node /repo/apps/web/.next/standalone ./
+COPY --from=build --chown=node:node /repo/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build --chown=node:node /repo/apps/web/public ./apps/web/public
+COPY deploy/healthcheck.js /healthcheck.js
+USER node
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["node", "apps/web/server.js"]

@@ -1,0 +1,33 @@
+# Imagen de la API (NestJS + Prisma). Se construye desde la raíz del repositorio:
+#   podman build -f deploy/Containerfile.api -t erp-api .
+FROM docker.io/library/node:24-bookworm-slim AS build
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/* \
+ && npm install -g pnpm@12.10.1
+WORKDIR /repo
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/domain/package.json packages/domain/
+COPY packages/api-client/package.json packages/api-client/
+RUN pnpm install --frozen-lockfile --filter @erp/api...
+COPY packages/contracts packages/contracts
+COPY packages/domain packages/domain
+COPY apps/api apps/api
+RUN pnpm --filter @erp/contracts build && pnpm --filter @erp/domain build \
+ && cd apps/api && pnpm exec prisma generate && pnpm build
+# Árbol de producción autocontenido (dependencias de runtime + paquetes del workspace)
+RUN pnpm --filter @erp/api deploy --prod --legacy /out \
+ && rm -rf /out/dist /out/src /out/test /out/scripts /out/jest*.js /out/tsconfig*.json \
+ && cp -r apps/api/dist /out/dist && cp -r apps/api/prisma /out/prisma \
+ && cd /out && ./node_modules/.bin/prisma generate
+
+FROM docker.io/library/node:24-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates tini && rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production TZ=America/Caracas
+WORKDIR /app
+COPY --from=build --chown=node:node /out /app
+COPY deploy/healthcheck.js /healthcheck.js
+USER node
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["node", "dist/main.js"]

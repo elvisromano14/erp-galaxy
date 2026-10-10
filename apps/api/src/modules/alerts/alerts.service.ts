@@ -92,7 +92,7 @@ export class HousekeepingService implements OnApplicationBootstrap {
   /** Marca como vencidas las cotizaciones SENT con vigencia anterior a hoy en TODAS las empresas. Devuelve cuántas. */
   async expireQuotes(): Promise<number> {
     const today = caracasToday();
-    const companies = await this.prisma.company.findMany({ where: { isActive: true }, select: { id: true } });
+    const companies = await this.prisma.db.company.findMany({ where: { isActive: true }, select: { id: true } });
     let n = 0;
     for (const c of companies) {
       await this.prisma.runWithTenant(c.id, async tx => {
@@ -106,7 +106,7 @@ export class HousekeepingService implements OnApplicationBootstrap {
 
   /** Borra el archivo de las exportaciones vencidas (la fila queda como EXPIRED). Devuelve cuántas. */
   async purgeReportFiles(): Promise<number> {
-    const companies = await this.prisma.company.findMany({ select: { id: true } });
+    const companies = await this.prisma.db.company.findMany({ select: { id: true } });
     let n = 0;
     for (const c of companies) {
       n += await this.prisma.runWithTenant(c.id, async tx => (await tx.reportJob.updateMany({ where: { file: { not: null }, expiresAt: { lt: new Date() } }, data: { file: null, status: 'EXPIRED' } })).count);

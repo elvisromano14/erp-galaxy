@@ -1,6 +1,8 @@
 import { Controller, Get, Param, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
+import { env } from '../../config/env';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { uuid } from '@erp/contracts';
@@ -52,7 +54,7 @@ export class TreasuryController {
 
   // ── conciliación
   /** Importa el extracto del banco (.xlsx/.csv: fecha, referencia, descripción y monto —o débito/crédito—). `mode=validate` propone parejas; `mode=commit` concilia. */
-  @Post('accounts/:id/statement') @RequirePermissions('treasury:reconciliations:create')
+  @Post('accounts/:id/statement') @Throttle({ default: { limit: env.THROTTLE_HEAVY_PER_MIN, ttl: 60_000 } }) @RequirePermissions('treasury:reconciliations:create')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
   importStatement(@Param('id', id) aid: string, @UploadedFile() file: Express.Multer.File | undefined, @ZQuery(statementQuery) q: z.infer<typeof statementQuery>) { return this.statement.run(aid, file, q); }

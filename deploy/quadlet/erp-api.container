@@ -1,0 +1,33 @@
+# API del ERP (NestJS + Prisma) con los workers de BullMQ en el mismo proceso. Solo escucha en 127.0.0.1:3301.
+[Unit]
+Description=ERP API (NestJS)
+Wants=network-online.target
+Requires=erp-redis.service
+After=network-online.target erp-redis.service
+
+[Container]
+ContainerName=erp-api
+Image=localhost/erp-api:latest
+# Red del host: 127.0.0.1:5432 es el PostgreSQL del servidor (compartido con otros proyectos) y 127.0.0.1:6390 el Redis del ERP.
+Network=host
+EnvironmentFile=%h/.config/erp/api.env
+ReadOnly=true
+Tmpfs=/tmp
+NoNewPrivileges=true
+DropCapability=ALL
+PodmanArgs=--memory=768m
+LogDriver=journald
+HealthCmd=node /healthcheck.js http://127.0.0.1:3301/api/v1/health
+HealthInterval=30s
+HealthTimeout=5s
+HealthRetries=3
+HealthStartPeriod=40s
+
+[Service]
+Restart=always
+RestartSec=5
+TimeoutStartSec=180
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

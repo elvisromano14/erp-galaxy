@@ -31,7 +31,7 @@ export class ExchangeRatesService {
    * y entre iguales, la cargada al último. (RLS: solo ve las globales y las de su empresa.)
    */
   async rateFor(currencyId: string, onDate: Date): Promise<{ rate: string; date: Date; source: string } | null> {
-    const cur = await this.prisma.currency.findUnique({ where: { id: currencyId } });
+    const cur = await this.prisma.db.currency.findUnique({ where: { id: currencyId } });
     if (!cur) throw new BusinessRuleException('Moneda inexistente', 'CURRENCY_NOT_FOUND');
     if (cur.code === 'VES') return { rate: '1', date: onDate, source: 'BASE' };
     const rows = await this.prisma.db.$queryRaw<{ rate: string; date: Date; source: string }[]>`
@@ -42,7 +42,7 @@ export class ExchangeRatesService {
   }
 
   async create(b: z.infer<typeof createSchema>) {
-    const cur = await this.prisma.currency.findUnique({ where: { id: b.currencyId } });
+    const cur = await this.prisma.db.currency.findUnique({ where: { id: b.currencyId } });
     if (!cur) throw new BusinessRuleException('Moneda inexistente', 'CURRENCY_NOT_FOUND');
     if (cur.code === 'VES') throw new BusinessRuleException('La moneda base (VES) no tiene tasa de cambio', 'BASE_CURRENCY_RATE');
     // Historial inmutable: cada carga agrega una fila (la última de la fecha prevalece).
@@ -70,7 +70,7 @@ export class ExchangeRatesService {
   async latest(q: z.infer<typeof latestSchema>) {
     let currencyId = q.currencyId;
     if (!currencyId && q.currencyCode) {
-      currencyId = (await this.prisma.currency.findUnique({ where: { code: q.currencyCode.toUpperCase() } }))?.id;
+      currencyId = (await this.prisma.db.currency.findUnique({ where: { code: q.currencyCode.toUpperCase() } }))?.id;
     }
     if (!currencyId) throw new BusinessRuleException('Indique currencyId o currencyCode', 'CURRENCY_REQUIRED');
     const onDate = q.date ? new Date(q.date) : new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' }));
@@ -107,12 +107,12 @@ export class BcvSyncService {
         if (!rate || !(rate > 0) || !Number.isFinite(rate)) { results.push({ currency: code, rate: '', date: '', status: 'SKIPPED', reason: 'sin tasa publicada' }); continue; }
         const rateDate = /^(\d{4}-\d{2}-\d{2})/.exec(item.fechaActualizacion)?.[1];
         if (!rateDate) { results.push({ currency: code, rate: String(rate), date: '', status: 'SKIPPED', reason: 'fecha inválida' }); continue; }
-        const currency = await this.prisma.currency.findUnique({ where: { code } });
+        const currency = await this.prisma.db.currency.findUnique({ where: { code } });
         if (!currency) { results.push({ currency: code, rate: String(rate), date: rateDate, status: 'SKIPPED', reason: 'moneda no registrada' }); continue; }
         // Sin contexto de empresa (cliente global del pool): solo ve/inserta filas globales.
-        const last = await this.prisma.exchangeRate.findFirst({ where: { currencyId: currency.id, date: new Date(rateDate), companyId: null, source: 'BCV' }, orderBy: { createdAt: 'desc' } });
+        const last = await this.prisma.db.exchangeRate.findFirst({ where: { currencyId: currency.id, date: new Date(rateDate), companyId: null, source: 'BCV' }, orderBy: { createdAt: 'desc' } });
         if (last && Number(last.rate) === rate) { results.push({ currency: code, rate: String(rate), date: rateDate, status: 'UNCHANGED' }); continue; }
-        await this.prisma.exchangeRate.create({ data: { currencyId: currency.id, rate: String(rate), date: new Date(rateDate), source: 'BCV', companyId: null } });
+        await this.prisma.db.exchangeRate.create({ data: { currencyId: currency.id, rate: String(rate), date: new Date(rateDate), source: 'BCV', companyId: null } });
         results.push({ currency: code, rate: String(rate), date: rateDate, status: 'INSERTED' });
       } catch (e) {
         errors.push(`${code}: ${(e as Error).message}`);

@@ -1,6 +1,7 @@
 import { Body, Controller, ForbiddenException, Get, Injectable, Module, OnModuleInit, Param, Post, Query, Res, StreamableFile } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
 import { PrismaService } from '../../common/db/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
@@ -37,7 +38,7 @@ export class ReportsService {
   }
 
   private async features(): Promise<Record<string, boolean>> {
-    const c = await this.prisma.company.findUniqueOrThrow({ where: { id: this.prisma.companyId } });
+    const c = await this.prisma.db.company.findUniqueOrThrow({ where: { id: this.prisma.companyId } });
     return c.features as Record<string, boolean>;
   }
 
@@ -93,7 +94,7 @@ export class ReportsService {
     const category = def.category, id = def.id;
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
     const result = await def.run({ tx: this.prisma.tx, companyId: this.prisma.companyId, f, features: feat, today });
-    const company = await this.prisma.company.findUniqueOrThrow({ where: { id: this.prisma.companyId } });
+    const company = await this.prisma.db.company.findUniqueOrThrow({ where: { id: this.prisma.companyId } });
     const cap = format === 'json' ? JSON_ROW_CAP : (rowCap ?? EXPORT_ROW_CAP);
     const truncated = result.rows.length > cap;
     const rows = truncated ? result.rows.slice(0, cap) : result.rows;
@@ -207,6 +208,7 @@ export class ReportJobsController {
   constructor(private readonly svc: ReportJobsService) {}
 
   /** Encola la exportación (csv/xlsx/pdf) de un reporte pesado. Responde de inmediato; consulte el estado y descargue cuando esté en DONE. */
+  @Throttle({ default: { limit: env.THROTTLE_HEAVY_PER_MIN, ttl: 60_000 } })
   @Post() create(@CurrentUser() u: AuthUser, @ZBody(jobSchema) b: z.infer<typeof jobSchema>) { return this.svc.create(u, b); }
   @Get() list(@CurrentUser() u: AuthUser, @ZQuery(jobListSchema) q: z.infer<typeof jobListSchema>) { return this.svc.list(u, q); }
   @Get(':id') get(@CurrentUser() u: AuthUser, @Param('id', new ZodPipe(z.string().uuid())) id: string) { return this.svc.get(u, id); }

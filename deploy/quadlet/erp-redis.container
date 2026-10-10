@@ -1,0 +1,33 @@
+# Redis del ERP (colas BullMQ, bloqueos, listas negras de tokens). Solo escucha en 127.0.0.1:6390.
+[Unit]
+Description=ERP Redis
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+ContainerName=erp-redis
+Image=docker.io/library/redis:7-alpine
+Network=host
+User=redis
+Group=redis
+EnvironmentFile=%h/.config/erp/redis.env
+Exec=sh -c 'exec redis-server --bind 127.0.0.1 --port 6390 --requirepass "$$REDIS_PASSWORD" --maxmemory 128mb --maxmemory-policy noeviction --appendonly yes --dir /data'
+Volume=erp-redis-data:/data
+ReadOnly=true
+Tmpfs=/tmp
+NoNewPrivileges=true
+DropCapability=ALL
+PodmanArgs=--memory=192m
+LogDriver=journald
+HealthCmd=sh -c 'redis-cli -p 6390 -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG'
+HealthInterval=30s
+HealthTimeout=5s
+HealthRetries=3
+
+[Service]
+Restart=always
+RestartSec=5
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target

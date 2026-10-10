@@ -1,5 +1,7 @@
 # Mini ERP – Guía de Desarrollo v3 (documento de arranque consolidado)
 
+> **Nota (2026-10):** el modo offline/PWA descrito en este plan (D7, sección 10 y partes de 6.7) **se hará en otro proyecto** (app móvil en otra tecnología, que consume `packages/api-client`). En este repositorio ya no hay Dexie, Serwist ni la bandera `offline`.
+
 > **Stack:** NestJS · Next.js (TailAdmin Free) como **PWA offline-first** · PostgreSQL 18 · Redis · JWT
 > **Mercado:** Venezuela (SENIAT) · **Multiempresa** · **Lotes/seriales/vencimiento opcionales**
 > **Hosting:** VPS Ubuntu 24.04 (2 vCPU · 4 GB RAM · 20 GB SSD) con Podman + Tailscale

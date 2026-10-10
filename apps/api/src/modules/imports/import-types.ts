@@ -359,7 +359,7 @@ const openingReceivables: ImportTypeDef = {
   async plan(ctx, rows) {
     const { tx } = ctx;
     const [customers, currencies, existing] = await Promise.all([
-      tx.customer.findMany({ where: { deletedAt: null }, select: { id: true, rif: true, creditDays: true } }), ctx.prisma.currency.findMany(),
+      tx.customer.findMany({ where: { deletedAt: null }, select: { id: true, rif: true, creditDays: true } }), ctx.prisma.db.currency.findMany(),
       tx.receivableEntry.findMany({ where: { entryType: 'OPENING', status: { not: 'CANCELLED' } }, select: { customerId: true, documentNo: true } }),
     ]);
     const custBy = new Map(customers.map(x => [formatRif(x.rif), x])); const curBy = new Map(currencies.map(x => [x.code.toLowerCase(), x]));
@@ -409,7 +409,7 @@ const openingPayables: ImportTypeDef = {
   async plan(ctx, rows) {
     const { tx } = ctx;
     const [customers, currencies, existing] = await Promise.all([
-      tx.supplier.findMany({ where: { deletedAt: null }, select: { id: true, rif: true, creditDays: true } }), ctx.prisma.currency.findMany(),
+      tx.supplier.findMany({ where: { deletedAt: null }, select: { id: true, rif: true, creditDays: true } }), ctx.prisma.db.currency.findMany(),
       tx.payableEntry.findMany({ where: { entryType: 'OPENING', status: { not: 'CANCELLED' } }, select: { supplierId: true, documentNo: true } }),
     ]);
     const custBy = new Map(customers.map(x => [formatRif(x.rif), x])); const curBy = new Map(currencies.map(x => [x.code.toLowerCase(), x]));

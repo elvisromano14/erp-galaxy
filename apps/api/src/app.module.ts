@@ -31,7 +31,7 @@ import { ImportsModule } from './modules/imports/imports.module';
       pinoHttp: {
         level: env.LOG_LEVEL,
         genReqId: (req: any) => req.id,
-        redact: ['req.headers.authorization', 'req.headers.cookie'],
+        redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
         autoLogging: { ignore: (req: any) => req.url?.includes('/health') },
         transport: env.NODE_ENV === 'development' ? { target: 'pino-pretty', options: { singleLine: true } } : undefined,
       },

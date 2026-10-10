@@ -116,7 +116,7 @@ export class SalesService {
 
   async resolveRate(input: { currencyId: string; exchangeRate?: string }, docDate: Date) {
     if (input.exchangeRate) {
-      const cur = await this.prisma.currency.findUnique({ where: { id: input.currencyId } });
+      const cur = await this.prisma.db.currency.findUnique({ where: { id: input.currencyId } });
       if (!cur) throw new BusinessRuleException('Moneda inexistente', 'CURRENCY_NOT_FOUND');
       return cur.code === 'VES' ? '1' : input.exchangeRate;
     }

@@ -13,6 +13,8 @@ const schema = z.object({
   JWT_REFRESH_TTL_DAYS: z.coerce.number().default(7),
   /** Ventana en que reusar un refresh token recién rotado se considera una carrera benigna (p. ej. dos pestañas). */
   REFRESH_REUSE_GRACE_SECONDS: z.coerce.number().default(10),
+  /** Saltos de proxy de confianza para `req.ip` (Next → API = 1; con Tailscale Funnel + Next delante de la API = 2). */
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
   LOG_LEVEL: z.string().default('info'),
   /** Procesa las colas de BullMQ (reportes en segundo plano, tareas periódicas) dentro de este proceso. Puede correr aparte con `pnpm worker`. */
   WORKER_ENABLED: z.enum(['true', 'false']).default('false').transform(v => v === 'true'),
@@ -33,6 +35,8 @@ const schema = z.object({
   LOGIN_MAX_ATTEMPTS: z.coerce.number().default(5),
   LOGIN_LOCK_MINUTES: z.coerce.number().default(15),
   THROTTLE_LOGIN_PER_MIN: z.coerce.number().default(10),
+  /** Límite por minuto de operaciones costosas (importaciones, extractos, exportaciones en segundo plano). */
+  THROTTLE_HEAVY_PER_MIN: z.coerce.number().default(20),
   THROTTLE_DEFAULT_PER_MIN: z.coerce.number().default(600),
 });
 

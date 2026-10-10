@@ -48,6 +48,9 @@ export async function parseImportFile(buf: Buffer, filename: string): Promise<Pa
     await wb.xlsx.load(buf as unknown as ExcelJS.Buffer);
     const ws = wb.getWorksheet('Datos') ?? wb.worksheets[0];
     if (!ws) throw new Error('El archivo no tiene hojas');
+    // Protección contra libros enormes (la hoja ya está en memoria, pero no se recorre ni se copia a texto).
+    if (ws.rowCount > MAX_IMPORT_ROWS + 100) throw new Error(`La hoja tiene ${ws.rowCount} filas; el máximo es ${MAX_IMPORT_ROWS}`);
+    if (ws.columnCount > 80) throw new Error('La hoja tiene demasiadas columnas');
     table = [];
     ws.eachRow({ includeEmpty: true }, (row, n) => {
       const vals: string[] = [];

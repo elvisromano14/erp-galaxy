@@ -32,7 +32,9 @@ export function formatCell(v: unknown, t: ColType): string {
 export function toCsv(o: ReportOutput, delimiter = ';'): Buffer {
   const esc = (s: string) => (/[";\n\r,]/.test(s) || s.includes(delimiter) ? `"${s.replace(/"/g, '""')}"` : s);
   // Los números se exportan en crudo (punto decimal, sin separador de miles) para que sean reutilizables.
-  const raw = (v: unknown, t: ColType) => (v === null || v === undefined ? '' : isNum(t) ? String(v) : t === 'date' ? String(v).slice(0, 10) : t === 'bool' ? (v ? 'SI' : 'NO') : String(v));
+  // Inyección de fórmulas: un texto que empieza por = + - @ (o tab/retorno) se antepone con ' para que Excel/Calc no lo ejecute.
+  const safe = (s: string) => (/^[=+\-@\t\r]/.test(s) ? `'${s}` : s);
+  const raw = (v: unknown, t: ColType) => (v === null || v === undefined ? '' : isNum(t) ? String(v) : t === 'date' ? String(v).slice(0, 10) : t === 'bool' ? (v ? 'SI' : 'NO') : safe(String(v)));
   const lines = [o.columns.map(c => esc(c.header)).join(delimiter)];
   for (const r of o.rows) lines.push(o.columns.map(c => esc(raw(r[c.key], c.type))).join(delimiter));
   if (o.totals) lines.push(o.columns.map((c, i) => esc(i === 0 && o.totals![c.key] === undefined ? 'TOTAL' : raw(o.totals![c.key], c.type))).join(delimiter));

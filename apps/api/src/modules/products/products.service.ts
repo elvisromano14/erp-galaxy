@@ -58,7 +58,7 @@ export class ProductsService {
   constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly rates: ExchangeRatesService) {}
 
   private async assertFeatures(d: { trackingMode?: string; hasExpiry?: boolean; isService?: boolean }) {
-    const company = await this.prisma.company.findUniqueOrThrow({ where: { id: this.prisma.companyId } });
+    const company = await this.prisma.db.company.findUniqueOrThrow({ where: { id: this.prisma.companyId } });
     const f = company.features as Record<string, boolean>;
     if (d.trackingMode === 'SERIAL' && !f.serials) throw new BusinessRuleException('La empresa no tiene habilitado el control por seriales', 'FEATURE_DISABLED', [{ field: 'trackingMode', code: 'SERIALS_DISABLED' }]);
     if (d.trackingMode === 'LOT' && !f.lots) throw new BusinessRuleException('La empresa no tiene habilitado el control por lotes', 'FEATURE_DISABLED', [{ field: 'trackingMode', code: 'LOTS_DISABLED' }]);

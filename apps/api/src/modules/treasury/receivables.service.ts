@@ -50,7 +50,7 @@ export class ReceivablesService {
     const issue = new Date(input.issueDate);
     const due = new Date(input.dueDate ?? new Date(issue.getTime() + customer.creditDays * 86_400_000).toISOString().slice(0, 10));
     if (due < issue) throw new BusinessRuleException('El vencimiento no puede ser anterior a la emisión', 'INVALID_DUE_DATE', [{ field: 'dueDate', code: 'INVALID' }]);
-    const cur = await this.prisma.currency.findUnique({ where: { id: input.currencyId } });
+    const cur = await this.prisma.db.currency.findUnique({ where: { id: input.currencyId } });
     if (!cur) throw new BusinessRuleException('Moneda inexistente', 'CURRENCY_NOT_FOUND');
     const rate = cur.code === 'VES' ? '1' : input.exchangeRate ?? (await this.rateOf(input.currencyId, issue)).toString();
     const dup = await tx.receivableEntry.findFirst({ where: { customerId: input.customerId, entryType: 'OPENING', documentNo: input.documentNo, status: { not: 'CANCELLED' } } });
@@ -85,14 +85,14 @@ export class ReceivablesService {
       tx.receivableEntry.count({ where }),
     ]);
     const cust = new Map((await tx.customer.findMany({ where: { id: { in: [...new Set(rows.map(r => r.customerId))] } }, select: { id: true, legalName: true } })).map(c => [c.id, c.legalName]));
-    const cur = new Map((await this.prisma.currency.findMany({ where: { id: { in: [...new Set(rows.map(r => r.currencyId))] } } })).map(c => [c.id, c.code]));
+    const cur = new Map((await this.prisma.db.currency.findMany({ where: { id: { in: [...new Set(rows.map(r => r.currencyId))] } } })).map(c => [c.id, c.code]));
     return Paged.of(rows.map(r => ({ ...r, customerName: cust.get(r.customerId) ?? null, currency: cur.get(r.currencyId) })), total, q.page, q.limit);
   }
 
   async openEntries(customerId: string) {
     const tx = this.prisma.tx;
     const entries = await tx.receivableEntry.findMany({ where: { customerId, status: { in: ['OPEN', 'PARTIALLY_PAID'] }, NOT: { balance: 0 } }, orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }] });
-    const cur = new Map((await this.prisma.currency.findMany({ where: { id: { in: [...new Set(entries.map(e => e.currencyId))] } } })).map(c => [c.id, c.code]));
+    const cur = new Map((await this.prisma.db.currency.findMany({ where: { id: { in: [...new Set(entries.map(e => e.currencyId))] } } })).map(c => [c.id, c.code]));
     return entries.map(e => ({ ...e, currency: cur.get(e.currencyId) }));
   }
 
@@ -116,7 +116,7 @@ export class ReceivablesService {
     if (method.type === 'CREDIT') throw new BusinessRuleException('Este instrumento no sirve para registrar cobros', 'PAYMENT_METHOD_INVALID');
     if ((method.requiresReference || method.type === 'WITHHOLDING') && !input.reference?.trim()) throw new BusinessRuleException('El instrumento de pago requiere referencia', 'REFERENCE_REQUIRED', [{ field: 'reference', code: 'REQUIRED' }]);
     const date = new Date(input.receiptDate ?? caracasToday());
-    const currency = await this.prisma.currency.findUnique({ where: { id: input.currencyId } });
+    const currency = await this.prisma.db.currency.findUnique({ where: { id: input.currencyId } });
     if (!currency) throw new BusinessRuleException('Moneda inexistente', 'CURRENCY_NOT_FOUND');
     const rcRate = currency.code === 'VES' ? D(1) : input.exchangeRate ? D(input.exchangeRate) : await this.rateOf(input.currencyId, date);
 

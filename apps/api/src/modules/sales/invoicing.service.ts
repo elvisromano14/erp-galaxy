@@ -94,7 +94,7 @@ export class InvoicingService {
       if (!method) throw bad('PAYMENT_METHOD_NOT_FOUND', 'Instrumento de pago inexistente o inactivo');
       if (['CREDIT', 'WITHHOLDING'].includes(method.type)) throw bad('PAYMENT_METHOD_INVALID', 'Este instrumento no sirve para pagos de la factura');
       if (method.requiresReference && !p.reference?.trim()) throw bad('REFERENCE_REQUIRED', 'El instrumento de pago requiere referencia');
-      const cur = await this.prisma.currency.findUnique({ where: { id: p.currencyId } });
+      const cur = await this.prisma.db.currency.findUnique({ where: { id: p.currencyId } });
       if (!cur) throw bad('CURRENCY_NOT_FOUND', 'Moneda inexistente');
       const payRate = cur.code === 'VES' ? D(1) : p.exchangeRate ? D(p.exchangeRate) : D((await this.treasuryRate(p.currencyId, doc.docDate)));
       const amountDoc = p.currencyId === doc.currencyId ? D(p.amount) : round(D(p.amount).mul(payRate).div(docRate), 4);
@@ -382,10 +382,10 @@ export class InvoicingService {
     const doc = await this.sales.get(docType, id, v);
     if (doc.status === 'DRAFT') throw new BusinessRuleException('El borrador no tiene PDF fiscal; emita el documento primero', 'DRAFT_NO_PDF');
     const snap = (doc.fiscalSnapshot ?? (await this.snapshot(doc.customerId, doc.sellerId))) as Awaited<ReturnType<InvoicingService['snapshot']>>;
-    const cur = await this.prisma.currency.findUniqueOrThrow({ where: { id: doc.currencyId } });
+    const cur = await this.prisma.db.currency.findUniqueOrThrow({ where: { id: doc.currencyId } });
     const taxes = new Map((await tx.tax.findMany({ where: { id: { in: doc.lines.map(l => l.taxId).filter(Boolean) as string[] } } })).map(t => [t.id, t]));
     const methods = new Map((await tx.paymentMethod.findMany()).map(m => [m.id, m.name]));
-    const currencies = new Map((await this.prisma.currency.findMany()).map(c => [c.id, c.code]));
+    const currencies = new Map((await this.prisma.db.currency.findMany()).map(c => [c.id, c.code]));
     const payments = (docType === 'INVOICE' ? ((doc as unknown as { payments: Awaited<ReturnType<typeof tx.salesDocumentPayment.findMany>> }).payments ?? []) : []);
     const parent = doc.links.parents[0];
     const parentDoc = parent ? await tx.salesDocument.findFirst({ where: { id: parent.id }, select: { number: true, docType: true } }) : null;

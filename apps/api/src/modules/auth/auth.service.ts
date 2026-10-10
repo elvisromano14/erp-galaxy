@@ -21,6 +21,9 @@ const ACCESS_TTL_SECONDS = (() => {
 export interface TokenPair { accessToken: string; refreshToken: string; expiresIn: number }
 interface Ctx { ip?: string; userAgent?: string }
 
+// Hash argon2id válido de una contraseña aleatoria descartada (solo para igualar tiempos de respuesta).
+const DUMMY_HASH = '$argon2id$v=19$m=65536,p=4,t=3$0Rmd4YYsa1aIP+DRIrOjeQ$HSK/jtPWzi4sKzDb6+kD5tOpaLlw4HMWa0LAPK0ODiw';
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -34,12 +37,16 @@ export class AuthService {
 
   // ───────── login ─────────
   async login(email: string, password: string, ctx: Ctx) {
-    const user = await this.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    const user = await this.prisma.db.user.findUnique({ where: { email: email.toLowerCase() } });
     const fail = async (reason: string) => {
       await this.audit.log('auth', user?.id, 'LOGIN_FAILED', { email, reason }, { companyId: null, userId: user?.id ?? null });
       throw new UnauthorizedException({ error: 'INVALID_CREDENTIALS', message: 'Credenciales inválidas' });
     };
-    if (!user || !user.isActive) return fail('unknown_or_inactive');
+    if (!user || !user.isActive) {
+      // Misma carga de CPU que un usuario real: la respuesta no delata si el correo existe (enumeración por tiempo).
+      await argon2.verify(DUMMY_HASH, password).catch(() => false);
+      return fail('unknown_or_inactive');
+    }
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       throw new UnauthorizedException({ error: 'ACCOUNT_LOCKED', message: 'Cuenta bloqueada temporalmente por intentos fallidos' });
     }
@@ -47,13 +54,13 @@ export class AuthService {
     if (!ok) {
       const failed = user.failedLogins + 1;
       const lock = failed >= env.LOGIN_MAX_ATTEMPTS;
-      await this.prisma.user.update({
+      await this.prisma.db.user.update({
         where: { id: user.id },
         data: { failedLogins: lock ? 0 : failed, lockedUntil: lock ? new Date(Date.now() + env.LOGIN_LOCK_MINUTES * 60_000) : null },
       });
       return fail('bad_password');
     }
-    await this.prisma.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null, lastLoginAt: new Date() } });
+    await this.prisma.db.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null, lastLoginAt: new Date() } });
 
     const companies = await this.userCompanies(user.id, user.isSuperAdmin);
     await this.audit.log('auth', user.id, 'LOGIN', undefined, { companyId: null, userId: user.id });
@@ -74,7 +81,7 @@ export class AuthService {
 
   // ───────── select-company ─────────
   async selectCompany(user: AuthUser, companyId: string, ctx: Ctx) {
-    const dbUser = await this.prisma.user.findUnique({ where: { id: user.userId } });
+    const dbUser = await this.prisma.db.user.findUnique({ where: { id: user.userId } });
     if (!dbUser?.isActive) throw new UnauthorizedException({ error: 'UNAUTHORIZED', message: 'Usuario inactivo' });
     const via = await this.access.accessTo(user.userId, dbUser.isSuperAdmin, companyId);
     if (!via) throw new ForbiddenLike('No pertenece a la empresa indicada', 'COMPANY_FORBIDDEN');
@@ -87,17 +94,17 @@ export class AuthService {
 
   // ───────── refresh (rotativo con detección de reutilización) ─────────
   async refresh(refreshToken: string, ctx: Ctx) {
-    const row = await this.prisma.refreshToken.findUnique({ where: { tokenHash: sha256(refreshToken) } });
+    const row = await this.prisma.db.refreshToken.findUnique({ where: { tokenHash: sha256(refreshToken) } });
     if (!row) throw new UnauthorizedException({ error: 'REFRESH_INVALID', message: 'Refresh token inválido' });
     const withinGrace = row.revokedAt && row.replacedById && Date.now() - row.revokedAt.getTime() < env.REFRESH_REUSE_GRACE_SECONDS * 1000;
     if (row.revokedAt && !withinGrace) {
       // Reutilización de un token ya rotado → se asume robo: se revoca toda la familia.
-      await this.prisma.refreshToken.updateMany({ where: { familyId: row.familyId, revokedAt: null }, data: { revokedAt: new Date() } });
+      await this.prisma.db.refreshToken.updateMany({ where: { familyId: row.familyId, revokedAt: null }, data: { revokedAt: new Date() } });
       await this.audit.log('auth', row.userId, 'REFRESH_REUSE_DETECTED', { familyId: row.familyId }, { companyId: null, userId: row.userId });
       throw new UnauthorizedException({ error: 'REFRESH_REUSED', message: 'Sesión revocada por seguridad; inicie sesión nuevamente' });
     }
     if (row.expiresAt < new Date()) throw new UnauthorizedException({ error: 'REFRESH_EXPIRED', message: 'Refresh token expirado' });
-    const user = await this.prisma.user.findUnique({ where: { id: row.userId } });
+    const user = await this.prisma.db.user.findUnique({ where: { id: row.userId } });
     if (!user?.isActive) throw new UnauthorizedException({ error: 'UNAUTHORIZED', message: 'Usuario inactivo' });
     // Dentro de la ventana de gracia el token ya está revocado: se emite otro de la misma familia sin volver a revocarlo.
     // Si ya no tiene acceso a la empresa del token (la quitaron o se desactivó), la sesión vuelve a «sin empresa».
@@ -110,20 +117,20 @@ export class AuthService {
   async logout(user: AuthUser, refreshToken?: string) {
     await this.revokeAccess(user);
     if (refreshToken) {
-      const row = await this.prisma.refreshToken.findUnique({ where: { tokenHash: sha256(refreshToken) } });
+      const row = await this.prisma.db.refreshToken.findUnique({ where: { tokenHash: sha256(refreshToken) } });
       if (row && row.userId === user.userId) {
-        await this.prisma.refreshToken.updateMany({ where: { familyId: row.familyId, revokedAt: null }, data: { revokedAt: new Date() } });
+        await this.prisma.db.refreshToken.updateMany({ where: { familyId: row.familyId, revokedAt: null }, data: { revokedAt: new Date() } });
       }
     }
     await this.audit.log('auth', user.userId, 'LOGOUT', undefined, { companyId: user.companyId ?? null, userId: user.userId });
   }
 
   async me(user: AuthUser) {
-    const dbUser = await this.prisma.user.findUniqueOrThrow({ where: { id: user.userId } });
+    const dbUser = await this.prisma.db.user.findUniqueOrThrow({ where: { id: user.userId } });
     const companies = await this.userCompanies(user.userId, dbUser.isSuperAdmin);
     let company: unknown = null, permissions: string[] = [], roles: { code: string; name: string }[] = [];
     if (user.companyId) {
-      company = await this.prisma.company.findUnique({ where: { id: user.companyId } });
+      company = await this.prisma.db.company.findUnique({ where: { id: user.companyId } });
       permissions = dbUser.isSuperAdmin ? ['*'] : await this.perms.forUser(user.userId, user.companyId);
       roles = await this.prisma.runWithTenant(user.companyId, async tx => {
         const ur = await tx.userRole.findMany({ where: { userId: user.userId, companyId: user.companyId! } });
@@ -140,13 +147,13 @@ export class AuthService {
   }
 
   async changePassword(user: AuthUser, current: string, next: string) {
-    const dbUser = await this.prisma.user.findUniqueOrThrow({ where: { id: user.userId } });
+    const dbUser = await this.prisma.db.user.findUniqueOrThrow({ where: { id: user.userId } });
     if (!(await argon2.verify(dbUser.passwordHash, current).catch(() => false))) {
       throw new BusinessRuleException('La contraseña actual no es correcta', 'INVALID_CURRENT_PASSWORD');
     }
     assertStrongPassword(next);
-    await this.prisma.user.update({ where: { id: dbUser.id }, data: { passwordHash: await hashPassword(next) } });
-    await this.prisma.refreshToken.updateMany({ where: { userId: dbUser.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    await this.prisma.db.user.update({ where: { id: dbUser.id }, data: { passwordHash: await hashPassword(next) } });
+    await this.prisma.db.refreshToken.updateMany({ where: { userId: dbUser.id, revokedAt: null }, data: { revokedAt: new Date() } });
     await this.revokeAccess(user);
     await this.audit.log('auth', dbUser.id, 'CHANGE_PASSWORD', undefined, { companyId: user.companyId ?? null, userId: dbUser.id });
   }
@@ -161,11 +168,11 @@ export class AuthService {
     const jti = randomUUID();
     const accessToken = await this.jwt.signAsync(
       { sub: userId, companyId, jti, sa: isSuperAdmin || undefined },
-      { secret: env.JWT_ACCESS_SECRET, expiresIn: ACCESS_TTL_SECONDS },
+      { secret: env.JWT_ACCESS_SECRET, expiresIn: ACCESS_TTL_SECONDS, algorithm: 'HS256' },
     );
     const refreshToken = randomBytes(48).toString('base64url');
     const familyId = previous?.familyId ?? randomUUID();
-    const created = await this.prisma.refreshToken.create({
+    const created = await this.prisma.db.refreshToken.create({
       data: {
         userId, companyId: companyId ?? null, tokenHash: sha256(refreshToken), familyId,
         expiresAt: new Date(Date.now() + env.JWT_REFRESH_TTL_DAYS * 86_400_000),
@@ -173,7 +180,7 @@ export class AuthService {
       },
     });
     if (previous?.id) {
-      await this.prisma.refreshToken.update({ where: { id: previous.id }, data: { revokedAt: new Date(), replacedById: created.id } });
+      await this.prisma.db.refreshToken.update({ where: { id: previous.id }, data: { revokedAt: new Date(), replacedById: created.id } });
     }
     return { accessToken, refreshToken, expiresIn: ACCESS_TTL_SECONDS };
   }

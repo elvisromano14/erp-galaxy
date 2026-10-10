@@ -11,3 +11,4 @@ process.env.WORKER_ENABLED = 'true';
 process.env.QUEUE_PREFIX = 'erp-test';
 process.env.FX_SYNC_ENABLED = 'false';
 process.env.JOBS_ENABLED = 'false';
+process.env.THROTTLE_HEAVY_PER_MIN = '100000';

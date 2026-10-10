@@ -25,9 +25,9 @@ export class IdempotencyInterceptor implements NestInterceptor {
   async intercept(ctx: ExecutionContext, next: CallHandler): Promise<Observable<unknown>> {
     const req = ctx.switchToHttp().getRequest();
     const key = req.headers['idempotency-key'] as string | undefined;
-    const { companyId, tx } = getStore();
-    if (!key || req.method !== 'POST' || !companyId || !tx) return next.handle();
-    const hash = createHash('sha256').update(req.method + req.originalUrl + JSON.stringify(req.body ?? {})).digest('hex');
+    const { companyId, tx, userId } = getStore();
+    if (!key || key.length > 128 || req.method !== 'POST' || !companyId || !tx) return next.handle();
+    const hash = createHash('sha256').update(`${userId ?? ''}|${req.method}${req.originalUrl}${JSON.stringify(req.body ?? {})}`).digest('hex');
     const inserted = await tx.$executeRaw`
       INSERT INTO idempotency_keys (company_id, key, request_hash, expires_at)
       VALUES (${companyId}::uuid, ${key}, ${hash}, now() + interval '48 hours')

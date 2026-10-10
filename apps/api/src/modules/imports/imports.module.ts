@@ -4,7 +4,9 @@ import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import ExcelJS from 'exceljs';
 import type { Response } from 'express';
 import { memoryStorage } from 'multer';
+import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
+import { env } from '../../config/env';
 import { PrismaService } from '../../common/db/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { AuthUser, CurrentUser } from '../../common/auth/decorators';
@@ -118,6 +120,7 @@ export class ImportsController {
 
   /** `mode=validate` (por defecto) no escribe nada; `mode=commit` importa todo o nada. Archivo .xlsx o .csv en el campo `file`. */
   @Post(':type')
+  @Throttle({ default: { limit: env.THROTTLE_HEAVY_PER_MIN, ttl: 60_000 } })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: MAX_BYTES, files: 1 } }))
   run(@CurrentUser() u: AuthUser, @Param('type') type: string, @UploadedFile() file: Express.Multer.File | undefined, @ZQuery(runQuery) q: z.infer<typeof runQuery>) {

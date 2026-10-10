@@ -1,0 +1,32 @@
+# Web del ERP (Next.js). Escucha en 127.0.0.1:3300 y se publica con Tailscale Funnel (https puerto 10000).
+[Unit]
+Description=ERP Web (Next.js)
+Wants=network-online.target
+Requires=erp-api.service
+After=network-online.target erp-api.service
+
+[Container]
+ContainerName=erp-web
+Image=localhost/erp-web:latest
+Network=host
+EnvironmentFile=%h/.config/erp/web.env
+ReadOnly=true
+Tmpfs=/tmp
+Tmpfs=/app/apps/web/.next/cache
+NoNewPrivileges=true
+DropCapability=ALL
+PodmanArgs=--memory=384m
+LogDriver=journald
+HealthCmd=node /healthcheck.js http://127.0.0.1:3300/api/health
+HealthInterval=30s
+HealthTimeout=5s
+HealthRetries=3
+HealthStartPeriod=30s
+
+[Service]
+Restart=always
+RestartSec=5
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target

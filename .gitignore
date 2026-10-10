@@ -8,3 +8,4 @@ coverage
 
 # Bitácora local de avances (no se versiona)
 avances.md
+apps/api/loadtest/result.json

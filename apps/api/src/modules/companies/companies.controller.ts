@@ -7,7 +7,7 @@ import { CompaniesService } from './companies.service';
 import { uuid } from '@erp/contracts';
 import { ZBody } from '../../common/http/zod.decorators';
 
-const features = z.object({ lots: z.boolean(), serials: z.boolean(), expiry: z.boolean(), offline: z.boolean() }).partial();
+const features = z.object({ lots: z.boolean(), serials: z.boolean(), expiry: z.boolean() }).partial();
 const createCompany = z.object({
   organizationId: z.string().uuid().optional(),
   rif: z.string().min(5), legalName: z.string().min(2), tradeName: z.string().optional(), fiscalAddress: z.string().optional(),

@@ -52,7 +52,7 @@ model Company {
   isSpecialTaxpayer     Boolean  @default(false) @map("is_special_taxpayer")
   isVatWithholdingAgent Boolean  @default(false) @map("is_vat_withholding_agent")
   isIgtfCollector       Boolean  @default(false) @map("is_igtf_collector")
-  features              Json     @default("{\"lots\":false,\"serials\":false,\"expiry\":false,\"offline\":false}")
+  features              Json     @default("{\"lots\":false,\"serials\":false,\"expiry\":false}")
   isActive              Boolean  @default(true) @map("is_active")
   createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt             DateTime @default(now()) @map("updated_at") @db.Timestamptz

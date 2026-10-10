@@ -1,0 +1,6 @@
+[Unit]
+Description=Respaldo de la base del ERP
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/erp-backup.sh

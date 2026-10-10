@@ -21,7 +21,7 @@ export class JwtAuthGuard implements CanActivate {
     if (!header?.startsWith('Bearer ')) throw new UnauthorizedException({ error: 'UNAUTHORIZED', message: 'Falta el token de acceso' });
     let claims: AccessClaims;
     try {
-      claims = await this.jwt.verifyAsync<AccessClaims>(header.slice(7), { secret: env.JWT_ACCESS_SECRET });
+      claims = await this.jwt.verifyAsync<AccessClaims>(header.slice(7), { secret: env.JWT_ACCESS_SECRET, algorithms: ['HS256'] });
     } catch {
       throw new UnauthorizedException({ error: 'TOKEN_INVALID', message: 'Token inválido o expirado' });
     }

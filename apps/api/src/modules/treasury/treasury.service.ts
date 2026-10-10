@@ -72,7 +72,7 @@ export class TreasuryService {
     const tx = this.prisma.tx;
     const entries = await tx.payableEntry.findMany({ where: { supplierId, status: { in: ['OPEN', 'PARTIALLY_PAID'] }, NOT: { balance: 0 } }, orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }] });
     const docs = new Map((await tx.purchaseDocument.findMany({ where: { id: { in: entries.map(e => e.purchaseDocumentId).filter(Boolean) as string[] } }, select: { id: true, number: true, supplierDocNo: true, docType: true } })).map(d => [d.id, d]));
-    const cur = new Map((await this.prisma.currency.findMany({ where: { id: { in: [...new Set(entries.map(e => e.currencyId))] } } })).map(c => [c.id, c.code]));
+    const cur = new Map((await this.prisma.db.currency.findMany({ where: { id: { in: [...new Set(entries.map(e => e.currencyId))] } } })).map(c => [c.id, c.code]));
     return entries.map(e => ({ ...e, currency: cur.get(e.currencyId), document: (e.purchaseDocumentId ? docs.get(e.purchaseDocumentId) : null) ?? { id: null, number: e.documentNo, supplierDocNo: e.documentNo, docType: 'OPENING' } }));
   }
 
@@ -86,7 +86,7 @@ export class TreasuryService {
     if (['CREDIT', 'WITHHOLDING'].includes(method.type)) throw new BusinessRuleException('Este instrumento no sirve para pagar a proveedores', 'PAYMENT_METHOD_INVALID');
     if (method.requiresReference && !input.reference?.trim()) throw new BusinessRuleException('El instrumento de pago requiere referencia', 'REFERENCE_REQUIRED', [{ field: 'reference', code: 'REQUIRED' }]);
     const date = new Date(input.paymentDate ?? caracasToday());
-    const currency = await this.prisma.currency.findUnique({ where: { id: input.currencyId } });
+    const currency = await this.prisma.db.currency.findUnique({ where: { id: input.currencyId } });
     if (!currency) throw new BusinessRuleException('Moneda inexistente', 'CURRENCY_NOT_FOUND');
     const payRate = currency.code === 'VES' ? D(1) : input.exchangeRate ? D(input.exchangeRate) : await this.rateOf(input.currencyId, date);
 

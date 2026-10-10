@@ -218,7 +218,7 @@ export class PurchasesService {
 
   private async resolveRate(input: { currencyId: string; exchangeRate?: string }, docDate: Date) {
     if (input.exchangeRate) {
-      const cur = await this.prisma.currency.findUnique({ where: { id: input.currencyId } });
+      const cur = await this.prisma.db.currency.findUnique({ where: { id: input.currencyId } });
       if (!cur) throw new BusinessRuleException('Moneda inexistente', 'CURRENCY_NOT_FOUND');
       return cur.code === 'VES' ? '1' : input.exchangeRate;
     }
@@ -433,7 +433,7 @@ export class PurchasesService {
 
   /** Costo unitario del documento → moneda de valoración de la empresa (precisión de costo). */
   private async valuationCost(doc: { currencyId: string; exchangeRate: Decimal | { toString(): string }; docDate: Date }, line: { net: { toString(): string }; quantity: { toString(): string } }) {
-    const company = await this.prisma.company.findUniqueOrThrow({ where: { id: this.prisma.companyId } });
+    const company = await this.prisma.db.company.findUniqueOrThrow({ where: { id: this.prisma.companyId } });
     const unitDoc = D(line.net.toString()).div(D(line.quantity.toString()));
     if (doc.currencyId === company.valuationCurrencyId) return round(unitDoc, 6);
     const bs = unitDoc.mul(D(doc.exchangeRate.toString()));
