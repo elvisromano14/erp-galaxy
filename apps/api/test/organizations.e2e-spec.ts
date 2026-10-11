@@ -125,6 +125,19 @@ describe('Clientes (organizaciones): visibilidad y creación de empresas', () =>
     expect((await ctx.http.post('/api/v1/auth/login').send({ email, password: PASSWORD })).status).toBe(401);
   });
 
+  it('crear un cliente con una empresa ya seleccionada en la sesión del administrador global no viola llaves foráneas (regresión)', async () => {
+    const t = await createTenant(ctx, 'Sesion activa 2');
+    const own = (await ctx.http.post('/api/v1/auth/login').send({ email: 'superadmin@erp.local', password: PASSWORD })).body.data.accessToken;
+    const sel = await ctx.http.post('/api/v1/auth/select-company').set(auth(own)).send({ companyId: t.companyId });
+    const api = client(ctx, sel.body.data.accessToken);
+    const email = `sesion-${Date.now()}@test.local`;
+    const created = await api.post('/clients', { fullName: 'Cliente Sesion', email, password: PASSWORD, companyIds: [t.companyId] });
+    expect(created.status).toBe(201);
+    const other = await createTenant(ctx, 'Otra con sesion');
+    expect((await api.patch(`/clients/${created.body.data.id}/companies`, { companyIds: [t.companyId, other.companyId] })).status).toBe(200);
+    expect(names((await login(email)).companies)).toEqual(['Otra con sesion', 'Sesion activa 2']);
+  });
+
   it('no se puede asignar un usuario de otro cliente a una empresa (sin revelar que existe)', async () => {
     const w = await world();
     const api = client(ctx, w.sin.token);

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/db/prisma.service';
+import { als, getStore } from '../../common/db/tenant-context';
 import { AuditService } from '../../common/audit/audit.service';
 import { BusinessRuleException, ConflictError, NotFoundError } from '../../common/errors/errors';
 import { assertStrongPassword, hashPassword } from '../auth/auth.service';
@@ -78,7 +79,20 @@ export class OrganizationsService {
    * Alta de un cliente (administrador de empresa) asignado a una o varias empresas. En cada empresa queda con el rol ADMIN
    * y la empresa se actualiza: correo = correo del cliente, administrador = nombre del cliente.
    */
-  async createClient(input: { fullName: string; email: string; password: string; companyIds: string[] }) {
+  createClient(input: { fullName: string; email: string; password: string; companyIds: string[] }) {
+    return this.outsideRequestTx(() => this.createClientInternal(input));
+  }
+
+  /**
+   * Las altas de clientes se ejecutan FUERA de la transacción de la petición: si el administrador global tiene una empresa
+   * seleccionada, `prisma.db` sería esa transacción (sin confirmar) y la asignación de roles, que abre la suya por empresa,
+   * no vería al usuario recién creado (violación de llave foránea).
+   */
+  private outsideRequestTx<T>(fn: () => Promise<T>): Promise<T> {
+    return als.run({ ...getStore(), tx: undefined, companyId: undefined }, fn);
+  }
+
+  private async createClientInternal(input: { fullName: string; email: string; password: string; companyIds: string[] }) {
     const companies = await this.loadCompanies(input.companyIds);
     const userId = await this.addUser(companies[0].organizationId, { email: input.email, fullName: input.fullName, password: input.password }, true, true);
     await this.assignCompanies(userId, input.fullName, input.email.toLowerCase(), companies);
@@ -87,7 +101,11 @@ export class OrganizationsService {
   }
 
   /** Cambia las empresas de un cliente: agrega las nuevas y retira las que ya no tiene. */
-  async setClientCompanies(userId: string, companyIds: string[]) {
+  setClientCompanies(userId: string, companyIds: string[]) {
+    return this.outsideRequestTx(() => this.setClientCompaniesInternal(userId, companyIds));
+  }
+
+  private async setClientCompaniesInternal(userId: string, companyIds: string[]) {
     const user = await this.prisma.db.user.findUnique({ where: { id: userId } });
     const links = await this.prisma.db.userOrganization.findMany({ where: { userId, isAdmin: true } });
     if (!user || !links.length) throw new NotFoundError('Cliente', userId);
