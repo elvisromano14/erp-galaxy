@@ -17,6 +17,7 @@ import { ProductsModule } from './modules/products/products.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { PurchasesModule } from './modules/purchases/purchases.module';
 import { SalesModule } from './modules/sales/sales.module';
+import { MobileModule } from './modules/mobile/mobile.controller';
 import { TreasuryModule } from './modules/treasury/treasury.module';
 import { AlertsModule } from './modules/alerts/alerts.module';
 import { QueueModule } from './common/queue/queue.service';
@@ -37,7 +38,7 @@ import { ImportsModule } from './modules/imports/imports.module';
       },
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: env.THROTTLE_DEFAULT_PER_MIN }]),
-    DbModule, QueueModule, OrganizationsModule, AuthModule, HealthModule, CompaniesModule, CatalogsModule, ProductsModule, InventoryModule, PurchasesModule, SalesModule, TreasuryModule, AlertsModule, FiscalModule, SequencesModule, ReportsModule, ImportsModule,
+    DbModule, QueueModule, OrganizationsModule, AuthModule, HealthModule, CompaniesModule, CatalogsModule, ProductsModule, InventoryModule, PurchasesModule, SalesModule, TreasuryModule, AlertsModule, FiscalModule, SequencesModule, ReportsModule, ImportsModule, MobileModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

@@ -41,6 +41,9 @@ export const ALL_PERMISSIONS: string[] = [
   ...build('treasury', 'movements', ['read', 'create']),
   ...build('treasury', 'reconciliations', ['read', 'create']),
   ...REPORT_CATEGORIES.flatMap(c => build('reports', c, ['read'])),
+  // App móvil de vendedores
+  ...build('mobile', 'sync', ['use']),
+  ...build('mobile', 'devices', ['read', 'update']),
 ];
 
 const readCatalogs = ADMIN_RESOURCES.map(r => `admin:${r}:read`);
@@ -51,7 +54,7 @@ export const ROLE_TEMPLATES: Record<string, { name: string; permissions: string[
   VENDEDOR: {
     name: 'Vendedor',
     // Ve y gestiona solo SUS documentos (sin 'sales:documents:read-all').
-    permissions: [...readCatalogs, 'inventory:stock:read', ...SALES_DOCS.flatMap(r => build('sales', r, DOC)), 'admin:customers:create', 'admin:customers:update'],
+    permissions: [...readCatalogs, 'inventory:stock:read', ...SALES_DOCS.flatMap(r => build('sales', r, DOC)), 'admin:customers:create', 'admin:customers:update', 'mobile:sync:use'],
   },
   ALMACENISTA: {
     name: 'Almacenista',

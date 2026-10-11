@@ -20,6 +20,25 @@
         ]
       }
     },
+    "/api/v1/app/config": {
+      "get": {
+        "operationId": "get_app_config",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "mobile"
+        ]
+      }
+    },
     "/api/v1/auth/change-password": {
       "post": {
         "operationId": "post_auth_change_password",
@@ -1470,6 +1489,18 @@
                         "type": "boolean"
                       }
                     }
+                  },
+                  "invoicePrintMode": {
+                    "type": "string",
+                    "enum": [
+                      "NORMAL",
+                      "FISCAL_PRINTER"
+                    ]
+                  },
+                  "fiscalPrinterModel": {
+                    "type": "string",
+                    "maxLength": 120,
+                    "nullable": true
                   }
                 }
               }
@@ -2016,6 +2047,13 @@
                   },
                   "isActive": {
                     "type": "boolean"
+                  },
+                  "validationStatus": {
+                    "type": "string",
+                    "enum": [
+                      "VALIDATED",
+                      "PENDING"
+                    ]
                   }
                 },
                 "required": [
@@ -2172,6 +2210,13 @@
                   },
                   "isActive": {
                     "type": "boolean"
+                  },
+                  "validationStatus": {
+                    "type": "string",
+                    "enum": [
+                      "VALIDATED",
+                      "PENDING"
+                    ]
                   }
                 }
               }
@@ -2244,6 +2289,138 @@
         ],
         "tags": [
           "customers"
+        ]
+      }
+    },
+    "/api/v1/devices": {
+      "get": {
+        "operationId": "get_devices",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "mobile"
+        ]
+      }
+    },
+    "/api/v1/devices/register": {
+      "post": {
+        "operationId": "post_devices_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "deviceKey": {
+                    "type": "string",
+                    "minLength": 16,
+                    "maxLength": 100
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 100
+                  },
+                  "platform": {
+                    "type": "string",
+                    "enum": [
+                      "android",
+                      "ios"
+                    ],
+                    "default": "android"
+                  },
+                  "appVersion": {
+                    "type": "string",
+                    "maxLength": 30
+                  }
+                },
+                "required": [
+                  "deviceKey",
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "mobile"
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/restore": {
+      "post": {
+        "operationId": "post_devices_by_id_restore",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "mobile"
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/revoke": {
+      "post": {
+        "operationId": "post_devices_by_id_revoke",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "mobile"
         ]
       }
     },
@@ -14307,6 +14484,25 @@
                         "amount"
                       ]
                     }
+                  },
+                  "fiscalPrinter": {
+                    "type": "object",
+                    "properties": {
+                      "number": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "serial": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      }
+                    },
+                    "required": [
+                      "number",
+                      "serial"
+                    ]
                   }
                 },
                 "default": {}
@@ -14401,6 +14597,25 @@
                     "required": [
                       "bankAccountId"
                     ]
+                  },
+                  "fiscalPrinter": {
+                    "type": "object",
+                    "properties": {
+                      "number": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "serial": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      }
+                    },
+                    "required": [
+                      "number",
+                      "serial"
+                    ]
                   }
                 },
                 "required": [
@@ -14470,6 +14685,25 @@
                     "type": "string",
                     "maxLength": 1000,
                     "nullable": true
+                  },
+                  "fiscalPrinter": {
+                    "type": "object",
+                    "properties": {
+                      "number": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "serial": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      }
+                    },
+                    "required": [
+                      "number",
+                      "serial"
+                    ]
                   }
                 },
                 "required": [
@@ -16031,6 +16265,23 @@
                   },
                   "isActive": {
                     "type": "boolean"
+                  },
+                  "maxDiscountPct": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "allowPriceEdit": {
+                    "type": "boolean"
+                  },
+                  "allowCustomerCreate": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -16146,6 +16397,23 @@
                     "nullable": true
                   },
                   "isActive": {
+                    "type": "boolean"
+                  },
+                  "maxDiscountPct": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "allowPriceEdit": {
+                    "type": "boolean"
+                  },
+                  "allowCustomerCreate": {
                     "type": "boolean"
                   }
                 }
@@ -16587,6 +16855,165 @@
         ],
         "tags": [
           "suppliers"
+        ]
+      }
+    },
+    "/api/v1/sync/pull": {
+      "get": {
+        "operationId": "get_sync_pull",
+        "parameters": [
+          {
+            "name": "entity",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "app_settings",
+                "taxes",
+                "exchange_rates",
+                "price_lists",
+                "warehouses",
+                "customers",
+                "products",
+                "product_prices",
+                "stock_snapshots",
+                "my_documents"
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "exclusiveMinimum": false,
+              "maximum": 2000,
+              "exclusiveMaximum": false,
+              "default": 1000
+            }
+          },
+          {
+            "name": "overlapSeconds",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": false,
+              "maximum": 600,
+              "exclusiveMaximum": false,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "mobile"
+        ]
+      }
+    },
+    "/api/v1/sync/push": {
+      "post": {
+        "operationId": "post_sync_push",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "operations": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "clientOpId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "clientSeq": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": false
+                        },
+                        "entity": {
+                          "type": "string",
+                          "enum": [
+                            "customer",
+                            "sales_quote",
+                            "sales_order"
+                          ]
+                        },
+                        "action": {
+                          "type": "string",
+                          "enum": [
+                            "create",
+                            "update"
+                          ]
+                        },
+                        "entityId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "clientOpId",
+                        "clientSeq",
+                        "entity",
+                        "action",
+                        "entityId",
+                        "data"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "operations"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "mobile"
         ]
       }
     },

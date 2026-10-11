@@ -194,6 +194,9 @@ export class SalesService {
     const customer = await tx.customer.findFirst({ where: { id: input.customerId, deletedAt: null } });
     if (!customer) throw new BusinessRuleException('Cliente inexistente', 'CUSTOMER_NOT_FOUND');
     if (!customer.isActive) throw new BusinessRuleException('El cliente está inactivo', 'CUSTOMER_INACTIVE');
+    if (docType === 'INVOICE' && customer.validationStatus === 'PENDING') {
+      throw new BusinessRuleException('El cliente fue creado desde el móvil y está pendiente de validación: valídelo antes de facturarle', 'CUSTOMER_PENDING_VALIDATION');
+    }
     if (input.sellerId) {
       const s = await tx.seller.findFirst({ where: { id: input.sellerId, deletedAt: null, isActive: true } });
       if (!s) throw new BusinessRuleException('Vendedor inexistente o inactivo', 'SELLER_NOT_FOUND');

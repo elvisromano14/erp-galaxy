@@ -221,3 +221,13 @@ Tipos: instancias, productos (con códigos de barras, OEM y precio), proveedores
 | La sesión se cierra sola | La contraseña cambió, la cuenta se desactivó o pasaron varios días sin usar el sistema; vuelva a entrar. |
 
 **Atajos de uso**: en las listas, la búsqueda filtra por número o nombre; en los documentos, «Guardar borrador» conserva sin afectar inventario ni cuentas; solo **Confirmar / Emitir** produce los efectos. Los totales de la pantalla se recalculan con la misma lógica del servidor, que es quien decide al guardar.
+
+## App móvil de vendedores (administración)
+
+La app móvil (proyecto aparte: `erp-galaxy-movil`) trabaja con la API del ERP. Desde la oficina se configura así:
+
+1. **Vendedor ↔ usuario**: en **Administración → Vendedores**, ligue cada vendedor a su **usuario** (rol Vendedor) y defina sus políticas móviles: **descuento máximo (%)**, si **puede editar precios** (si no, el servidor fija el precio de la lista) y si **puede crear clientes**.
+2. **Dispositivos**: en **Configuración → Dispositivos móviles** verá los teléfonos registrados (código `D01`, usuario, versión y última actividad). Cada usuario tiene **un dispositivo activo**; si pierde o cambia el teléfono, **revóquelo** (deja de sincronizar y se cierra su sesión) y podrá registrar el nuevo. También puede **restaurarlo**.
+3. **Clientes creados desde el móvil** quedan **«Pendiente de validar»**: se pueden usar en cotizaciones y pedidos, pero **no se les puede facturar** hasta que administración los valide (Administración → Clientes → campo *Validación*).
+4. **Pedidos tomados en el móvil**: llegan confirmados (con reserva de existencias). Si exceden el **límite de crédito** del cliente quedan en **borrador** para que administración los revise y autorice.
+5. Versión mínima de la app y mensajes de mantenimiento: variables `MOBILE_MIN_APP_VERSION` y `MOBILE_MAINTENANCE_MESSAGE` de la API.

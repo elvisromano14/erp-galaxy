@@ -84,7 +84,11 @@ export const CATALOGS: CrudConfig<any>[] = [
   },
   {
     path: 'sellers', entity: 'seller', model: 'seller', permission: 'admin:sellers',
-    create: z.object({ code, name, userId: optUuid, commissionRate: pct.optional(), zoneId: optUuid, monthlyGoal: decimalStr.nullable().optional(), isActive: z.boolean().optional() }),
+    create: z.object({
+      code, name, userId: optUuid, commissionRate: pct.optional(), zoneId: optUuid, monthlyGoal: decimalStr.nullable().optional(), isActive: z.boolean().optional(),
+      // Políticas en la app móvil
+      maxDiscountPct: pct.optional(), allowPriceEdit: z.boolean().optional(), allowCustomerCreate: z.boolean().optional(),
+    }),
     searchFields: ['code', 'name'], sortable: ['code', 'name'], defaultSort: 'code', filterable: ['zoneId', 'isActive'], softDelete: true,
   },
   {
@@ -106,8 +110,10 @@ export const CATALOGS: CrudConfig<any>[] = [
       creditLimit: decimalStr.optional(), creditDays: z.number().int().min(0).max(365).optional(),
       sellerId: optUuid, zoneId: optUuid,
       email: z.string().email().nullable().optional(), phone: optStr, address: optStr, isActive: z.boolean().optional(),
+      /** PENDING = creado desde el móvil; administración lo valida para poder facturarle. */
+      validationStatus: z.enum(['VALIDATED', 'PENDING']).optional(),
     }),
-    searchFields: ['rif', 'legalName', 'tradeName'], sortable: ['legalName', 'rif', 'createdAt'], defaultSort: 'legalName', filterable: ['isActive', 'sellerId', 'zoneId'], softDelete: true,
+    searchFields: ['rif', 'legalName', 'tradeName'], sortable: ['legalName', 'rif', 'createdAt'], defaultSort: 'legalName', filterable: ['isActive', 'sellerId', 'zoneId', 'validationStatus'], softDelete: true,
     beforeSave: partyHook('customer'),
   },
   {

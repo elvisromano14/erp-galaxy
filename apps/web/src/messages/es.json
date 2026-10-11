@@ -103,6 +103,7 @@
       "roles": "Roles y permisos",
       "companies": "Empresas",
       "organizations": "Clientes",
+      "devices": "Dispositivos móviles",
       "sequences": "Numeración",
       "serials": "Seriales",
       "report-inventory": "Inventario",
@@ -239,6 +240,11 @@
     "currencyId": "Moneda",
     "isDefault": "Por defecto",
     "commissionRate": "Comisión (%)",
+    "userId": "Usuario (acceso móvil)",
+    "maxDiscountPct": "Descuento máximo en móvil (%)",
+    "allowPriceEdit": "Puede editar precios en móvil",
+    "allowCustomerCreate": "Puede crear clientes en móvil",
+    "validationStatus": "Validación",
     "zoneId": "Zona",
     "monthlyGoal": "Meta mensual",
     "rif": "RIF",
@@ -338,6 +344,10 @@
     "overdraftLimit": "Límite de sobregiro"
   },
   "enums": {
+    "validationStatus": {
+      "VALIDATED": "Validado",
+      "PENDING": "Pendiente de validar"
+    },
     "personType": {
       "LEGAL": "Jurídica",
       "NATURAL": "Natural"
@@ -519,6 +529,17 @@
     "fiscalData": "Datos fiscales",
     "fiscalWarning": "Validar estos datos con su contador: determinan retenciones, IGTF y libros fiscales.",
     "features": "Funciones opcionales",
+    "devicesSubtitle": "Teléfonos de los vendedores registrados en la app. Revoque un dispositivo perdido o cambiado: dejará de sincronizar de inmediato.",
+    "deviceCode": "Código",
+    "deviceUser": "Usuario",
+    "appVersion": "Versión de la app",
+    "lastSeen": "Última actividad",
+    "revoke": "Revocar",
+    "restore": "Restaurar",
+    "revokeTitle": "Revocar dispositivo",
+    "revokeMessage": "{name} de {user} dejará de sincronizar y se cerrará su sesión. Podrá restaurarlo después.",
+    "deviceRevoked": "Dispositivo revocado",
+    "deviceRestored": "Dispositivo restaurado",
     "invoicing": "Facturación",
     "printMode": "Modo de impresión de facturas",
     "printNormal": "Impresora normal (PDF A4 o ticket)",

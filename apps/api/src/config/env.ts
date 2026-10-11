@@ -27,6 +27,12 @@ const schema = z.object({
   /** Sincronización de la tasa oficial (BCV) con DolarApi. */
   FX_API_URL: z.string().url().default('https://ve.dolarapi.com/v1'),
   /** Leyenda al pie de facturas/notas mientras la numeración sea interna (antes de la imprenta digital). */
+  // App móvil
+  MOBILE_MIN_APP_VERSION: z.string().default('1.0.0'),
+  MOBILE_LATEST_APP_VERSION: z.string().default('1.0.0'),
+  MOBILE_SCHEMA_VERSION: z.coerce.number().int().default(1),
+  MOBILE_MAX_DEVICES_PER_USER: z.coerce.number().int().min(1).default(1),
+  MOBILE_MAINTENANCE_MESSAGE: z.string().optional(),
   INVOICE_LEGEND: z.string().default('Documento sin validez fiscal: numeración interna provisional'),
   /** Tareas periódicas de mantenimiento (vencimiento de cotizaciones). */
   JOBS_ENABLED: z.enum(['true', 'false']).default('false').transform(v => v === 'true'),

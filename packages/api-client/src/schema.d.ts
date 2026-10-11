@@ -20,6 +20,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/app/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_app_config"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/change-password": {
         parameters: {
             query?: never;
@@ -446,6 +462,70 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["post_customers_by_id_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_devices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_devices_register"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_devices_by_id_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_devices_by_id_revoke"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2708,6 +2788,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sync/pull": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_sync_pull"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sync/push": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_sync_push"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/taxes": {
         parameters: {
             query?: never;
@@ -3265,6 +3377,23 @@ export interface components {
 export type $defs = Record<string, never>;
 export interface operations {
     get_alerts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_app_config: {
         parameters: {
             query?: never;
             header?: never;
@@ -4032,6 +4161,9 @@ export interface operations {
                         serials?: boolean;
                         expiry?: boolean;
                     };
+                    /** @enum {string} */
+                    invoicePrintMode?: "NORMAL" | "FISCAL_PRINTER";
+                    fiscalPrinterModel?: string | null;
                 };
             };
         };
@@ -4272,6 +4404,8 @@ export interface operations {
                     phone?: string | null;
                     address?: string | null;
                     isActive?: boolean;
+                    /** @enum {string} */
+                    validationStatus?: "VALIDATED" | "PENDING";
                 };
             };
         };
@@ -4354,6 +4488,8 @@ export interface operations {
                     phone?: string | null;
                     address?: string | null;
                     isActive?: boolean;
+                    /** @enum {string} */
+                    validationStatus?: "VALIDATED" | "PENDING";
                 };
             };
         };
@@ -4367,6 +4503,91 @@ export interface operations {
         };
     };
     post_customers_by_id_restore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_devices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_devices_register: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    deviceKey: string;
+                    name: string;
+                    /**
+                     * @default android
+                     * @enum {string}
+                     */
+                    platform?: "android" | "ios";
+                    appVersion?: string;
+                };
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_devices_by_id_restore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_devices_by_id_revoke: {
         parameters: {
             query?: never;
             header?: never;
@@ -9273,6 +9494,10 @@ export interface operations {
                         amount: string | number;
                         reference?: string | null;
                     }[];
+                    fiscalPrinter?: {
+                        number: string;
+                        serial: string;
+                    };
                 };
             };
         };
@@ -9308,6 +9533,10 @@ export interface operations {
                         /** Format: uuid */
                         bankAccountId: string;
                     };
+                    fiscalPrinter?: {
+                        number: string;
+                        serial: string;
+                    };
                 };
             };
         };
@@ -9337,6 +9566,10 @@ export interface operations {
                     /** Format: uuid */
                     taxId?: string | null;
                     notes?: string | null;
+                    fiscalPrinter?: {
+                        number: string;
+                        serial: string;
+                    };
                 };
             };
         };
@@ -9980,6 +10213,9 @@ export interface operations {
                     zoneId?: string | null;
                     monthlyGoal?: (string | number) | null;
                     isActive?: boolean;
+                    maxDiscountPct?: string | number;
+                    allowPriceEdit?: boolean;
+                    allowCustomerCreate?: boolean;
                 };
             };
         };
@@ -10051,6 +10287,9 @@ export interface operations {
                     zoneId?: string | null;
                     monthlyGoal?: (string | number) | null;
                     isActive?: boolean;
+                    maxDiscountPct?: string | number;
+                    allowPriceEdit?: boolean;
+                    allowCustomerCreate?: boolean;
                 };
             };
         };
@@ -10234,6 +10473,64 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_sync_pull: {
+        parameters: {
+            query?: {
+                entity?: "app_settings" | "taxes" | "exchange_rates" | "price_lists" | "warehouses" | "customers" | "products" | "product_prices" | "stock_snapshots" | "my_documents";
+                cursor?: string;
+                limit?: number;
+                overlapSeconds?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_sync_push: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    operations: {
+                        /** Format: uuid */
+                        clientOpId: string;
+                        clientSeq: number;
+                        /** @enum {string} */
+                        entity: "customer" | "sales_quote" | "sales_order";
+                        /** @enum {string} */
+                        action: "create" | "update";
+                        /** Format: uuid */
+                        entityId: string;
+                        data: {
+                            [key: string]: unknown;
+                        };
+                    }[];
+                };
+            };
+        };
         responses: {
             201: {
                 headers: {

@@ -11,6 +11,8 @@ export function setupApp(app: INestApplication, opts: { swagger?: boolean } = {}
   (app as any).set('query parser', 'extended');
   (app as any).set('trust proxy', env.TRUST_PROXY_HOPS);
   app.setGlobalPrefix('api/v1');
+  // Lotes de sincronización del móvil (hasta 50 operaciones con decenas de líneas).
+  (app as any).useBodyParser?.('json', { limit: '1mb' });
   app.use(helmet());
   app.useLogger(app.get(Logger));
   if (opts.swagger) {

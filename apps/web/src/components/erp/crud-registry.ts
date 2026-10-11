@@ -56,6 +56,11 @@ export const CRUD_REGISTRY: Record<string, CrudDef> = {
       { name: "commissionRate", type: "decimal", default: "0", hint: "%" },
       { name: "zoneId", type: "ref", resource: "zones", labelKey: (r) => `${r.code} — ${r.name}`, nullable: true },
       { name: "monthlyGoal", type: "decimal", nullable: true },
+      // App móvil: usuario ligado y políticas
+      { name: "userId", type: "ref", resource: "users", labelKey: (r) => `${r.fullName} (${r.email})`, nullable: true },
+      { name: "maxDiscountPct", type: "decimal", default: "0", hint: "%" },
+      { name: "allowPriceEdit", type: "boolean" },
+      { name: "allowCustomerCreate", type: "boolean", default: true },
       active,
     ],
   },
@@ -77,7 +82,7 @@ export const CRUD_REGISTRY: Record<string, CrudDef> = {
   },
   customers: {
     resource: "customers", permission: "admin:customers", softDelete: true, defaultSort: "legalName",
-    columns: [{ key: "rif", sort: true }, { key: "legalName", sort: true }, { key: "creditLimit", type: "decimal" }, { key: "creditDays", type: "int" }, { key: "isActive", type: "bool" }],
+    columns: [{ key: "rif", sort: true }, { key: "legalName", sort: true }, { key: "creditLimit", type: "decimal" }, { key: "creditDays", type: "int" }, { key: "validationStatus", type: "enum" }, { key: "isActive", type: "bool" }],
     fields: [
       { name: "rif", type: "text", required: true, placeholder: "J-12345678-9" },
       { name: "legalName", type: "text", required: true },
@@ -85,6 +90,7 @@ export const CRUD_REGISTRY: Record<string, CrudDef> = {
       { name: "personType", type: "select", options: ["LEGAL", "NATURAL"], default: "LEGAL" },
       { name: "isSpecialTaxpayer", type: "boolean" },
       { name: "retentionIvaPct", type: "decimal", default: "0", hint: "% (75 / 100)" },
+      { name: "validationStatus", type: "select", options: ["VALIDATED", "PENDING"], default: "VALIDATED" },
       { name: "priceListId", type: "ref", resource: "price-lists", labelKey: (r) => `${r.code} — ${r.name}`, nullable: true },
       { name: "creditLimit", type: "decimal", default: "0" },
       { name: "creditDays", type: "int", default: "0" },
