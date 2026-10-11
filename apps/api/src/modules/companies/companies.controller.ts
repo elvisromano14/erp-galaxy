@@ -10,20 +10,20 @@ import { ZBody } from '../../common/http/zod.decorators';
 const features = z.object({ lots: z.boolean(), serials: z.boolean(), expiry: z.boolean() }).partial();
 const createCompany = z.object({
   organizationId: z.string().uuid().optional(),
-  rif: z.string().min(5), legalName: z.string().min(2), tradeName: z.string().optional(), fiscalAddress: z.string().optional(),
-  phone: z.string().trim().max(40).optional(), email: z.string().email().optional(),
+  rif: z.string().min(5), legalName: z.string().min(2), tradeName: z.string().optional(), fiscalAddress: z.string().trim().min(3, 'La dirección es obligatoria'),
+  phone: z.string().trim().max(40).optional(), email: z.string().email().optional(), adminName: z.string().trim().max(200).optional(),
   baseCurrencyCode: z.string().length(3).optional(), valuationCurrencyCode: z.string().length(3).optional(),
   isSpecialTaxpayer: z.boolean().optional(), isVatWithholdingAgent: z.boolean().optional(), isIgtfCollector: z.boolean().optional(),
   admin: z.object({ email: z.string().email(), fullName: z.string().min(2), password: z.string().min(10).optional() }).optional(),
 });
 const updateCompany = z.object({
-  legalName: z.string().min(2).optional(), tradeName: z.string().nullable().optional(), fiscalAddress: z.string().nullable().optional(), phone: z.string().trim().max(40).nullable().optional(), email: z.string().email().nullable().optional(),
+  legalName: z.string().min(2).optional(), tradeName: z.string().nullable().optional(), fiscalAddress: z.string().nullable().optional(), phone: z.string().trim().max(40).nullable().optional(), email: z.string().email().nullable().optional(), adminName: z.string().trim().max(200).nullable().optional(),
   isSpecialTaxpayer: z.boolean().optional(), isVatWithholdingAgent: z.boolean().optional(), isIgtfCollector: z.boolean().optional(),
   features: features.optional(),
 }).strict();
 const createUser = z.object({ email: z.string().email(), fullName: z.string().min(2), password: z.string().min(10).optional(), roleCodes: z.array(z.string()).min(1) });
 const updateCompanyById = z.object({
-  legalName: z.string().min(2).optional(), tradeName: z.string().nullable().optional(), fiscalAddress: z.string().nullable().optional(), phone: z.string().trim().max(40).nullable().optional(), email: z.string().email().nullable().optional(),
+  legalName: z.string().min(2).optional(), tradeName: z.string().nullable().optional(), fiscalAddress: z.string().nullable().optional(), phone: z.string().trim().max(40).nullable().optional(), email: z.string().email().nullable().optional(), adminName: z.string().trim().max(200).nullable().optional(),
   isSpecialTaxpayer: z.boolean().optional(), isVatWithholdingAgent: z.boolean().optional(), isIgtfCollector: z.boolean().optional(), isActive: z.boolean().optional(),
 }).strict();
 const updateUser = z.object({ fullName: z.string().min(2).optional(), isActive: z.boolean().optional(), roleCodes: z.array(z.string()).optional(), isOrgAdmin: z.boolean().optional() }).strict();

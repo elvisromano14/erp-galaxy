@@ -49,6 +49,7 @@ model Company {
   fiscalAddress         String?  @map("fiscal_address")
   phone                 String?
   email                 String?
+  adminName             String?  @map("admin_name")
   baseCurrencyId        String   @map("base_currency_id") @db.Uuid
   valuationCurrencyId   String   @map("valuation_currency_id") @db.Uuid
   isSpecialTaxpayer     Boolean  @default(false) @map("is_special_taxpayer")

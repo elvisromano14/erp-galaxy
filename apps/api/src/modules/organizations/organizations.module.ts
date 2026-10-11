@@ -39,7 +39,7 @@ export class OrganizationsController {
 }
 
 const createClient = z.object({
-  fullName: z.string().trim().min(2).max(200), email: z.string().email(), password: z.string().min(10), companyId: uuid,
+  fullName: z.string().trim().min(2).max(200), email: z.string().email(), password: z.string().min(10), companyIds: z.array(uuid).min(1),
 });
 
 /** Clientes (administradores de empresa): solo el administrador global. */
@@ -54,6 +54,10 @@ export class ClientsController {
   list(@CurrentUser() u: AuthUser) { this.only(u); return this.svc.listClients(); }
   @Post() @AllowNoCompany()
   create(@CurrentUser() u: AuthUser, @ZBody(createClient) b: z.infer<typeof createClient>) { this.only(u); return this.svc.createClient(b); }
+  @Patch(':id/companies') @AllowNoCompany()
+  setCompanies(@CurrentUser() u: AuthUser, @Param('id', new ZodPipe(uuid)) id: string, @ZBody(z.object({ companyIds: z.array(uuid).min(1) }).strict()) b: { companyIds: string[] }) {
+    this.only(u); return this.svc.setClientCompanies(id, b.companyIds);
+  }
   @Patch(':id') @AllowNoCompany()
   setActive(@CurrentUser() u: AuthUser, @Param('id', new ZodPipe(uuid)) id: string, @ZBody(z.object({ isActive: z.boolean() }).strict()) b: { isActive: boolean }) {
     this.only(u); return this.svc.setClientActive(id, b.isActive);

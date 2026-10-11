@@ -13,7 +13,7 @@ import { DEFAULT_OPERATION_TYPES, DEFAULT_PAYMENT_METHODS, DEFAULT_REASONS, DEFA
 
 export interface CreateCompanyInput {
   organizationId?: string;
-  rif: string; legalName: string; tradeName?: string; fiscalAddress?: string; phone?: string; email?: string;
+  rif: string; legalName: string; tradeName?: string; fiscalAddress?: string; phone?: string; email?: string; adminName?: string;
   baseCurrencyCode?: string; valuationCurrencyCode?: string;
   isSpecialTaxpayer?: boolean; isVatWithholdingAgent?: boolean; isIgtfCollector?: boolean;
   admin?: { email: string; fullName: string; password?: string };
@@ -95,7 +95,7 @@ export class CompaniesService implements OnApplicationBootstrap {
 
   /** Edición/baja lógica de una empresa: solo el administrador global o el administrador de SU cliente. */
   async updateById(id: string, data: {
-    legalName?: string; tradeName?: string | null; fiscalAddress?: string | null; phone?: string | null; email?: string | null;
+    legalName?: string; tradeName?: string | null; fiscalAddress?: string | null; phone?: string | null; email?: string | null; adminName?: string | null;
     isSpecialTaxpayer?: boolean; isVatWithholdingAgent?: boolean; isIgtfCollector?: boolean; isActive?: boolean;
   }, actor: Actor) {
     const company = await this.prisma.db.company.findUnique({ where: { id } });
@@ -140,7 +140,7 @@ export class CompaniesService implements OnApplicationBootstrap {
     await this.syncPermissionCatalog();
     const company = await this.prisma.db.company.create({
       data: {
-        organizationId, rif, legalName: input.legalName, tradeName: input.tradeName, fiscalAddress: input.fiscalAddress, phone: input.phone, email: input.email,
+        organizationId, rif, legalName: input.legalName, tradeName: input.tradeName, fiscalAddress: input.fiscalAddress, phone: input.phone, email: input.email, adminName: input.adminName,
         baseCurrencyId: base.id, valuationCurrencyId: valuation.id,
         isSpecialTaxpayer: input.isSpecialTaxpayer ?? false,
         isVatWithholdingAgent: input.isVatWithholdingAgent ?? false,
@@ -192,7 +192,7 @@ export class CompaniesService implements OnApplicationBootstrap {
   }
 
   async updateCurrent(data: {
-    legalName?: string; tradeName?: string | null; fiscalAddress?: string | null; phone?: string | null; email?: string | null;
+    legalName?: string; tradeName?: string | null; fiscalAddress?: string | null; phone?: string | null; email?: string | null; adminName?: string | null;
     isSpecialTaxpayer?: boolean; isVatWithholdingAgent?: boolean; isIgtfCollector?: boolean;
     features?: { lots?: boolean; serials?: boolean; expiry?: boolean };
   }) {

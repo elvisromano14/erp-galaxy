@@ -71,7 +71,7 @@ export async function createTenant(ctx: Ctx, name = 'Empresa', organizationId?: 
   const rif = uniqueRif();
   const adminEmail = `admin-${Math.random().toString(36).slice(2, 8)}@test.local`;
   const res = await ctx.http.post('/api/v1/companies').set('Authorization', `Bearer ${ctx.super}`)
-    .send({ organizationId: orgId, rif, legalName: `${name} C.A.`, admin: { email: adminEmail, fullName: 'Admin', password: PASSWORD } });
+    .send({ organizationId: orgId, rif, legalName: `${name} C.A.`, fiscalAddress: 'Caracas, dirección de prueba', admin: { email: adminEmail, fullName: 'Admin', password: PASSWORD } });
   if (res.status !== 201) throw new Error(`createTenant: ${res.status} ${JSON.stringify(res.body)}`);
   const login = await ctx.http.post('/api/v1/auth/login').send({ email: adminEmail, password: PASSWORD });
   if (login.status !== 200) throw new Error(`login tenant: ${login.status} ${JSON.stringify(login.body)}`);

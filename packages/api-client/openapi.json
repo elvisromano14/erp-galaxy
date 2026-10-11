@@ -1133,16 +1133,20 @@
                     "type": "string",
                     "minLength": 10
                   },
-                  "companyId": {
-                    "type": "string",
-                    "format": "uuid"
+                  "companyIds": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   }
                 },
                 "required": [
                   "fullName",
                   "email",
                   "password",
-                  "companyId"
+                  "companyIds"
                 ]
               }
             }
@@ -1209,6 +1213,57 @@
         ]
       }
     },
+    "/api/v1/clients/{id}/companies": {
+      "patch": {
+        "operationId": "patch_clients_by_id_companies",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "companyIds": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                },
+                "required": [
+                  "companyIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "clients"
+        ]
+      }
+    },
     "/api/v1/companies": {
       "post": {
         "operationId": "post_companies",
@@ -1236,7 +1291,8 @@
                     "type": "string"
                   },
                   "fiscalAddress": {
-                    "type": "string"
+                    "type": "string",
+                    "minLength": 3
                   },
                   "phone": {
                     "type": "string",
@@ -1245,6 +1301,10 @@
                   "email": {
                     "type": "string",
                     "format": "email"
+                  },
+                  "adminName": {
+                    "type": "string",
+                    "maxLength": 200
                   },
                   "baseCurrencyCode": {
                     "type": "string"
@@ -1285,7 +1345,8 @@
                 },
                 "required": [
                   "rif",
-                  "legalName"
+                  "legalName",
+                  "fiscalAddress"
                 ]
               }
             }
@@ -1382,6 +1443,11 @@
                     "format": "email",
                     "nullable": true
                   },
+                  "adminName": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "nullable": true
+                  },
                   "isSpecialTaxpayer": {
                     "type": "boolean"
                   },
@@ -1465,6 +1531,11 @@
                   "email": {
                     "type": "string",
                     "format": "email",
+                    "nullable": true
+                  },
+                  "adminName": {
+                    "type": "string",
+                    "maxLength": 200,
                     "nullable": true
                   },
                   "isSpecialTaxpayer": {

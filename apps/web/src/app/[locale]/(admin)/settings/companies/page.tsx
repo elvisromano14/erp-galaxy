@@ -46,10 +46,11 @@ export default function CompaniesPage() {
 
   const columns: Column<Row>[] = [
     { key: "rif", header: t("fields.rif") },
-    { key: "tradeName", header: t("settings.companyName"), render: (r) => r.tradeName ?? r.legalName },
     { key: "legalName", header: t("fields.legalName") },
+    { key: "fiscalAddress", header: t("fields.fiscalAddress"), render: (r) => r.fiscalAddress ?? "—" },
     { key: "phone", header: t("fields.phone"), render: (r) => r.phone ?? "—" },
     { key: "email", header: t("fields.email"), render: (r) => r.email ?? "—" },
+    { key: "adminName", header: t("settings.companyAdmin"), render: (r) => r.adminName ?? "—" },
     { key: "isActive", header: t("fields.isActive"), render: (r) => <BoolBadge value={r.isActive} /> },
     {
       key: "actions", header: "", align: "end",
@@ -89,7 +90,7 @@ export default function CompaniesPage() {
   );
 }
 
-const createSchema = z.object({ tradeName: reqText(), rif: rifValidator, legalName: reqText(), phone: optText(40), email: optEmail });
+const createSchema = z.object({ legalName: reqText(), rif: rifValidator, fiscalAddress: reqText(), phone: optText(40), email: optEmail, adminName: optText(200) });
 const editSchema = createSchema.omit({ rif: true });
 type Values = z.infer<typeof createSchema>;
 
@@ -98,7 +99,7 @@ function CompanyForm({ row, onClose, onSaved }: { row?: Row; onClose: () => void
   const isEdit = !!row;
   const form = useForm<Values>({
     resolver: zodResolver(isEdit ? editSchema : createSchema) as never,
-    defaultValues: { tradeName: row?.tradeName ?? "", rif: row?.rif ?? "", legalName: row?.legalName ?? "", phone: row?.phone ?? "", email: row?.email ?? "" },
+    defaultValues: { legalName: row?.legalName ?? "", rif: row?.rif ?? "", fiscalAddress: row?.fiscalAddress ?? "", phone: row?.phone ?? "", email: row?.email ?? "", adminName: row?.adminName ?? "" },
   });
   const [error, setError] = useState<ApiError | null>(null);
   const fe = (n: string) => error?.details.find((d) => d.field === n)?.message ?? null;
@@ -107,8 +108,8 @@ function CompanyForm({ row, onClose, onSaved }: { row?: Row; onClose: () => void
   const submit = form.handleSubmit(async (v) => {
     setError(null);
     try {
-      if (isEdit) await patch(`/companies/${row!.id}`, { tradeName: v.tradeName, legalName: v.legalName, phone: v.phone || null, email: v.email || null });
-      else await post("/companies", { rif: v.rif, tradeName: v.tradeName, legalName: v.legalName, ...(v.phone ? { phone: v.phone } : {}), ...(v.email ? { email: v.email } : {}) });
+      if (isEdit) await patch(`/companies/${row!.id}`, { legalName: v.legalName, fiscalAddress: v.fiscalAddress, phone: v.phone || null, email: v.email || null, adminName: v.adminName || null });
+      else await post("/companies", { rif: v.rif, legalName: v.legalName, fiscalAddress: v.fiscalAddress, ...(v.phone ? { phone: v.phone } : {}), ...(v.email ? { email: v.email } : {}), ...(v.adminName ? { adminName: v.adminName } : {}) });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err : new ApiError(0, "ERROR", String(err)));
@@ -121,11 +122,12 @@ function CompanyForm({ row, onClose, onSaved }: { row?: Row; onClose: () => void
         <h3 className="mb-5 pe-10 text-lg font-semibold text-gray-800 dark:text-white/90">{isEdit ? t("settings.editCompany") : t("settings.newCompany")}</h3>
         <ErrorBox error={error} />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <RText control={c} name="tradeName" label={t("settings.companyName")} required serverError={fe("tradeName")} />
-          {isEdit ? <RText control={c} name="rif" label={t("fields.rif")} disabled /> : <RText control={c} name="rif" label={t("fields.rif")} required placeholder="J-12345678-9" serverError={fe("rif")} />}
           <RText className="sm:col-span-2" control={c} name="legalName" label={t("fields.legalName")} required serverError={fe("legalName")} />
+          {isEdit ? <RText control={c} name="rif" label={t("fields.rif")} disabled /> : <RText control={c} name="rif" label={t("fields.rif")} required placeholder="J-12345678-9" serverError={fe("rif")} />}
+          <RText control={c} name="fiscalAddress" label={t("fields.fiscalAddress")} required serverError={fe("fiscalAddress")} />
           <RText control={c} name="phone" label={t("fields.phone")} serverError={fe("phone")} />
           <RText control={c} name="email" type="email" label={t("fields.email")} serverError={fe("email")} />
+          <RText className="sm:col-span-2" control={c} name="adminName" label={t("settings.companyAdmin")} hint={t("settings.companyAdminHint")} />
         </div>
         {!isEdit && <p className="mt-4 text-xs text-gray-500">{t("settings.newCompanyNote")}</p>}
         <div className="mt-6 flex justify-end gap-3">

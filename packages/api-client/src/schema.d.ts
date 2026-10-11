@@ -292,6 +292,22 @@ export interface paths {
         patch: operations["patch_clients_by_id"];
         trace?: never;
     };
+    "/api/v1/clients/{id}/companies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patch_clients_by_id_companies"];
+        trace?: never;
+    };
     "/api/v1/companies": {
         parameters: {
             query?: never;
@@ -3849,8 +3865,7 @@ export interface operations {
                     /** Format: email */
                     email: string;
                     password: string;
-                    /** Format: uuid */
-                    companyId: string;
+                    companyIds: string[];
                 };
             };
         };
@@ -3876,6 +3891,31 @@ export interface operations {
             content: {
                 "application/json": {
                     isActive: boolean;
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    patch_clients_by_id_companies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    companyIds: string[];
                 };
             };
         };
@@ -3922,10 +3962,11 @@ export interface operations {
                     rif: string;
                     legalName: string;
                     tradeName?: string;
-                    fiscalAddress?: string;
+                    fiscalAddress: string;
                     phone?: string;
                     /** Format: email */
                     email?: string;
+                    adminName?: string;
                     baseCurrencyCode?: string;
                     valuationCurrencyCode?: string;
                     isSpecialTaxpayer?: boolean;
@@ -3982,6 +4023,7 @@ export interface operations {
                     phone?: string | null;
                     /** Format: email */
                     email?: string | null;
+                    adminName?: string | null;
                     isSpecialTaxpayer?: boolean;
                     isVatWithholdingAgent?: boolean;
                     isIgtfCollector?: boolean;
@@ -4020,6 +4062,7 @@ export interface operations {
                     phone?: string | null;
                     /** Format: email */
                     email?: string | null;
+                    adminName?: string | null;
                     isSpecialTaxpayer?: boolean;
                     isVatWithholdingAgent?: boolean;
                     isIgtfCollector?: boolean;
