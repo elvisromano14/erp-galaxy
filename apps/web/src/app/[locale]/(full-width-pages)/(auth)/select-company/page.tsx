@@ -25,6 +25,9 @@ export default function SelectCompanyPage() {
         <h1 className="mb-2 text-title-sm font-semibold text-gray-800 sm:text-title-md dark:text-white/90">{t("selectCompany")}</h1>
         <p className="mb-6 text-sm text-gray-500 dark:text-gray-400">{t("selectCompanyHint")}</p>
         {me.companies.length === 0 && <p className="mb-4 text-sm text-error-500">{t("noCompanies")}</p>}
+        {me.user.isSuperAdmin && me.companies.length === 0 && (
+          <Button size="sm" className="mb-4" onClick={() => router.replace("/settings/companies")}>{t("manageCompanies")}</Button>
+        )}
         {[...new Set(me.companies.map((c) => c.organizationName))].map((org) => (
           <section key={org} className="mb-5">
             {(me.user.isSuperAdmin || me.companies.some((c) => c.organizationName !== org)) && (

@@ -1,7 +1,8 @@
 import ExcelJS from 'exceljs';
 import { bootstrap, Ctx, createTenant, client, Api, seedBasics, uniqueRif, PASSWORD, auth } from './helpers';
 
-const iso = (d: Date) => d.toISOString().slice(0, 10);
+/** «Hoy» como lo ve el sistema (Caracas); con UTC las pruebas fallarían después de las 8 p. m. */
+const iso = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
 const daysAgo = (n: number) => iso(new Date(Date.now() - n * 86_400_000));
 /** Compara campos numéricos ignorando ceros decimales ('232.0000' = 232). */
 const eqNum = (obj: Record<string, any>, exp: Record<string, number>) => { for (const [k, v] of Object.entries(exp)) expect(Number(obj[k])).toBe(v); };

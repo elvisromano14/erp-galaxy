@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { isValidRif, normalizeRif, formatRif } from '@erp/domain';
 import { PrismaService } from '../../common/db/prisma.service';
+import { als, getStore } from '../../common/db/tenant-context';
 import { AuditService } from '../../common/audit/audit.service';
 import { PermissionsService } from '../../common/auth/permissions.service';
 import { ALL_PERMISSIONS, ROLE_TEMPLATES } from '../../common/auth/permissions';
@@ -12,7 +13,7 @@ import { DEFAULT_OPERATION_TYPES, DEFAULT_PAYMENT_METHODS, DEFAULT_REASONS, DEFA
 
 export interface CreateCompanyInput {
   organizationId?: string;
-  rif: string; legalName: string; tradeName?: string; fiscalAddress?: string;
+  rif: string; legalName: string; tradeName?: string; fiscalAddress?: string; phone?: string; email?: string;
   baseCurrencyCode?: string; valuationCurrencyCode?: string;
   isSpecialTaxpayer?: boolean; isVatWithholdingAgent?: boolean; isIgtfCollector?: boolean;
   admin?: { email: string; fullName: string; password?: string };
@@ -94,7 +95,7 @@ export class CompaniesService implements OnApplicationBootstrap {
 
   /** Edición/baja lógica de una empresa: solo el administrador global o el administrador de SU cliente. */
   async updateById(id: string, data: {
-    legalName?: string; tradeName?: string | null; fiscalAddress?: string | null;
+    legalName?: string; tradeName?: string | null; fiscalAddress?: string | null; phone?: string | null; email?: string | null;
     isSpecialTaxpayer?: boolean; isVatWithholdingAgent?: boolean; isIgtfCollector?: boolean; isActive?: boolean;
   }, actor: Actor) {
     const company = await this.prisma.db.company.findUnique({ where: { id } });
@@ -110,8 +111,19 @@ export class CompaniesService implements OnApplicationBootstrap {
     return updated;
   }
 
-  async create(input: CreateCompanyInput, actor: Actor) {
-    const organizationId = await this.resolveOrganization(actor, input.organizationId);
+  /**
+   * Alta de empresa. Se ejecuta FUERA de la transacción de la petición: si el administrador tiene una empresa activa,
+   * `prisma.db` sería esa transacción (sin confirmar) y el aprovisionamiento, que abre su propia transacción con
+   * la empresa nueva, no vería la fila recién creada (violación de llave foránea).
+   */
+  create(input: CreateCompanyInput, actor: Actor) {
+    return als.run({ ...getStore(), tx: undefined, companyId: undefined }, () => this.createInternal(input, actor));
+  }
+
+  private async createInternal(input: CreateCompanyInput, actor: Actor) {
+    // Administrador global sin cliente indicado: la empresa crea su propio cliente (se crea más abajo, tras validar).
+    const autoOrg = actor.isSuperAdmin && !input.organizationId;
+    let organizationId = autoOrg ? '' : await this.resolveOrganization(actor, input.organizationId);
     if (!isValidRif(input.rif)) throw new BusinessRuleException('RIF inválido', 'INVALID_RIF', [{ field: 'rif', code: 'INVALID_RIF' }]);
     const rif = formatRif(input.rif);
     const exists = await this.prisma.db.company.findUnique({ where: { rif } });
@@ -123,11 +135,12 @@ export class CompaniesService implements OnApplicationBootstrap {
     if (!base || !valuation) throw new BusinessRuleException('Moneda base o de valoración inexistente', 'CURRENCY_NOT_FOUND');
 
     // Se valida/crea el administrador ANTES de crear la empresa para no dejar empresas huérfanas si falla.
+    if (autoOrg) organizationId = (await this.prisma.db.organization.create({ data: { name: input.tradeName || input.legalName } })).id;
     const adminUserId = input.admin ? await this.orgs.addUser(organizationId, input.admin, false) : undefined;
     await this.syncPermissionCatalog();
     const company = await this.prisma.db.company.create({
       data: {
-        organizationId, rif, legalName: input.legalName, tradeName: input.tradeName, fiscalAddress: input.fiscalAddress,
+        organizationId, rif, legalName: input.legalName, tradeName: input.tradeName, fiscalAddress: input.fiscalAddress, phone: input.phone, email: input.email,
         baseCurrencyId: base.id, valuationCurrencyId: valuation.id,
         isSpecialTaxpayer: input.isSpecialTaxpayer ?? false,
         isVatWithholdingAgent: input.isVatWithholdingAgent ?? false,
@@ -179,7 +192,7 @@ export class CompaniesService implements OnApplicationBootstrap {
   }
 
   async updateCurrent(data: {
-    legalName?: string; tradeName?: string | null; fiscalAddress?: string | null;
+    legalName?: string; tradeName?: string | null; fiscalAddress?: string | null; phone?: string | null; email?: string | null;
     isSpecialTaxpayer?: boolean; isVatWithholdingAgent?: boolean; isIgtfCollector?: boolean;
     features?: { lots?: boolean; serials?: boolean; expiry?: boolean };
   }) {

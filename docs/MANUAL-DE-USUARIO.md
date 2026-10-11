@@ -13,11 +13,11 @@ Este manual explica cada pantalla y cada flujo en el orden en que se usan. Los n
 
 | Concepto | Qué es |
 |---|---|
-| **Cliente (organización)** | La persona o grupo dueño de una o varias empresas. Su administrador ve y crea solo las empresas de su cliente. |
+| **Cliente** | El administrador de una empresa. Lo crea el administrador global (nombre, correo, clave y empresa) y solo entra a la empresa que se le asignó. |
 | **Empresa** | La entidad con RIF propio. **Todos los datos (productos, documentos, bancos…) pertenecen a una empresa** y nunca se mezclan con otra. |
 | **Usuario** | Persona que entra al sistema. Puede tener acceso a una o varias empresas, con un **rol** en cada una. |
 | **Rol** | Conjunto de permisos (Administrador, Gerente, Vendedor, Cajero, Contador, Compras, Almacenista o roles propios). |
-| **Administrador global** | Dueño de la plataforma: ve todas las empresas y crea clientes. |
+| **Administrador global** | Dueño de la plataforma (admin ERP): ve todas las empresas y es el único que crea empresas y clientes. |
 
 Cada pantalla solo aparece en el menú si su rol tiene permiso. Si una opción no aparece, pida acceso a su administrador.
 
@@ -190,7 +190,8 @@ Tipos: instancias, productos (con códigos de barras, OEM y precio), proveedores
 
 - **Configuración → Usuarios**: crear usuarios de la empresa, asignar roles, activar/desactivar y restablecer contraseñas.
 - **Configuración → Roles y permisos**: roles del sistema (no se borran) y roles propios con los permisos que elija. Los permisos tienen la forma *módulo:recurso:acción* (ver, crear, editar, confirmar, anular).
-- **Configuración → Empresas / Clientes**: crear y dar de baja empresas (administrador de cliente o global) y clientes (solo el administrador global).
+- **Configuración → Empresas** (solo administrador global): nombre, RIF, razón social, teléfono y correo. Los datos fiscales se completan después en Configuración → Empresa.
+- **Configuración → Clientes** (solo administrador global): crea al administrador de cada empresa con nombre, correo, clave y la empresa a la que pertenece; también puede desactivarlo.
 - **Configuración → Numeración**: prefijo, relleno y próximo número por tipo de documento (solo sube, para evitar duplicados). La numeración **no tiene huecos**.
 - **Auditoría**: toda acción relevante queda registrada con usuario, fecha y detalle.
 

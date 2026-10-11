@@ -11,16 +11,18 @@ import React, { useEffect } from "react";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
-  const { status } = useAuth();
+  const { status, me } = useAuth();
+  // El administrador global puede entrar sin empresa para crear empresas y clientes (Configuración).
+  const globalWithoutCompany = status === "needs-company" && !!me?.user.isSuperAdmin;
   const router = useRouter();
   const t = useTranslations("common");
 
   useEffect(() => {
     if (status === "anonymous") router.replace("/signin");
-    if (status === "needs-company") router.replace("/select-company");
-  }, [status, router]);
+    if (status === "needs-company" && !globalWithoutCompany) router.replace("/select-company");
+  }, [status, globalWithoutCompany, router]);
 
-  if (status !== "ready") {
+  if (status !== "ready" && !globalWithoutCompany) {
     return (
       <div className="flex min-h-screen items-center justify-center text-sm text-gray-500 dark:text-gray-400" role="status">
         {t("loading")}

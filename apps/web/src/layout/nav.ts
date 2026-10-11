@@ -106,7 +106,7 @@ export const NAV: NavSection[] = [
     icon: "settings",
     items: [
       { key: "company", path: "/settings/company", perm: "security:companies:read" },
-      { key: "companies", path: "/settings/companies", flag: "canCreateCompanies" },
+      { key: "companies", path: "/settings/companies", flag: "superAdmin" },
       { key: "organizations", path: "/settings/organizations", flag: "superAdmin" },
       { key: "sequences", path: "/settings/sequences", perm: "admin:sequences:read" },
       { key: "import", path: "/settings/import", perm: "admin:import:create" },

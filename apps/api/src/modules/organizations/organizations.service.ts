@@ -59,6 +59,39 @@ export class OrganizationsService {
     return user.id;
   }
 
+  /** Clientes = administradores de empresa (creados por el administrador global), con la empresa a la que pertenecen. */
+  async listClients() {
+    const links = await this.prisma.db.userOrganization.findMany({ where: { isAdmin: true } });
+    const users = await this.prisma.db.user.findMany({ where: { id: { in: links.map(l => l.userId) } }, orderBy: { fullName: 'asc' } });
+    const companies = await this.prisma.db.company.findMany({ where: { organizationId: { in: links.map(l => l.organizationId) } }, orderBy: { legalName: 'asc' } });
+    return users.map(u => {
+      const orgIds = links.filter(l => l.userId === u.id).map(l => l.organizationId);
+      return {
+        id: u.id, fullName: u.fullName, email: u.email, isActive: u.isActive, lastLoginAt: u.lastLoginAt,
+        companies: companies.filter(c => orgIds.includes(c.organizationId)).map(c => ({ id: c.id, rif: c.rif, name: c.tradeName || c.legalName })),
+      };
+    });
+  }
+
+  /** Alta de un administrador de empresa: queda como administrador del cliente dueño de la empresa y con el rol ADMIN en ella. */
+  async createClient(input: { fullName: string; email: string; password: string; companyId: string }) {
+    const company = await this.prisma.db.company.findUnique({ where: { id: input.companyId } });
+    if (!company) throw new NotFoundError('Empresa', input.companyId);
+    const userId = await this.addUser(company.organizationId, { email: input.email, fullName: input.fullName, password: input.password }, true);
+    await this.access.ensureOrgAdminMembership(userId, company.id);
+    await this.audit.log('client', userId, 'CREATE', { email: input.email.toLowerCase(), companyId: company.id }, { companyId: null });
+    return { id: userId, email: input.email.toLowerCase(), fullName: input.fullName, companyId: company.id };
+  }
+
+  async setClientActive(userId: string, isActive: boolean) {
+    const link = await this.prisma.db.userOrganization.findFirst({ where: { userId, isAdmin: true } });
+    if (!link) throw new NotFoundError('Cliente', userId);
+    await this.prisma.db.user.update({ where: { id: userId }, data: { isActive } });
+    if (!isActive) await this.prisma.db.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
+    await this.audit.log('client', userId, isActive ? 'ACTIVATE' : 'DEACTIVATE', undefined, { companyId: null });
+    return { id: userId, isActive };
+  }
+
   async assertCanManage(actor: Actor, organizationId: string) {
     if (actor.isSuperAdmin) return;
     if (!(await this.access.adminOrgIds(actor.userId)).includes(organizationId)) {

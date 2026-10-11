@@ -1092,6 +1092,123 @@
         ]
       }
     },
+    "/api/v1/clients": {
+      "get": {
+        "operationId": "get_clients",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "clients"
+        ]
+      },
+      "post": {
+        "operationId": "post_clients",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fullName": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 200
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 10
+                  },
+                  "companyId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "fullName",
+                  "email",
+                  "password",
+                  "companyId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "clients"
+        ]
+      }
+    },
+    "/api/v1/clients/{id}": {
+      "patch": {
+        "operationId": "patch_clients_by_id",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "isActive"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "clients"
+        ]
+      }
+    },
     "/api/v1/companies": {
       "post": {
         "operationId": "post_companies",
@@ -1120,6 +1237,14 @@
                   },
                   "fiscalAddress": {
                     "type": "string"
+                  },
+                  "phone": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
                   },
                   "baseCurrencyCode": {
                     "type": "string"
@@ -1247,6 +1372,16 @@
                     "type": "string",
                     "nullable": true
                   },
+                  "phone": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "nullable": true
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "nullable": true
+                  },
                   "isSpecialTaxpayer": {
                     "type": "boolean"
                   },
@@ -1266,9 +1401,6 @@
                         "type": "boolean"
                       },
                       "expiry": {
-                        "type": "boolean"
-                      },
-                      "offline": {
                         "type": "boolean"
                       }
                     }
@@ -1323,6 +1455,16 @@
                   },
                   "fiscalAddress": {
                     "type": "string",
+                    "nullable": true
+                  },
+                  "phone": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "nullable": true
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
                     "nullable": true
                   },
                   "isSpecialTaxpayer": {

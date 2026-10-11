@@ -68,43 +68,51 @@ describe('Clientes (organizaciones): visibilidad y creación de empresas', () =>
     expect(jac.status).toBe(403);
     // un usuario normal no puede crear empresas ni ver clientes
     const mk = await ctx.http.post('/api/v1/companies').set(auth(s.accessToken)).send({ rif: uniqueRif(), legalName: 'Nueva' });
-    expect(mk.status).toBe(422); expect(mk.body.error).toBe('FORBIDDEN_ORGANIZATION');
+    expect(mk.status).toBe(403);
   });
 
-  it('el administrador de cliente crea empresas solo dentro de su cliente; la nueva queda visible solo para ese cliente', async () => {
+  it('crear una empresa con otra ya seleccionada en la sesión no viola llaves foráneas (regresión)', async () => {
+    const t = await createTenant(ctx, 'Sesion activa');
+    // sesión propia del administrador global (select-company revoca el token con el que se llama)
+    const own = (await ctx.http.post('/api/v1/auth/login').send({ email: 'superadmin@erp.local', password: PASSWORD })).body.data.accessToken;
+    const sel = await ctx.http.post('/api/v1/auth/select-company').set(auth(own)).send({ companyId: t.companyId });
+    const sup = await client(ctx, sel.body.data.accessToken)
+      .post('/companies', { organizationId: t.organizationId, rif: uniqueRif(), legalName: 'Tercera empresa' });
+    expect(sup.status).toBe(201);
+  });
+
+  it('solo el administrador global crea empresas; cada una nace con su propio cliente, teléfono y correo', async () => {
     const w = await world();
     const s1 = await login(w.c1.adminEmail);
-    const api = client(ctx, s1.accessToken);
-    const rif = uniqueRif();
-    const created = await api.post('/companies', { rif, legalName: 'Nueva KTSU Norte' });
-    expect(created.status).toBe(201);
-    expect(created.body.data.organizationId).toBe(w.c1.organizationId);
-    expect(names((await api.get('/companies')).body.data)).toContain('Nueva KTSU Norte');
-    // no puede crearla en otro cliente
-    const other = await api.post('/companies', { organizationId: w.c2.organizationId, rif: uniqueRif(), legalName: 'Intrusa' });
-    expect(other.status).toBe(422); expect(other.body.error).toBe('FORBIDDEN_ORGANIZATION');
-    // el otro cliente no la ve
-    const s2 = await login(w.c2.adminEmail);
-    expect(names(s2.companies)).not.toContain('Nueva KTSU Norte');
-    // y el creador queda como ADMIN de la nueva empresa
-    const sel = await ctx.http.post('/api/v1/auth/select-company').set(auth(s1.accessToken)).send({ companyId: created.body.data.id });
-    expect(sel.status).toBe(200);
+    const denied = await client(ctx, s1.accessToken).post('/companies', { rif: uniqueRif(), legalName: 'Intrusa' });
+    expect(denied.status).toBe(403);
+    const mk = await ctx.http.post('/api/v1/companies').set(auth(ctx.super))
+      .send({ rif: uniqueRif(), legalName: 'Razón Social Nueva C.A.', tradeName: 'Nueva', phone: '0414-1234567', email: 'contacto@nueva.test' });
+    expect(mk.status).toBe(201);
+    expect(mk.body.data.phone).toBe('0414-1234567'); expect(mk.body.data.email).toBe('contacto@nueva.test');
+    const orgs = (await client(ctx, ctx.super).get('/organizations')).body.data;
+    expect(orgs.find((o: any) => o.id === mk.body.data.organizationId)?.name).toBe('Nueva');
+    // los demás clientes no la ven
+    expect(names((await login(w.c2.adminEmail)).companies)).not.toContain('Razón Social Nueva');
   });
 
-  it('otro administrador del mismo cliente también ve la empresa creada por su colega', async () => {
+  it('Clientes (administradores de empresa): el global crea uno asignado a una empresa; entra solo a esa empresa', async () => {
     const w = await world();
-    const first = await login(w.c1.adminEmail);
-    const created = await client(ctx, first.accessToken).post('/companies', { rif: uniqueRif(), legalName: 'Empresa del colega' });
-    const second = await client(ctx, w.ktsu.token); // admin de KTSU (rol ADMIN en la empresa, no administrador de cliente)
-    // lo promueve el administrador de cliente
-    const users = (await client(ctx, first.accessToken).post('/auth/select-company', { companyId: w.ktsu.companyId })).body.data;
-    const adminCli = client(ctx, users.accessToken);
-    const list = (await adminCli.get('/users')).body.data;
-    const ktsuAdmin = list.find((x: any) => x.email === w.ktsu.adminEmail);
-    expect((await adminCli.patch(`/users/${ktsuAdmin.id}`, { isOrgAdmin: true })).status).toBe(200);
-    const re = await login(w.ktsu.adminEmail);
-    expect(names(re.companies)).toContain('Empresa del colega');
-    void created; void second;
+    const email = `cliente-${Date.now()}@test.local`;
+    const api = client(ctx, ctx.super);
+    const created = await api.post('/clients', { fullName: 'Admin Ayagba', email, password: PASSWORD, companyId: w.aya.companyId });
+    expect(created.status).toBe(201);
+    const s = await login(email);
+    expect(names(s.companies)).toEqual(['Ayagba Glam']);
+    const list = (await api.get('/clients')).body.data.find((c: any) => c.email === email);
+    expect(list.companies.map((c: any) => c.id)).toEqual([w.aya.companyId]);
+    // un administrador de cliente no ve ni crea clientes
+    const other = client(ctx, (await login(w.c1.adminEmail)).accessToken);
+    expect((await other.get('/clients')).status).toBe(403);
+    expect((await other.post('/clients', { fullName: 'X Y', email: `x-${Date.now()}@test.local`, password: PASSWORD, companyId: w.ktsu.companyId })).status).toBe(403);
+    // baja: ya no puede entrar
+    expect((await api.patch(`/clients/${created.body.data.id}`, { isActive: false })).status).toBe(200);
+    expect((await ctx.http.post('/api/v1/auth/login').send({ email, password: PASSWORD })).status).toBe(401);
   });
 
   it('no se puede asignar un usuario de otro cliente a una empresa (sin revelar que existe)', async () => {

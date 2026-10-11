@@ -38,6 +38,28 @@ export class OrganizationsController {
   }
 }
 
+const createClient = z.object({
+  fullName: z.string().trim().min(2).max(200), email: z.string().email(), password: z.string().min(10), companyId: uuid,
+});
+
+/** Clientes (administradores de empresa): solo el administrador global. */
+@ApiTags('clients') @ApiBearerAuth()
+@Controller('clients')
+export class ClientsController {
+  constructor(private readonly svc: OrganizationsService) {}
+  private only(u: AuthUser) {
+    if (!u.isSuperAdmin) throw new ForbiddenException({ error: 'FORBIDDEN', message: 'Solo el administrador global puede gestionar clientes' });
+  }
+  @Get() @AllowNoCompany()
+  list(@CurrentUser() u: AuthUser) { this.only(u); return this.svc.listClients(); }
+  @Post() @AllowNoCompany()
+  create(@CurrentUser() u: AuthUser, @ZBody(createClient) b: z.infer<typeof createClient>) { this.only(u); return this.svc.createClient(b); }
+  @Patch(':id') @AllowNoCompany()
+  setActive(@CurrentUser() u: AuthUser, @Param('id', new ZodPipe(uuid)) id: string, @ZBody(z.object({ isActive: z.boolean() }).strict()) b: { isActive: boolean }) {
+    this.only(u); return this.svc.setClientActive(id, b.isActive);
+  }
+}
+
 @Global()
-@Module({ controllers: [OrganizationsController], providers: [AccessService, OrganizationsService], exports: [AccessService, OrganizationsService] })
+@Module({ controllers: [OrganizationsController, ClientsController], providers: [AccessService, OrganizationsService], exports: [AccessService, OrganizationsService] })
 export class OrganizationsModule {}

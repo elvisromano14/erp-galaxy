@@ -1,7 +1,7 @@
 "use client";
 
 import DataTable, { type Column } from "@/components/erp/DataTable";
-import { RText } from "@/components/erp/rhf";
+import { RSelect, RText } from "@/components/erp/rhf";
 import { BoolBadge, Card, ErrorBox, PageHeader } from "@/components/erp/ui";
 import { useFetch } from "@/components/erp/useFetch";
 import Button from "@/components/ui/button/Button";
@@ -10,7 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useNotice } from "@/context/NoticeContext";
 import { PlusIcon } from "@/icons";
 import { ApiError, patch, post } from "@/lib/api";
-import { optEmail, optPassword, optText, reqText } from "@/lib/validators";
+import { reqEmail, reqText, strongPassword } from "@/lib/validators";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
@@ -19,12 +19,13 @@ import { z } from "zod";
 
 type Row = Record<string, any>;
 
-/** Clientes (organizaciones): solo el administrador global. Cada cliente agrupa sus empresas y sus administradores. */
-export default function OrganizationsPage() {
+/** Clientes = administradores de empresa. Solo el administrador global los crea y los asigna a una empresa. */
+export default function ClientsPage() {
   const t = useTranslations();
   const { me } = useAuth();
   const notice = useNotice();
-  const list = useFetch<Row[]>("/organizations");
+  const list = useFetch<Row[]>("/clients");
+  const companies = useFetch<Row[]>("/companies");
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -33,7 +34,7 @@ export default function OrganizationsPage() {
   async function toggle(o: Row) {
     setBusyId(o.id);
     try {
-      await patch(`/organizations/${o.id}`, { isActive: !o.isActive });
+      await patch(`/clients/${o.id}`, { isActive: !o.isActive });
       list.reload();
     } catch (e) {
       notice.error((e as Error).message);
@@ -43,8 +44,9 @@ export default function OrganizationsPage() {
   }
 
   const columns: Column<Row>[] = [
-    { key: "name", header: t("fields.name") },
-    { key: "companyCount", header: t("settings.companyCount"), align: "end" },
+    { key: "fullName", header: t("fields.fullName") },
+    { key: "email", header: t("fields.email") },
+    { key: "companies", header: t("settings.company"), render: (r) => (r.companies as Row[]).map((c) => c.name).join(", ") || "—" },
     { key: "isActive", header: t("fields.isActive"), render: (r) => <BoolBadge value={r.isActive} /> },
     { key: "actions", header: "", align: "end", render: (r) => <button type="button" disabled={busyId === r.id} className="text-sm text-brand-500 hover:underline" onClick={() => toggle(r)}>{r.isActive ? t("settings.deactivate") : t("settings.activate")}</button> },
   ];
@@ -56,26 +58,23 @@ export default function OrganizationsPage() {
         <ErrorBox error={list.error} />
         <DataTable columns={columns} rows={list.data} loading={list.loading} rowKey={(r) => r.id} />
       </Card>
-      {creating && <OrgForm onClose={() => setCreating(false)} onSaved={() => { setCreating(false); notice.success(t("common.saved")); list.reload(); }} />}
+      {creating && <ClientForm companies={(companies.data ?? []).filter((c) => c.isActive)} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); notice.success(t("common.saved")); list.reload(); }} />}
     </div>
   );
 }
 
-const schema = z.object({ name: reqText(), email: optEmail, fullName: optText(), password: optPassword }).superRefine((v, ctx) => {
-  if (v.email && !v.fullName) ctx.addIssue({ code: "custom", path: ["fullName"], message: "Obligatorio si indica un administrador" });
-  if (v.email && !v.password) ctx.addIssue({ code: "custom", path: ["password"], message: "Obligatorio para un usuario nuevo" });
-});
+const schema = z.object({ fullName: reqText(), email: reqEmail, password: strongPassword, companyId: z.string().min(1, "Seleccione una empresa") });
 
-function OrgForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function ClientForm({ companies, onClose, onSaved }: { companies: Row[]; onClose: () => void; onSaved: () => void }) {
   const t = useTranslations();
-  const form = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema) as never, defaultValues: { name: "", email: "", fullName: "", password: "" } });
+  const form = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema) as never, defaultValues: { fullName: "", email: "", password: "", companyId: "" } });
   const [error, setError] = useState<ApiError | null>(null);
   const c = form.control;
 
   const submit = form.handleSubmit(async (v) => {
     setError(null);
     try {
-      await post("/organizations", { name: v.name, ...(v.email ? { admin: { email: v.email, fullName: v.fullName, ...(v.password ? { password: v.password } : {}) } } : {}) });
+      await post("/clients", v);
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err : new ApiError(0, "ERROR", String(err)));
@@ -88,11 +87,11 @@ function OrgForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
         <h3 className="mb-4 pe-10 text-lg font-semibold text-gray-800 dark:text-white/90">{t("settings.newClient")}</h3>
         <ErrorBox error={error} />
         <div className="grid grid-cols-1 gap-4">
-          <RText control={c} name="name" label={t("settings.clientName")} required />
-          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t("settings.clientAdmin")}</p>
-          <RText control={c} name="email" type="email" label={t("fields.email")} hint={t("settings.clientAdminHint")} />
-          <RText control={c} name="fullName" label={t("fields.fullName")} />
-          <RText control={c} name="password" label={t("fields.password")} hint={t("settings.passwordHint")} />
+          <RText control={c} name="fullName" label={t("fields.fullName")} required />
+          <RText control={c} name="email" type="email" label={t("fields.email")} required />
+          <RText control={c} name="password" label={t("fields.password")} required hint={t("settings.passwordHint")} />
+          <RSelect control={c} name="companyId" label={t("settings.company")} required placeholder={t("settings.selectCompany")}
+            options={companies.map((x) => ({ value: x.id as string, label: `${x.tradeName ?? x.legalName} (${x.rif})` }))} />
         </div>
         <div className="mt-6 flex justify-end gap-3">
           <Button variant="outline" size="sm" onClick={onClose}>{t("common.cancel")}</Button>

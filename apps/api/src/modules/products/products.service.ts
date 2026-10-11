@@ -1,3 +1,4 @@
+import { caracasToday } from '../inventory/inventory-docs.service';
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { decimalStr, paginationQuery, uuid } from '@erp/contracts';
@@ -115,7 +116,7 @@ export class ProductsService {
   /** Último precio vigente por lista (validFrom <= hoy). */
   private async currentPrices(productId: string) {
     const rows = await this.prisma.tx.productPrice.findMany({
-      where: { productId, validFrom: { lte: new Date(new Date().toISOString().slice(0, 10)) } },
+      where: { productId, validFrom: { lte: new Date(caracasToday()) } },
       orderBy: [{ priceListId: 'asc' }, { validFrom: 'desc' }],
     });
     const seen = new Set<string>();
@@ -179,7 +180,7 @@ export class ProductsService {
   async addPrice(productId: string, p: z.infer<typeof price>) {
     const tx = this.prisma.tx;
     const companyId = this.prisma.companyId;
-    const validFrom = new Date(p.validFrom ?? new Date().toISOString().slice(0, 10));
+    const validFrom = new Date(p.validFrom ?? caracasToday());
     const where = { companyId_productId_priceListId_validFrom: { companyId, productId, priceListId: p.priceListId, validFrom } };
     const previous = await tx.productPrice.findUnique({ where });
     const row = await tx.productPrice.upsert({
@@ -201,7 +202,7 @@ export class ProductsService {
     const companyId = this.prisma.companyId;
     const list = await tx.priceList.findFirst({ where: { id: input.priceListId, deletedAt: null } });
     if (!list) throw new BusinessRuleException('Lista de precios inexistente', 'PRICE_LIST_NOT_FOUND');
-    const validFrom = new Date(input.validFrom ?? new Date().toISOString().slice(0, 10));
+    const validFrom = new Date(input.validFrom ?? caracasToday());
     const products = await tx.product.findMany({
       where: { deletedAt: null, isActive: true, isService: false, ...(input.categoryId ? { categoryId: input.categoryId } : {}), ...(input.productIds?.length ? { id: { in: input.productIds } } : {}) },
       select: { id: true, sku: true, name: true }, orderBy: { sku: 'asc' }, take: 5001,

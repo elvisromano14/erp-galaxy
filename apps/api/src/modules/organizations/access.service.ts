@@ -3,7 +3,7 @@ import { PrismaService } from '../../common/db/prisma.service';
 
 export interface VisibleCompany {
   id: string; rif: string; legalName: string; tradeName: string | null; organizationId: string; organizationName: string;
-  isActive: boolean; fiscalAddress: string | null; isSpecialTaxpayer: boolean; isVatWithholdingAgent: boolean; isIgtfCollector: boolean;
+  isActive: boolean; fiscalAddress: string | null; phone: string | null; email: string | null; isSpecialTaxpayer: boolean; isVatWithholdingAgent: boolean; isIgtfCollector: boolean;
 }
 
 export type AccessVia = 'super' | 'orgAdmin' | 'member';
@@ -28,7 +28,7 @@ export class AccessService {
   }
 
   async visibleCompanies(userId: string, isSuperAdmin: boolean, includeInactive = false): Promise<VisibleCompany[]> {
-    const select = { id: true, rif: true, legalName: true, tradeName: true, organizationId: true, isActive: true, fiscalAddress: true, isSpecialTaxpayer: true, isVatWithholdingAgent: true, isIgtfCollector: true };
+    const select = { id: true, rif: true, legalName: true, tradeName: true, organizationId: true, isActive: true, fiscalAddress: true, phone: true, email: true, isSpecialTaxpayer: true, isVatWithholdingAgent: true, isIgtfCollector: true };
     const active = includeInactive ? {} : { isActive: true };
     let companies;
     if (isSuperAdmin) {
