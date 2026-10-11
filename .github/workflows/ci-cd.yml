@@ -80,11 +80,12 @@ jobs:
           pnpm --filter @erp/api-client test
           git diff --exit-code -- packages/api-client || { echo "::error::El cliente OpenAPI no está regenerado (openapi:export + generate)"; exit 1; }
 
-      - name: Web (tipos, lint y compilación)
+      # `next build` genera next-env.d.ts y .next/types (sin ellos tsc no resuelve los íconos SVG) y además revisa los tipos.
+      - name: Web (lint, compilación y tipos)
         run: |
-          pnpm --filter @erp/web exec tsc --noEmit
           pnpm --filter @erp/web lint
           pnpm --filter @erp/web build
+          pnpm --filter @erp/web exec tsc --noEmit
 
   deploy:
     name: Desplegar al VPS
