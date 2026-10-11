@@ -42,13 +42,12 @@ describe('Fiscal: retenciones, notas de débito, devolución en efectivo e IGTF 
       const e = (await open()).find(x => x.purchaseDocumentId === p.id);
       expect(Number(e.balance)).toBe(1040); expect(e.status).toBe('PARTIALLY_PAID');
       expect((await api.post('/fiscal/withholdings/issue', { kind: 'IVA', purchaseDocumentId: p.id })).body.error).toBe('ALREADY_WITHHELD');
-      // ISLR: porcentaje obligatorio; base por omisión = base imponible
-      expect((await api.post('/fiscal/withholdings/issue', { kind: 'ISLR', purchaseDocumentId: p.id })).body.error).toBe('PERCENTAGE_REQUIRED');
-      const i = await api.post('/fiscal/withholdings/issue', { kind: 'ISLR', purchaseDocumentId: p.id, percentage: '2', concept: 'Servicios (jurídica)' });
-      expect(i.body.data).toMatchObject({ number: expect.stringMatching(/^RISLR-\d{6}$/) }); expect(Number(i.body.data.amountBs)).toBe(20);
-      expect(Number((await open()).find(x => x.purchaseDocumentId === p.id).balance)).toBe(1020);
+      // ISLR: 4 % por omisión (editable); base por omisión = base imponible
+      const i = await api.post('/fiscal/withholdings/issue', { kind: 'ISLR', purchaseDocumentId: p.id, concept: 'Servicios (jurídica)' });
+      expect(i.body.data).toMatchObject({ number: expect.stringMatching(/^RISLR-\d{6}$/) }); expect(Number(i.body.data.percentage)).toBe(4); expect(Number(i.body.data.amountBs)).toBe(40);
+      expect(Number((await open()).find(x => x.purchaseDocumentId === p.id).balance)).toBe(1000);
       // el pago neto cancela el resto
-      const pay = await api.post('/treasury/payments', { supplierId: supplier, paymentMethodId: trf, bankAccountId: bankVes, currencyId: b.ves, applications: [{ payableEntryId: e.id, amount: '1020' }] });
+      const pay = await api.post('/treasury/payments', { supplierId: supplier, paymentMethodId: trf, bankAccountId: bankVes, currencyId: b.ves, applications: [{ payableEntryId: e.id, amount: '1000' }] });
       expect(pay.status).toBe(201);
       expect((await open()).find(x => x.purchaseDocumentId === p.id)).toBeUndefined();
       // comprobante PDF

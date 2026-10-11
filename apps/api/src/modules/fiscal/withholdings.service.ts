@@ -19,6 +19,9 @@ const TOL = D('0.01');
  * Retenciones de IVA / ISLR. Reducen la cuenta por pagar (las que practicamos) o por cobrar (las que nos practican) por el monto retenido,
  * convertido a la moneda del asiento con la tasa del documento. Porcentajes y reglas son de REFERENCIA: los valida el contador.
  */
+/** Retención de ISLR por omisión (4 %); se puede cambiar en cada comprobante según el concepto. */
+export const ISLR_DEFAULT_PCT = '4';
+
 @Injectable()
 export class WithholdingsService {
   constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly seq: SequenceService) {}
@@ -54,8 +57,8 @@ export class WithholdingsService {
     const entry = await tx.payableEntry.findFirst({ where: { purchaseDocumentId: doc.id, entryType: 'INVOICE', status: { not: 'CANCELLED' } } });
     if (!entry) throw new BusinessRuleException('La compra no tiene cuenta por pagar', 'NO_PAYABLE');
     const rate = D(doc.exchangeRate.toString());
-    const pct = D(input.percentage ?? (input.kind === 'IVA' ? supplier.retentionIvaPct.toString() : 0));
-    if (pct.lte(0)) throw new BusinessRuleException(input.kind === 'IVA' ? 'El proveedor no tiene porcentaje de retención de IVA: indíquelo' : 'Indique el porcentaje de retención de ISLR', 'PERCENTAGE_REQUIRED', [{ field: 'percentage', code: 'REQUIRED' }]);
+    const pct = D(input.percentage ?? (input.kind === 'IVA' ? supplier.retentionIvaPct.toString() : ISLR_DEFAULT_PCT));
+    if (pct.lte(0)) throw new BusinessRuleException(input.kind === 'IVA' ? 'El proveedor no tiene porcentaje de retención de IVA: indíquelo' : 'El porcentaje de retención de ISLR debe ser mayor que cero', 'PERCENTAGE_REQUIRED', [{ field: 'percentage', code: 'REQUIRED' }]);
     const baseBs = input.baseBs !== undefined ? D(input.baseBs) : input.kind === 'IVA' ? round(D(doc.taxTotal.toString()).mul(rate), 4) : round(D(doc.taxableBase.toString()).plus(D(doc.exemptBase.toString())).mul(rate), 4);
     if (baseBs.lte(0)) throw new BusinessRuleException('La base de la retención es cero (compra exenta o sin IVA)', 'ZERO_BASE');
     const amountBs = round(baseBs.mul(pct).div(100), 2);

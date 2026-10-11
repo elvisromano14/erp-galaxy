@@ -195,6 +195,7 @@ export class CompaniesService implements OnApplicationBootstrap {
     legalName?: string; tradeName?: string | null; fiscalAddress?: string | null; phone?: string | null; email?: string | null; adminName?: string | null;
     isSpecialTaxpayer?: boolean; isVatWithholdingAgent?: boolean; isIgtfCollector?: boolean;
     features?: { lots?: boolean; serials?: boolean; expiry?: boolean };
+    invoicePrintMode?: 'NORMAL' | 'FISCAL_PRINTER'; fiscalPrinterModel?: string | null;
   }) {
     const current = await this.current();
     let features = current.features as Record<string, boolean>;

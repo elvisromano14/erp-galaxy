@@ -34,7 +34,7 @@ const customerLabel = (r: Row) => `${r.rif} — ${r.legalName}`;
 
 function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
   const t = useTranslations();
-  const { can } = useAuth();
+  const { can, me } = useAuth();
   const router = useRouter();
   const notice = useNotice();
   const isNew = id === "new";
@@ -58,6 +58,19 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
   const [cnRows, setCnRows] = useState<Row[] | null>(null);
   const [refund, setRefund] = useState({ on: false, bankAccountId: "" });
   const [dn, setDn] = useState<{ concept: string; amount: string } | null>(null);
+  // Con impresora fiscal, el número y el serial de la factura los entrega la máquina.
+  const [fp, setFp] = useState({ number: "", serial: "" });
+  const fiscalMode = me?.company?.invoicePrintMode === "FISCAL_PRINTER";
+  const fiscalOk = !fiscalMode || (fp.number.trim() !== "" && fp.serial.trim() !== "");
+  const fiscalBody = fiscalMode ? { fiscalPrinter: { number: fp.number.trim(), serial: fp.serial.trim() } } : {};
+  const fiscalFields = fiscalMode ? (
+    <div className="mt-4 grid grid-cols-1 gap-3 rounded-lg border border-brand-200 bg-brand-50/40 p-3 sm:grid-cols-2 dark:border-brand-500/30 dark:bg-brand-500/5">
+      <p className="text-sm text-gray-600 sm:col-span-2 dark:text-gray-300">{t("sales.fiscalHint")}</p>
+      <TextField label={t("sales.fiscalNumber")} required value={fp.number} onChange={(v) => setFp({ ...fp, number: v })} />
+      <TextField label={t("sales.fiscalSerial")} required value={fp.serial} onChange={(v) => setFp({ ...fp, serial: v })} />
+    </div>
+  ) : null;
+  const isCreditDoc = () => doc?.paymentCondition === "CREDIT" || h.paymentCondition === "CREDIT";
   const methods = useFetch<Row[]>(meta.type === "INVOICE" ? "/payment-methods" : null, { limit: 100 });
   const isInvoice = meta.type === "INVOICE";
 
@@ -307,10 +320,10 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
       {payModal && (
         <Modal isOpen onClose={() => setPayModal(false)} className="m-4 max-w-3xl p-6">
           <h3 className="mb-2 pe-10 text-lg font-semibold text-gray-800 dark:text-white/90">{t("sales.paymentsTitle")}</h3>
-          <p className="mb-4 text-sm text-gray-500">{t("sales.payHint")}</p>
+          {!isCreditDoc() && <p className="mb-4 text-sm text-gray-500">{t("sales.payHint")}</p>}
           <ErrorBox error={error} />
-          <p className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">{t("sales.payTotal")}: {fmtMoney(totals?.total.toString() ?? doc?.total)} {currencies.rows.find((c) => c.id === h.currencyId)?.code}</p>
-          {pays.map((p, i) => {
+          {!isCreditDoc() && <p className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">{t("sales.payTotal")}: {fmtMoney(totals?.total.toString() ?? doc?.total)} {currencies.rows.find((c) => c.id === h.currencyId)?.code}</p>}
+          {!isCreditDoc() && pays.map((p, i) => {
             const setP = (patchObj: Row) => setPays(pays.map((x, j) => (j === i ? { ...x, ...patchObj } : x)));
             return (
               <div key={i} className="mb-3 grid grid-cols-1 gap-3 rounded-lg border border-gray-100 p-3 sm:grid-cols-5 dark:border-gray-800">
@@ -322,12 +335,13 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
               </div>
             );
           })}
-          <div className="flex items-center justify-between">
+          {fiscalFields}
+          <div className="mt-4 flex items-center justify-between">
             <div className="flex gap-3">
-              <Button variant="outline" size="sm" onClick={() => setPays([...pays, { paymentMethodId: "", currencyId: h.currencyId, bankAccountId: "", amount: "", reference: "" }])}>{t("sales.addPayment")}</Button>
-              {pays.length === 1 && <Button variant="outline" size="sm" onClick={() => setPays([{ ...pays[0], currencyId: pays[0].currencyId || h.currencyId, amount: String(totals?.total ?? doc?.total ?? "") }])}>{t("sales.payFill")}</Button>}
+              {!isCreditDoc() && <Button variant="outline" size="sm" onClick={() => setPays([...pays, { paymentMethodId: "", currencyId: h.currencyId, bankAccountId: "", amount: "", reference: "" }])}>{t("sales.addPayment")}</Button>}
+              {!isCreditDoc() && pays.length === 1 && <Button variant="outline" size="sm" onClick={() => setPays([{ ...pays[0], currencyId: pays[0].currencyId || h.currencyId, amount: String(totals?.total ?? doc?.total ?? "") }])}>{t("sales.payFill")}</Button>}
             </div>
-            <div className="flex gap-3"><Button variant="outline" size="sm" onClick={() => setPayModal(false)}>{t("common.cancel")}</Button><Button size="sm" disabled={busy || !pays.some((p) => p.paymentMethodId && p.currencyId && p.bankAccountId && Number(p.amount) > 0)} onClick={emit}>{t("sales.emit")}</Button></div>
+            <div className="flex gap-3"><Button variant="outline" size="sm" onClick={() => setPayModal(false)}>{t("common.cancel")}</Button><Button size="sm" disabled={busy || !fiscalOk || (!isCreditDoc() && !pays.some((p) => p.paymentMethodId && p.currencyId && p.bankAccountId && Number(p.amount) > 0))} onClick={emit}>{t("sales.emit")}</Button></div>
           </div>
         </Modal>
       )}
@@ -341,7 +355,8 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
             <TextField label={t("sales.dnConcept")} required value={dn.concept} onChange={(v) => setDn({ ...dn, concept: v })} />
             <DecimalField label={t("sales.dnAmount")} required value={dn.amount} onChange={(v) => setDn({ ...dn, amount: v })} align="end" />
           </div>
-          <div className="mt-6 flex justify-end gap-3"><Button variant="outline" size="sm" onClick={() => setDn(null)}>{t("common.cancel")}</Button><Button size="sm" disabled={busy || dn.concept.trim().length < 3 || !dn.amount} onClick={submitDebitNote}>{t("sales.debitNote")}</Button></div>
+          {fiscalFields}
+          <div className="mt-6 flex justify-end gap-3"><Button variant="outline" size="sm" onClick={() => setDn(null)}>{t("common.cancel")}</Button><Button size="sm" disabled={busy || !fiscalOk || dn.concept.trim().length < 3 || !dn.amount} onClick={submitDebitNote}>{t("sales.debitNote")}</Button></div>
         </Modal>
       )}
 
@@ -369,7 +384,8 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
               {refund.on && <RefSelect className="mt-3 max-w-sm" label={t("sales.refundAccount")} resource="/bank-accounts" labelKey={(r) => `${r.name} (${r.number.slice(-4)})`} value={refund.bankAccountId} onChange={(v) => setRefund({ ...refund, bankAccountId: v })} />}
             </div>
           )}
-          <div className="mt-6 flex justify-end gap-3"><Button variant="outline" size="sm" onClick={() => setCnRows(null)}>{t("common.cancel")}</Button><Button size="sm" disabled={busy || !cnRows.some((r) => (r.serial ? parseSerials(r.serialsText).length > 0 : Number(r.qty) > 0))} onClick={submitCreditNote}>{t("sales.creditNote")}</Button></div>
+          {fiscalFields}
+          <div className="mt-6 flex justify-end gap-3"><Button variant="outline" size="sm" onClick={() => setCnRows(null)}>{t("common.cancel")}</Button><Button size="sm" disabled={busy || !fiscalOk || !cnRows.some((r) => (r.serial ? parseSerials(r.serialsText).length > 0 : Number(r.qty) > 0))} onClick={submitCreditNote}>{t("sales.creditNote")}</Button></div>
         </Modal>
       )}
     </div>
@@ -384,7 +400,7 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
     if (!cnRows) return;
     const rows = cnRows.filter((r) => (r.serial ? parseSerials(r.serialsText).length > 0 : Number(r.qty) > 0));
     await action(`${meta.api}/:id/credit-note`, t("sales.creditNoteOk"), {
-      body: { lines: rows.map((r) => (r.serial ? { parentLineId: r.lineId, quantity: String(parseSerials(r.serialsText).length), serials: parseSerials(r.serialsText) } : { parentLineId: r.lineId, quantity: r.qty })), ...(refund.on && refund.bankAccountId ? { refund: { bankAccountId: refund.bankAccountId } } : {}) },
+      body: { lines: rows.map((r) => (r.serial ? { parentLineId: r.lineId, quantity: String(parseSerials(r.serialsText).length), serials: parseSerials(r.serialsText) } : { parentLineId: r.lineId, quantity: r.qty })), ...(refund.on && refund.bankAccountId ? { refund: { bankAccountId: refund.bankAccountId } } : {}), ...fiscalBody },
       navigateTo: (d) => ["credit-notes", d.id],
     });
     setCnRows(null);
@@ -392,7 +408,7 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
 
   async function submitDebitNote() {
     if (!dn) return;
-    await action(`${meta.api}/:id/debit-note`, t("sales.debitNoteOk"), { body: { concept: dn.concept.trim(), amount: dn.amount }, navigateTo: (d) => ["debit-notes", d.id] });
+    await action(`${meta.api}/:id/debit-note`, t("sales.debitNoteOk"), { body: { concept: dn.concept.trim(), amount: dn.amount, ...fiscalBody }, navigateTo: (d) => ["debit-notes", d.id] });
     setDn(null);
   }
 
@@ -400,7 +416,7 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
     const rows = pays.filter((p) => p.paymentMethodId && Number(p.amount) > 0);
     await action(`${meta.api}/:id/confirm`, t("sales.issuedOk"), {
       save: true,
-      body: doc?.paymentCondition === "CREDIT" || h.paymentCondition === "CREDIT" ? {} : { payments: rows.map((p) => ({ paymentMethodId: p.paymentMethodId, bankAccountId: p.bankAccountId || null, currencyId: p.currencyId, amount: p.amount, reference: p.reference?.trim() || null })) },
+      body: { ...(isCreditDoc() ? {} : { payments: rows.map((p) => ({ paymentMethodId: p.paymentMethodId, bankAccountId: p.bankAccountId || null, currencyId: p.currencyId, amount: p.amount, reference: p.reference?.trim() || null })) }), ...fiscalBody },
     });
     setPayModal(false);
   }
@@ -429,7 +445,7 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
     } else if (T === "INVOICE") {
       if (status === "DRAFT" && can(P("confirm"))) {
         const credit = h.paymentCondition === "CREDIT";
-        add("emit", <Button size="sm" disabled={busy} onClick={() => (credit ? action(`${meta.api}/:id/confirm`, t("sales.issuedOk"), { save: true, body: {} }) : setPayModal(true))}>{t("sales.issue")}</Button>);
+        add("emit", <Button size="sm" disabled={busy} onClick={() => (credit && !fiscalMode ? action(`${meta.api}/:id/confirm`, t("sales.issuedOk"), { save: true, body: {} }) : setPayModal(true))}>{t("sales.issue")}</Button>);
         if (error?.code === "CREDIT_LIMIT_EXCEEDED" && can("sales:orders:credit-override")) add("ovr", <Button variant="danger" size="sm" disabled={busy} onClick={() => action(`${meta.api}/:id/confirm`, t("sales.issuedOk"), { save: true, body: { overrideCredit: true } })}>{t("sales.confirmOverCredit")}</Button>);
       }
       if (status === "CONFIRMED") {

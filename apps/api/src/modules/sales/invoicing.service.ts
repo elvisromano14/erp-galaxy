@@ -36,6 +36,19 @@ export class InvoicingService {
   /** Siguiente número de control. Punto único de reemplazo por el proveedor de imprenta digital. */
   private nextControlNo() { return this.seq.next('SALES_CONTROL'); }
 
+  /**
+   * Identificación fiscal del documento. Con impresora fiscal el número y el serial los entrega la máquina (obligatorios) y no se
+   * consume el número de control interno; en modo normal se usa la numeración interna provisional.
+   */
+  private async fiscalIdentity(fp?: { number: string; serial: string }) {
+    const company = await this.prisma.tx.company.findUniqueOrThrow({ where: { id: this.prisma.companyId }, select: { invoicePrintMode: true } });
+    if (company.invoicePrintMode === 'FISCAL_PRINTER') {
+      if (!fp) throw new BusinessRuleException('La empresa factura con impresora fiscal: indique el número de factura y el serial de la máquina', 'FISCAL_DATA_REQUIRED', [{ field: 'fiscalPrinter', code: 'REQUIRED' }]);
+      return { controlNo: null as string | null, fiscalNumber: fp.number, fiscalSerial: fp.serial };
+    }
+    return { controlNo: await this.nextControlNo(), fiscalNumber: null as string | null, fiscalSerial: null as string | null };
+  }
+
   private async snapshot(customerId: string, sellerId: string | null) {
     const tx = this.prisma.tx;
     const [company, customer, seller] = await Promise.all([
@@ -44,7 +57,7 @@ export class InvoicingService {
       sellerId ? tx.seller.findFirst({ where: { id: sellerId }, select: { name: true } }) : null,
     ]);
     return {
-      company: { rif: company.rif, legalName: company.legalName, tradeName: company.tradeName, fiscalAddress: company.fiscalAddress, isSpecialTaxpayer: company.isSpecialTaxpayer, isVatWithholdingAgent: company.isVatWithholdingAgent },
+      company: { rif: company.rif, legalName: company.legalName, tradeName: company.tradeName, fiscalAddress: company.fiscalAddress, isSpecialTaxpayer: company.isSpecialTaxpayer, isVatWithholdingAgent: company.isVatWithholdingAgent, invoicePrintMode: company.invoicePrintMode },
       customer: { rif: customer.rif, legalName: customer.legalName, address: customer.address, phone: customer.phone, isSpecialTaxpayer: customer.isSpecialTaxpayer },
       seller: seller?.name ?? null,
     };
@@ -137,7 +150,7 @@ export class InvoicingService {
     }
 
     const number = await this.seq.next('SALES_INVOICE');
-    const controlNo = await this.nextControlNo();
+    const { controlNo, fiscalNumber, fiscalSerial } = await this.fiscalIdentity(body.fiscalPrinter);
     for (const p of prepared) {
       await tx.salesDocumentPayment.create({
         data: {
@@ -156,7 +169,7 @@ export class InvoicingService {
     await tx.salesDocument.update({
       where: { id },
       data: {
-        status: 'CONFIRMED', number, controlNo, igtfPct: igtfPct.toFixed(4), igtfAmount: igtfTotal.toFixed(4), fiscalSnapshot: await this.snapshot(doc.customerId, doc.sellerId),
+        status: 'CONFIRMED', number, controlNo, fiscalNumber, fiscalSerial, igtfPct: igtfPct.toFixed(4), igtfAmount: igtfTotal.toFixed(4), fiscalSnapshot: await this.snapshot(doc.customerId, doc.sellerId),
         confirmedAt: new Date(), confirmedBy: this.prisma.userId, version: { increment: 1 },
       },
     });
@@ -269,10 +282,10 @@ export class InvoicingService {
       }),
     };
     const draft = await this.sales.create('CREDIT_NOTE', docInput, v);
-    return this.confirmCreditNote(draft.id, v, input.refund);
+    return this.confirmCreditNote(draft.id, v, input.refund, input.fiscalPrinter);
   }
 
-  private async confirmCreditNote(id: string, v: Viewer, refund?: { bankAccountId: string }) {
+  private async confirmCreditNote(id: string, v: Viewer, refund?: { bankAccountId: string }, fiscalPrinter?: { number: string; serial: string }) {
     const tx = this.prisma.tx;
     const doc = await this.sales.find('CREDIT_NOTE', id, v, true);
     const lines = await tx.salesDocumentLine.findMany({ where: { documentId: id }, orderBy: { lineNo: 'asc' } });
@@ -304,7 +317,7 @@ export class InvoicingService {
     await this.posting.post({ docType: 'CREDIT_NOTE', docId: id, moves });
 
     const number = await this.seq.next('SALES_CREDIT_NOTE');
-    const controlNo = await this.nextControlNo();
+    const { controlNo, fiscalNumber, fiscalSerial } = await this.fiscalIdentity(fiscalPrinter);
     const total = D(doc.total.toString());
     // Cuenta por cobrar: asiento negativo que se aplica de inmediato contra la factura si esta tiene saldo.
     const cn = await this.receivables.createEntry({
@@ -321,7 +334,7 @@ export class InvoicingService {
     }
     await tx.salesDocument.update({
       where: { id },
-      data: { status: 'CONFIRMED', number, controlNo, fiscalSnapshot: await this.snapshot(doc.customerId, doc.sellerId), confirmedAt: new Date(), confirmedBy: this.prisma.userId, version: { increment: 1 } },
+      data: { status: 'CONFIRMED', number, controlNo, fiscalNumber, fiscalSerial, fiscalSnapshot: await this.snapshot(doc.customerId, doc.sellerId), confirmedAt: new Date(), confirmedBy: this.prisma.userId, version: { increment: 1 } },
     });
     if (refund) await this.refundCreditNote(id, cn.id, doc, refund.bankAccountId);
     await this.audit.log('sales_credit_note', id, 'CONFIRM', { number, controlNo, invoice: link.parentId, refund: !!refund });
@@ -365,12 +378,12 @@ export class InvoicingService {
     await tx.documentLink.create({ data: { companyId: this.prisma.companyId, parentType: 'INVOICE', parentId: invoiceId, childType: 'DEBIT_NOTE', childId: draft.id } });
     const doc = await this.sales.find('DEBIT_NOTE', draft.id, v, true);
     const number = await this.seq.next('SALES_DEBIT_NOTE');
-    const controlNo = await this.nextControlNo();
+    const { controlNo, fiscalNumber, fiscalSerial } = await this.fiscalIdentity(input.fiscalPrinter);
     await this.receivables.createEntry({
       customerId: doc.customerId, entryType: 'DEBIT_NOTE', sourceType: 'SALES_DEBIT_NOTE', sourceId: doc.id, documentNo: number, issueDate: doc.docDate,
       dueDate: new Date(doc.docDate.getTime() + inv.creditDays * DAY), currencyId: doc.currencyId, exchangeRate: doc.exchangeRate.toString(), amount: D(doc.total.toString()).toFixed(4),
     });
-    await tx.salesDocument.update({ where: { id: doc.id }, data: { status: 'CONFIRMED', number, controlNo, fiscalSnapshot: await this.snapshot(doc.customerId, doc.sellerId), confirmedAt: new Date(), confirmedBy: this.prisma.userId, version: { increment: 1 } } });
+    await tx.salesDocument.update({ where: { id: doc.id }, data: { status: 'CONFIRMED', number, controlNo, fiscalNumber, fiscalSerial, fiscalSnapshot: await this.snapshot(doc.customerId, doc.sellerId), confirmedAt: new Date(), confirmedBy: this.prisma.userId, version: { increment: 1 } } });
     await this.audit.log('sales_debit_note', doc.id, 'CONFIRM', { number, controlNo, invoice: invoiceId });
     return this.sales.get('DEBIT_NOTE', doc.id, v);
   }
@@ -390,7 +403,7 @@ export class InvoicingService {
     const parent = doc.links.parents[0];
     const parentDoc = parent ? await tx.salesDocument.findFirst({ where: { id: parent.id }, select: { number: true, docType: true } }) : null;
     const data: InvoicePdfData = {
-      kind: docType, number: doc.number, controlNo: doc.controlNo, status: doc.status, docDate: doc.docDate.toISOString().slice(0, 10),
+      kind: docType, number: doc.number, controlNo: doc.controlNo, fiscalNumber: doc.fiscalNumber, fiscalSerial: doc.fiscalSerial, status: doc.status, docDate: doc.docDate.toISOString().slice(0, 10),
       dueDate: doc.paymentCondition === 'CREDIT' ? new Date(doc.docDate.getTime() + doc.creditDays * DAY).toISOString().slice(0, 10) : null,
       currency: cur.code, exchangeRate: doc.exchangeRate.toString(), paymentCondition: doc.paymentCondition, creditDays: doc.creditDays, seller: snap.seller, notes: doc.notes,
       origin: docType !== 'INVOICE' && parentDoc ? `Factura ${parentDoc.number}` : null,
@@ -402,7 +415,7 @@ export class InvoicingService {
       subtotal: doc.subtotal.toString(), exemptBase: doc.exemptBase.toString(), taxTotal: doc.taxTotal.toString(), total: doc.total.toString(), totalBase: doc.totalBase.toString(),
       igtfPct: doc.igtfPct.toString(), igtfAmount: doc.igtfAmount.toString(),
       payments: payments.map(p => ({ method: methods.get(p.paymentMethodId) ?? '', currency: currencies.get(p.currencyId) ?? '', amount: p.amount.toString(), reference: p.reference })),
-      legend: env.INVOICE_LEGEND,
+      legend: doc.fiscalNumber ? 'Comprobante de gestión interna. El documento fiscal válido es el emitido por la impresora fiscal.' : env.INVOICE_LEGEND,
     };
     const buffer = await invoicePdf(data, format);
     return { buffer, filename: `${docType === 'INVOICE' ? 'factura' : docType === 'CREDIT_NOTE' ? 'nota-credito' : 'nota-debito'}-${doc.number}${format === 'ticket' ? '-ticket' : ''}.pdf` };

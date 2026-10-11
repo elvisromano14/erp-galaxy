@@ -50,6 +50,8 @@ model Company {
   phone                 String?
   email                 String?
   adminName             String?  @map("admin_name")
+  invoicePrintMode      String   @default("NORMAL") @map("invoice_print_mode")
+  fiscalPrinterModel    String?  @map("fiscal_printer_model")
   baseCurrencyId        String   @map("base_currency_id") @db.Uuid
   valuationCurrencyId   String   @map("valuation_currency_id") @db.Uuid
   isSpecialTaxpayer     Boolean  @default(false) @map("is_special_taxpayer")
@@ -937,6 +939,8 @@ model SalesDocument {
   reservesStock    Boolean   @default(false) @map("reserves_stock")
   stockReserved    Boolean   @default(false) @map("stock_reserved")
   controlNo        String?   @map("control_no")
+  fiscalNumber     String?   @map("fiscal_number")
+  fiscalSerial     String?   @map("fiscal_serial")
   igtfPct          Decimal   @default(0) @map("igtf_pct") @db.Decimal(7, 4)
   igtfAmount       Decimal   @default(0) @map("igtf_amount") @db.Decimal(18, 4)
   fiscalSnapshot   Json?     @map("fiscal_snapshot")

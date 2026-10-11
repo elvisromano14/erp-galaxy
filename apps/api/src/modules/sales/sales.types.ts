@@ -67,19 +67,23 @@ export const invoicePaymentSchema = z.object({
   amount: decimalStr.refine(v => Number(v) > 0, 'El monto debe ser mayor que cero'),
   reference: z.string().trim().max(60).nullable().optional(),
 });
+/** Datos que devuelve la máquina fiscal (obligatorios cuando la empresa factura con impresora fiscal). */
+export const fiscalPrinterSchema = z.object({ number: z.string().trim().min(1).max(40), serial: z.string().trim().min(1).max(40) });
 /** Emisión de factura: si es de contado se registran los pagos (cuadrar con total + IGTF); si es a crédito nace la cuenta por cobrar. */
-export const confirmInvoiceSchema = z.object({ overrideCredit: z.boolean().optional(), payments: z.array(invoicePaymentSchema).max(10).optional() }).default({});
+export const confirmInvoiceSchema = z.object({ overrideCredit: z.boolean().optional(), payments: z.array(invoicePaymentSchema).max(10).optional(), fiscalPrinter: fiscalPrinterSchema.optional() }).default({});
 export const creditNoteSchema = z.object({
   lines: z.array(z.object({ parentLineId: uuid, quantity: decimalStr.refine(v => Number(v) > 0, 'La cantidad debe ser mayor que cero'), serials: z.array(z.string().trim().min(1).max(100)).optional() })).min(1, 'Indique al menos una línea'),
   notes: z.string().max(1000).nullable().optional(),
   /** Devolución de dinero: solo si la nota deja saldo a favor del cliente (p. ej. factura de contado). Sale de esta cuenta bancaria o caja. */
   refund: z.object({ bankAccountId: uuid }).optional(),
+  fiscalPrinter: fiscalPrinterSchema.optional(),
 });
 export const debitNoteSchema = z.object({
   concept: z.string().trim().min(3, 'Indique el concepto').max(300),
   amount: decimalStr.refine(v => Number(v) > 0, 'El monto debe ser mayor que cero'),
   taxId: uuid.nullable().optional(),
   notes: z.string().max(1000).nullable().optional(),
+  fiscalPrinter: fiscalPrinterSchema.optional(),
 });
 export const pdfQuery = z.object({ format: z.enum(['a4', 'ticket']).default('a4') });
 export type InvoicePaymentInput = z.infer<typeof invoicePaymentSchema>;

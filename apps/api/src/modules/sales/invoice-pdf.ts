@@ -2,7 +2,7 @@ import { renderPdf } from '../reports/report-export';
 
 export interface InvoicePdfData {
   kind: 'INVOICE' | 'CREDIT_NOTE' | 'DEBIT_NOTE';
-  number: string | null; controlNo: string | null; status: string; docDate: string; dueDate?: string | null;
+  number: string | null; controlNo: string | null; fiscalNumber?: string | null; fiscalSerial?: string | null; status: string; docDate: string; dueDate?: string | null;
   currency: string; exchangeRate: string; paymentCondition: string; creditDays: number; seller?: string | null; notes?: string | null; origin?: string | null;
   company: { rif: string; legalName: string; tradeName?: string | null; fiscalAddress?: string | null; isSpecialTaxpayer?: boolean };
   customer: { rif: string; legalName: string; address?: string | null; phone?: string | null };
@@ -38,8 +38,8 @@ export function invoicePdf(d: InvoicePdfData, format: 'a4' | 'ticket'): Promise<
     ...(d.company.fiscalAddress ? [{ text: d.company.fiscalAddress, alignment: ticket ? 'center' : 'left', color: grey }] : []),
   ];
   const ident = ticket
-    ? [{ text: `${title} ${d.number ?? '(borrador)'}`, bold: true, alignment: 'center', margin: [0, 6, 0, 0] }, { text: `Control: ${d.controlNo ?? '—'}`, alignment: 'center' }, { text: `Fecha: ${day(d.docDate)}`, alignment: 'center' }]
-    : [{ text: title, bold: true, fontSize: 16, alignment: 'right' }, { text: `N° ${d.number ?? '(borrador)'}`, bold: true, alignment: 'right', fontSize: 12 }, { text: `N° de control: ${d.controlNo ?? '—'}`, alignment: 'right' }, { text: `Fecha de emisión: ${day(d.docDate)}`, alignment: 'right' }, ...(d.status === 'CANCELLED' ? [{ text: 'ANULADA', color: '#d92d20', bold: true, alignment: 'right', fontSize: 12 }] : [])];
+    ? [{ text: `${title} ${d.number ?? '(borrador)'}`, bold: true, alignment: 'center', margin: [0, 6, 0, 0] }, { text: d.fiscalNumber ? `Fiscal N° ${d.fiscalNumber} · Serial ${d.fiscalSerial ?? '—'}` : `Control: ${d.controlNo ?? '—'}`, alignment: 'center' }, { text: `Fecha: ${day(d.docDate)}`, alignment: 'center' }]
+    : [{ text: title, bold: true, fontSize: 16, alignment: 'right' }, { text: `N° ${d.number ?? '(borrador)'}`, bold: true, alignment: 'right', fontSize: 12 }, { text: d.fiscalNumber ? `N° fiscal: ${d.fiscalNumber} · Serial: ${d.fiscalSerial ?? '—'}` : `N° de control: ${d.controlNo ?? '—'}`, alignment: 'right' }, { text: `Fecha de emisión: ${day(d.docDate)}`, alignment: 'right' }, ...(d.status === 'CANCELLED' ? [{ text: 'ANULADA', color: '#d92d20', bold: true, alignment: 'right', fontSize: 12 }] : [])];
   const party = [
     { text: `Cliente: ${d.customer.legalName}`, bold: true }, { text: `RIF: ${d.customer.rif}` },
     ...(d.customer.address ? [{ text: `Dirección: ${d.customer.address}` }] : []), ...(d.customer.phone && !ticket ? [{ text: `Teléfono: ${d.customer.phone}` }] : []),

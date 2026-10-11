@@ -19,6 +19,17 @@ const rifHook = (data: any) => {
   return data;
 };
 
+/** Retención de IVA por omisión del contribuyente especial: 75 % (puede ser 100 %: se edita). Solo si no se indica otro valor y no tenía uno. */
+export const SPECIAL_TAXPAYER_IVA_RETENTION = '75';
+const partyHook = (model: 'supplier' | 'customer') => async (data: any, ctx: { prisma: any; id?: string; isCreate: boolean }) => {
+  rifHook(data);
+  if (data.isSpecialTaxpayer === true && data.retentionIvaPct === undefined) {
+    const current = ctx.isCreate || !ctx.id ? null : await ctx.prisma.db[model].findUnique({ where: { id: ctx.id }, select: { retentionIvaPct: true } });
+    if (!current || Number(current.retentionIvaPct) === 0) data.retentionIvaPct = SPECIAL_TAXPAYER_IVA_RETENTION;
+  }
+  return data;
+};
+
 export const CATALOGS: CrudConfig<any>[] = [
   {
     path: 'warehouses', entity: 'warehouse', model: 'warehouse', permission: 'admin:warehouses',
@@ -85,7 +96,7 @@ export const CATALOGS: CrudConfig<any>[] = [
       email: z.string().email().nullable().optional(), phone: optStr, address: optStr, isActive: z.boolean().optional(),
     }),
     searchFields: ['rif', 'legalName', 'tradeName'], sortable: ['legalName', 'rif', 'createdAt'], defaultSort: 'legalName', filterable: ['isActive', 'zoneId'], softDelete: true,
-    beforeSave: rifHook,
+    beforeSave: partyHook('supplier'),
   },
   {
     path: 'customers', entity: 'customer', model: 'customer', permission: 'admin:customers',
@@ -97,7 +108,7 @@ export const CATALOGS: CrudConfig<any>[] = [
       email: z.string().email().nullable().optional(), phone: optStr, address: optStr, isActive: z.boolean().optional(),
     }),
     searchFields: ['rif', 'legalName', 'tradeName'], sortable: ['legalName', 'rif', 'createdAt'], defaultSort: 'legalName', filterable: ['isActive', 'sellerId', 'zoneId'], softDelete: true,
-    beforeSave: rifHook,
+    beforeSave: partyHook('customer'),
   },
   {
     path: 'payment-methods', entity: 'payment_method', model: 'paymentMethod', permission: 'admin:payment-methods',

@@ -9,7 +9,7 @@ export interface Me {
   companies: { id: string; rif: string; legalName: string; tradeName: string | null; organizationId: string; organizationName: string }[];
   isOrgAdmin: boolean;
   canCreateCompanies: boolean;
-  company: { id: string; rif: string; legalName: string; tradeName: string | null; features: Record<string, boolean>; isIgtfCollector: boolean; baseCurrencyId: string; valuationCurrencyId: string } | null;
+  company: { id: string; rif: string; legalName: string; tradeName: string | null; features: Record<string, boolean>; isIgtfCollector: boolean; invoicePrintMode?: "NORMAL" | "FISCAL_PRINTER"; baseCurrencyId: string; valuationCurrencyId: string } | null;
   roles: { code: string; name: string }[];
   permissions: string[];
 }
