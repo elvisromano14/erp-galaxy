@@ -60,8 +60,26 @@ Variables de entorno de la API: `~/.config/erp/api.env` (ver `apps/api/.env.exam
 | `deploy.sh` | Script de despliegue manual |
 | `healthcheck.js` | Comprobación de salud dentro de los contenedores |
 
+## Despliegue automático (GitHub Actions)
+
+`.github/workflows/ci-cd.yml` tiene dos trabajos:
+
+1. **Pruebas** (en cada push y pull request): PostgreSQL 18 y Redis en contenedores, pruebas del dominio, tipos y e2e de la API, comprobación de que el cliente OpenAPI está regenerado, y tipos, lint y compilación de la web.
+2. **Desplegar al VPS** (solo en `main`, después de pasar las pruebas): conecta el ejecutor a la red Tailscale, entra por SSH y corre el mismo `deploy/deploy.sh`. Está **apagado** hasta definir la variable `DEPLOY_ENABLED=true`; también se puede lanzar a mano (Actions → CI/CD → Run workflow → deploy).
+
+El VPS solo acepta SSH desde dos IP; los ejecutores de GitHub no pueden usarlas, así que entran por Tailscale. Preparación (una sola vez):
+
+| Dónde | Qué |
+|---|---|
+| Tailscale (consola de administración) | En la política ACL: `"tagOwners": {"tag:ci": ["autogroup:admin"]}` y una regla que permita `tag:ci` → `prod-cloud:22`. Crear un **cliente OAuth** con permiso *Auth Keys: write* y la etiqueta `tag:ci`. |
+| VPS | `sudo ufw allow in on tailscale0 to any port 22 proto tcp` (SSH solo desde la red Tailscale). Crear una clave `ssh-keygen -t ed25519 -f erp_ci -N ""` y agregar `erp_ci.pub` a `~/.ssh/authorized_keys` con el prefijo `from="100.64.0.0/10" `. |
+| GitHub → Settings → Secrets (Actions) | `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET`, `VPS_SSH_KEY` (la clave privada), `VPS_KNOWN_HOSTS` (salida de `ssh-keyscan -t ed25519 <host>`). |
+| GitHub → Settings → Variables | `VPS_HOST` (nombre o IP Tailscale del VPS, p. ej. `100.106.134.19`) y `DEPLOY_ENABLED=true`. |
+| GitHub → Settings → Environments | Crear `production` y, si se desea, exigir un revisor para aprobar cada despliegue. |
+
+**Riesgo a tener presente**: la clave de despliegue entra como el usuario `galaxy`, que tiene `sudo` sin contraseña en un servidor compartido con KTSU y JAC. Por eso se limita a la red Tailscale y se recomienda exigir aprobación en el entorno `production`.
+
 ## Pendiente (siguiente etapa)
 
-- GitHub Actions: construir las imágenes y desplegar por SSH con una clave de despliegue (el script ya hace el trabajo; Actions solo lo invoca).
 - Copia externa de los respaldos (otro servidor o almacenamiento de objetos).
 - Un dominio propio con certificado (hoy se usa el de Tailscale Funnel).

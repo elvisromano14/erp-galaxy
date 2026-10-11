@@ -1,0 +1,131 @@
+# Integración continua (pruebas en cada push/PR) y despliegue al VPS (solo en main y si está activado).
+# Despliegue: ver deploy/README.md → «Despliegue automático (GitHub Actions)».
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Desplegar al VPS después de las pruebas"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  test:
+    name: Pruebas
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Los mismos puertos y credenciales que usan las pruebas en local (apps/api/test/setup-env.ts).
+      ADMIN_PSQL: postgresql://minierp_admin:minierp_admin@127.0.0.1:55432/postgres
+      TZ: America/Caracas
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4   # versión tomada de "packageManager"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Servicios (PostgreSQL 18 y Redis)
+        run: |
+          docker run -d --name pg -p 127.0.0.1:55432:5432 \
+            -e POSTGRES_DB=minierp -e POSTGRES_USER=minierp_admin -e POSTGRES_PASSWORD=minierp_admin \
+            docker.io/library/postgres:18
+          docker run -d --name redis -p 127.0.0.1:56379:6379 \
+            docker.io/library/redis:7-alpine redis-server --requirepass minierp_redis --maxmemory-policy noeviction
+          for i in $(seq 1 30); do pg_isready -h 127.0.0.1 -p 55432 -U minierp_admin && break; sleep 2; done
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Compilar paquetes compartidos
+        run: |
+          pnpm --filter @erp/contracts build
+          pnpm --filter @erp/domain build
+          pnpm --filter @erp/api exec prisma generate
+
+      - name: Dominio (unitarias)
+        run: pnpm --filter @erp/domain test
+
+      - name: API (tipos)
+        run: pnpm --filter @erp/api exec tsc --noEmit -p tsconfig.json
+
+      - name: API (pruebas e2e)
+        run: pnpm --filter @erp/api test:e2e
+
+      - name: Cliente OpenAPI al día
+        run: |
+          pnpm --filter @erp/api openapi:export
+          pnpm --filter @erp/api-client generate
+          pnpm --filter @erp/api-client test
+          git diff --exit-code -- packages/api-client || { echo "::error::El cliente OpenAPI no está regenerado (openapi:export + generate)"; exit 1; }
+
+      - name: Web (tipos, lint y compilación)
+        run: |
+          pnpm --filter @erp/web exec tsc --noEmit
+          pnpm --filter @erp/web lint
+          pnpm --filter @erp/web build
+
+  deploy:
+    name: Desplegar al VPS
+    needs: test
+    # Solo desde main y si se activó (variable del repositorio DEPLOY_ENABLED=true) o se pidió a mano.
+    if: >-
+      github.ref == 'refs/heads/main' && (
+        (github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true') ||
+        (github.event_name == 'workflow_dispatch' && inputs.deploy)
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production      # permite exigir aprobación manual (Settings → Environments)
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      # El VPS solo acepta SSH desde la red Tailscale (ver deploy/README.md).
+      - name: Conectar a Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Configurar SSH
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_HOST: ${{ vars.VPS_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<CFG
+          Host galaxy-vps
+            HostName $VPS_HOST
+            User galaxy
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+          CFG
+          ssh -o BatchMode=yes galaxy-vps 'echo conectado a $(hostname)'
+
+      - name: Desplegar
+        run: deploy/deploy.sh
+
+      - name: Prueba de humo
+        run: |
+          ssh galaxy-vps 'curl -fsS http://127.0.0.1:3301/api/v1/health && curl -fsS http://127.0.0.1:3300/api/health'
