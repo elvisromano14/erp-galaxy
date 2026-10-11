@@ -66,6 +66,14 @@ jobs:
         run: pnpm --filter @erp/api test:e2e
 
       - name: Cliente OpenAPI al día
+        env:   # la exportación arranca la aplicación (sin conectarse): solo necesita la configuración
+          DATABASE_URL: postgresql://erp_app:erp_app@127.0.0.1:55432/minierp_test
+          REDIS_URL: redis://:minierp_redis@127.0.0.1:56379
+          JWT_ACCESS_SECRET: ci_access_secret_ci_access_secret_ci_access_secret_1234567
+          JWT_REFRESH_SECRET: ci_refresh_secret_ci_refresh_secret_ci_refresh_secret_123456
+          WORKER_ENABLED: "false"
+          JOBS_ENABLED: "false"
+          FX_SYNC_ENABLED: "false"
         run: |
           pnpm --filter @erp/api openapi:export
           pnpm --filter @erp/api-client generate
