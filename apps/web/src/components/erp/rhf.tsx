@@ -24,7 +24,7 @@ function useField<V extends FieldValues>(control: Control<V>, name: FieldPath<V>
   return { value: field.value as unknown, onChange: field.onChange as (v: unknown) => void, error: fieldState.error?.message ?? serverError ?? null };
 }
 
-export function RText<V extends FieldValues>(p: Base<V> & { type?: "text" | "email" | "date" | "tel"; placeholder?: string; maxLength?: number }) {
+export function RText<V extends FieldValues>(p: Base<V> & { type?: "text" | "email" | "date" | "tel" | "password"; placeholder?: string; maxLength?: number }) {
   const f = useField(p.control, p.name, p.serverError);
   return <TextField label={p.label} required={p.required} hint={p.hint} disabled={p.disabled} className={p.className} type={p.type} placeholder={p.placeholder} maxLength={p.maxLength} value={String(f.value ?? "")} onChange={f.onChange} error={f.error} />;
 }

@@ -44,7 +44,7 @@ interface BaseProps {
 export function TextField({ label, required, error, hint, disabled, className, value, onChange, type = "text", placeholder, maxLength }: BaseProps & {
   value: string;
   onChange: (v: string) => void;
-  type?: "text" | "email" | "date" | "tel";
+  type?: "text" | "email" | "date" | "tel" | "password";
   placeholder?: string;
   maxLength?: number;
 }) {

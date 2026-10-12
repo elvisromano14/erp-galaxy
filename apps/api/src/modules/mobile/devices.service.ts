@@ -23,6 +23,8 @@ export function appConfig() {
   };
 }
 
+const RELEASED_PREFIX = 'released:';
+
 @Injectable()
 export class DevicesService {
   constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly perms: PermissionsService) {}
@@ -77,7 +79,7 @@ export class DevicesService {
   }
 
   async list() {
-    const devices = await this.prisma.db.device.findMany({ orderBy: [{ revokedAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }] });
+    const devices = await this.prisma.db.device.findMany({ where: { NOT: { deviceKey: { startsWith: RELEASED_PREFIX } } }, orderBy: [{ revokedAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }] });
     const users = new Map((await this.prisma.db.user.findMany({ where: { id: { in: [...new Set(devices.map(d => d.userId))] } }, select: { id: true, fullName: true, email: true } })).map(u => [u.id, u]));
     return devices.map(d => ({ ...this.view(d), user: users.get(d.userId) ?? null }));
   }
@@ -89,6 +91,21 @@ export class DevicesService {
     if (revoked) await this.prisma.db.refreshToken.updateMany({ where: { userId: device.userId, companyId: this.prisma.companyId, revokedAt: null }, data: { revokedAt: new Date() } });
     await this.audit.log('device', id, revoked ? 'REVOKE' : 'RESTORE', { code: device.deviceCode });
     return this.view(updated);
+  }
+
+  /**
+   * Libera el dispositivo (registrado por error o teléfono que ya no se usa): se revoca, se cierran las sesiones del usuario
+   * y se suelta su clave física, de modo que el teléfono pueda registrarse de nuevo con cualquier usuario y el usuario
+   * recupere su cupo. El registro se conserva (las operaciones sincronizadas lo referencian) pero deja de listarse.
+   */
+  async release(id: string, actorId: string) {
+    const device = await this.prisma.db.device.findUnique({ where: { id } });
+    if (!device || device.deviceKey.startsWith(RELEASED_PREFIX)) throw new NotFoundError('Dispositivo', id);
+    const now = new Date();
+    await this.prisma.db.device.update({ where: { id }, data: { deviceKey: `${RELEASED_PREFIX}${id}:${device.deviceKey}`, revokedAt: device.revokedAt ?? now, revokedBy: device.revokedBy ?? actorId } });
+    await this.prisma.db.refreshToken.updateMany({ where: { userId: device.userId, companyId: this.prisma.companyId, revokedAt: null }, data: { revokedAt: now } });
+    await this.audit.log('device', id, 'RELEASE', { code: device.deviceCode });
+    return { id, released: true };
   }
 
   private view(d: { id: string; userId: string; deviceCode: string; name: string; platform: string; appVersion: string | null; queueSize?: number | null; lastSeenAt: Date | null; revokedAt: Date | null; createdAt: Date }) {

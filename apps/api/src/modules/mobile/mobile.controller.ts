@@ -70,6 +70,9 @@ export class MobileController {
   @Post('devices/:id/revoke') @RequirePermissions('mobile:devices:update')
   revoke(@CurrentUser() u: AuthUser, @Param('id', new ZodPipe(uuid)) id: string) { return this.devices.setRevoked(id, true, u.userId); }
 
+  @Post('devices/:id/release') @RequirePermissions('mobile:devices:update')
+  release(@CurrentUser() u: AuthUser, @Param('id', new ZodPipe(uuid)) id: string) { return this.devices.release(id, u.userId); }
+
   @Post('devices/:id/restore') @RequirePermissions('mobile:devices:update')
   restore(@CurrentUser() u: AuthUser, @Param('id', new ZodPipe(uuid)) id: string) { return this.devices.setRevoked(id, false, u.userId); }
 

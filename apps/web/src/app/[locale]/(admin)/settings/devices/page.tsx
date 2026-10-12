@@ -20,6 +20,7 @@ export default function DevicesPage() {
   const notice = useNotice();
   const list = useFetch<Row[]>("/devices");
   const [target, setTarget] = useState<Row | null>(null);
+  const [releasing, setReleasing] = useState<Row | null>(null);
   const [busy, setBusy] = useState(false);
   const canEdit = can("mobile:devices:update");
 
@@ -29,6 +30,20 @@ export default function DevicesPage() {
       await post(`/devices/${d.id}/${revoke ? "revoke" : "restore"}`, {});
       notice.success(t(revoke ? "settings.deviceRevoked" : "settings.deviceRestored"));
       setTarget(null);
+      list.reload();
+    } catch (e) {
+      notice.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function release(d: Row) {
+    setBusy(true);
+    try {
+      await post(`/devices/${d.id}/release`, {});
+      notice.success(t("settings.deviceReleased"));
+      setReleasing(null);
       list.reload();
     } catch (e) {
       notice.error((e as Error).message);
@@ -47,9 +62,14 @@ export default function DevicesPage() {
     { key: "revokedAt", header: t("fields.isActive"), render: (r) => <BoolBadge value={!r.revokedAt} /> },
     {
       key: "actions", header: "", align: "end",
-      render: (r) => canEdit && (r.revokedAt
-        ? <button type="button" className="text-sm text-brand-500 hover:underline" onClick={() => setRevoked(r, false)}>{t("settings.restore")}</button>
-        : <button type="button" className="text-sm text-error-500 hover:underline" onClick={() => setTarget(r)}>{t("settings.revoke")}</button>),
+      render: (r) => canEdit && (
+        <span className="inline-flex gap-4">
+          {r.revokedAt
+            ? <button type="button" className="text-sm text-brand-500 hover:underline" onClick={() => setRevoked(r, false)}>{t("settings.restore")}</button>
+            : <button type="button" className="text-sm text-error-500 hover:underline" onClick={() => setTarget(r)}>{t("settings.revoke")}</button>}
+          <button type="button" className="text-sm text-gray-600 hover:underline dark:text-gray-400" onClick={() => setReleasing(r)}>{t("settings.release")}</button>
+        </span>
+      ),
     },
   ];
 
@@ -62,6 +82,8 @@ export default function DevicesPage() {
       </Card>
       <ConfirmDialog open={!!target} busy={busy} danger title={t("settings.revokeTitle")} message={t("settings.revokeMessage", { name: target?.name ?? "", user: target?.user?.fullName ?? "" })}
         confirmLabel={t("settings.revoke")} onCancel={() => setTarget(null)} onConfirm={() => target && setRevoked(target, true)} />
+      <ConfirmDialog open={!!releasing} busy={busy} danger title={t("settings.releaseTitle")} message={t("settings.releaseMessage", { name: releasing?.name ?? "", user: releasing?.user?.fullName ?? "" })}
+        confirmLabel={t("settings.release")} onCancel={() => setReleasing(null)} onConfirm={() => releasing && release(releasing)} />
     </div>
   );
 }

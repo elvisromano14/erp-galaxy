@@ -47,6 +47,7 @@ export default function UsersPage() {
       {editing && (
         <UserForm
           canSetOrgAdmin={!!me?.canCreateCompanies}
+          canSetPassword={!!me?.isOrgAdmin || !!me?.user.isSuperAdmin || !!me?.roles.some((r) => r.code === "ADMIN")}
           row={editing === "new" ? undefined : editing}
           roles={(roles.data ?? []).map((r) => ({ code: r.code as string, name: r.name as string }))}
           onClose={() => setEditing(null)}
@@ -62,7 +63,7 @@ const userSchema = z.object({
   roleCodes: z.array(z.string()).min(1, "Seleccione al menos un rol"),
 });
 
-function UserForm({ row, roles, canSetOrgAdmin, onClose, onSaved }: { row?: Row; canSetOrgAdmin: boolean; roles: { code: string; name: string }[]; onClose: () => void; onSaved: () => void }) {
+function UserForm({ row, roles, canSetOrgAdmin, canSetPassword, onClose, onSaved }: { row?: Row; canSetOrgAdmin: boolean; canSetPassword: boolean; roles: { code: string; name: string }[]; onClose: () => void; onSaved: () => void }) {
   const t = useTranslations();
   const form = useForm<z.infer<typeof userSchema>>({
     resolver: zodResolver(userSchema) as never,
@@ -76,7 +77,7 @@ function UserForm({ row, roles, canSetOrgAdmin, onClose, onSaved }: { row?: Row;
   const submit = form.handleSubmit(async (f) => {
     setError(null);
     try {
-      if (row) await patch(`/users/${row.id}`, { fullName: f.fullName, isActive: f.isActive, roleCodes: f.roleCodes, ...(canSetOrgAdmin ? { isOrgAdmin: f.isOrgAdmin } : {}) });
+      if (row) await patch(`/users/${row.id}`, { fullName: f.fullName, isActive: f.isActive, roleCodes: f.roleCodes, ...(canSetPassword && f.password ? { password: f.password } : {}), ...(canSetOrgAdmin ? { isOrgAdmin: f.isOrgAdmin } : {}) });
       else await post("/users", { email: f.email, fullName: f.fullName, ...(f.password ? { password: f.password } : {}), roleCodes: f.roleCodes });
       onSaved();
     } catch (err) {
@@ -93,6 +94,7 @@ function UserForm({ row, roles, canSetOrgAdmin, onClose, onSaved }: { row?: Row;
           <RText control={c} name="email" type="email" label={t("fields.email")} required disabled={!!row} />
           <RText control={c} name="fullName" label={t("fields.fullName")} required />
           {!row && <RText control={c} name="password" label={t("fields.password")} hint={t("settings.passwordHint")} />}
+          {row && canSetPassword && <RText control={c} name="password" type="password" label={t("settings.newPassword")} hint={t("settings.newPasswordHint")} />}
           <div>
             <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-400">{t("settings.roles")}</p>
             <div className="grid grid-cols-2 gap-2">

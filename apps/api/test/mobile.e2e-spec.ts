@@ -229,4 +229,24 @@ describe('Móvil: dispositivos, sync/pull y sync/push', () => {
     const adminToken = tenant.token;
     expect((await ctx.http.get('/api/v1/sync/pull').set(hdr(adminToken, deviceId)).query({ entity: 'taxes' })).body.error).toBe('DEVICE_UNKNOWN'); // dispositivo de otro usuario
   });
+
+  it('administración libera un dispositivo y cambia la clave del vendedor; el vendedor no puede cambiar claves', async () => {
+    const users = (await admin.get('/users')).body.data;
+    const vend = users.find((u: any) => u.fullName === 'Vendedor Móvil');
+    // el vendedor no puede cambiar su propia clave ni la de otros
+    expect((await ctx.http.patch(`/api/v1/users/${vend.id}`).set(auth(vendorToken)).send({ password: 'ClaveNueva2026' })).status).toBe(403);
+    // clave débil rechazada; clave válida por el admin: la anterior deja de servir
+    expect((await admin.patch(`/users/${vend.id}`, { password: 'corta1' })).status).toBe(400);
+    expect((await admin.patch(`/users/${vend.id}`, { password: 'sololetrasaqui' })).status).toBe(422);
+    const ok = await admin.patch(`/users/${vend.id}`, { password: 'ClaveNueva2026' }); expect([ok.status, ok.body.error]).toEqual([200, undefined]);
+    expect((await ctx.http.post('/api/v1/auth/login').send({ email: vend.email, password: PASSWORD })).status).toBe(401);
+    const relogin = await ctx.http.post('/api/v1/auth/login').send({ email: vend.email, password: 'ClaveNueva2026' });
+    expect(relogin.status).toBe(200);
+    // liberar: el dispositivo desaparece de la lista y el usuario puede registrar otro teléfono
+    expect((await admin.post(`/devices/${deviceId}/release`)).status).toBe(201);
+    expect((await admin.get('/devices')).body.data.find((d: any) => d.id === deviceId)).toBeUndefined();
+    expect((await admin.post(`/devices/${deviceId}/release`)).status).toBe(404);
+    const again = await ctx.http.post('/api/v1/devices/register').set(auth(relogin.body.data.accessToken)).send({ deviceKey: `key-${randomUUID()}`, name: 'Teléfono nuevo' });
+    expect(again.status).toBe(201);
+  });
 });

@@ -27,7 +27,7 @@ const updateCompanyById = z.object({
   legalName: z.string().min(2).optional(), tradeName: z.string().nullable().optional(), fiscalAddress: z.string().nullable().optional(), phone: z.string().trim().max(40).nullable().optional(), email: z.string().email().nullable().optional(), adminName: z.string().trim().max(200).nullable().optional(),
   isSpecialTaxpayer: z.boolean().optional(), isVatWithholdingAgent: z.boolean().optional(), isIgtfCollector: z.boolean().optional(), isActive: z.boolean().optional(),
 }).strict();
-const updateUser = z.object({ fullName: z.string().min(2).optional(), isActive: z.boolean().optional(), roleCodes: z.array(z.string()).optional(), isOrgAdmin: z.boolean().optional() }).strict();
+const updateUser = z.object({ fullName: z.string().min(2).optional(), isActive: z.boolean().optional(), roleCodes: z.array(z.string()).optional(), isOrgAdmin: z.boolean().optional(), password: z.string().min(10).max(128).optional() }).strict();
 const createRole = z.object({ code: z.string().min(2).max(30), name: z.string().min(2), permissions: z.array(z.string()) });
 const updateRole = z.object({ name: z.string().min(2).optional(), permissions: z.array(z.string()).optional() }).strict();
 

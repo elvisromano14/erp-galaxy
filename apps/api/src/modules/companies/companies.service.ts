@@ -246,7 +246,7 @@ export class CompaniesService implements OnApplicationBootstrap {
     return { id: userId, email, fullName: input.fullName, roles: input.roleCodes };
   }
 
-  async updateUser(userId: string, data: { fullName?: string; isActive?: boolean; roleCodes?: string[]; isOrgAdmin?: boolean }, actor: Actor) {
+  async updateUser(userId: string, data: { fullName?: string; isActive?: boolean; roleCodes?: string[]; isOrgAdmin?: boolean; password?: string }, actor: Actor) {
     const companyId = this.prisma.companyId;
     const member = await this.prisma.db.userCompany.findUnique({ where: { userId_companyId: { userId, companyId } } });
     if (!member) throw new NotFoundError('Usuario', userId);
@@ -261,9 +261,19 @@ export class CompaniesService implements OnApplicationBootstrap {
       if (userId === actor.userId && !data.isOrgAdmin) throw new BusinessRuleException('No puede quitarse a sí mismo la administración del cliente', 'SELF_DEMOTION');
       await this.prisma.db.userOrganization.updateMany({ where: { userId, organizationId: company.organizationId }, data: { isAdmin: data.isOrgAdmin } });
     }
+    if (data.password) {
+      // Solo un administrador (rol ADMIN de la empresa, administrador del cliente o superadmin) puede cambiar la clave de otro usuario.
+      const adminRole = await this.prisma.tx.role.findFirst({ where: { companyId, code: 'ADMIN' } });
+      const isCompanyAdmin = !!adminRole && !!(await this.prisma.tx.userRole.findFirst({ where: { companyId, userId: actor.userId, roleId: adminRole.id } }));
+      if (!isCompanyAdmin) await this.orgs.assertCanManage(actor, (await this.current()).organizationId);
+      assertStrongPassword(data.password);
+      await this.prisma.db.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(data.password) } });
+      await this.prisma.db.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
+    }
     if (data.roleCodes) await this.setRoles(userId, data.roleCodes);
     await this.perms.invalidate(companyId, userId);
-    await this.audit.log('user', userId, 'UPDATE', data);
+    const { password, ...loggable } = data;
+    await this.audit.log('user', userId, 'UPDATE', { ...loggable, ...(password ? { passwordChanged: true } : {}) });
     return { id: userId };
   }
 
