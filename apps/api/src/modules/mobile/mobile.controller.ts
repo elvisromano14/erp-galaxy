@@ -1,4 +1,5 @@
-import { Body, CanActivate, Controller, ExecutionContext, Get, Headers, HttpException, Injectable, Module, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, CanActivate, Controller, ExecutionContext, Get, Headers, HttpException, Injectable, Module, Param, Post, Query, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { uuid } from '@erp/contracts';
@@ -9,6 +10,8 @@ import { env } from '../../config/env';
 import { SalesModule } from '../sales/sales.module';
 import { appConfig, DevicesService, versionLt } from './devices.service';
 import { pullQuery, pushSchema, registerDeviceSchema } from './mobile.types';
+import { AuditService } from '../../common/audit/audit.service';
+import { MobileAppService } from './mobile-app.service';
 import { SyncPullService } from './sync-pull.service';
 import { SyncPushService } from './sync-push.service';
 
@@ -27,11 +30,36 @@ export class AppVersionGuard implements CanActivate {
 @ApiTags('mobile') @ApiBearerAuth()
 @Controller()
 export class MobileController {
-  constructor(private readonly devices: DevicesService, private readonly pull: SyncPullService, private readonly push: SyncPushService) {}
+  constructor(private readonly devices: DevicesService, private readonly pull: SyncPullService, private readonly push: SyncPushService, private readonly app: MobileAppService, private readonly audit: AuditService) {}
 
   /** Versiones y mantenimiento (sin autenticación: la app lo consulta antes de iniciar sesión). */
   @Public() @Get('app/config')
   config() { return appConfig(); }
+
+  // ───────────── descarga de la app (APK) desde el ERP ─────────────
+  /** Datos del APK publicado (versión, tamaño, SHA-256). */
+  @Get('mobile/app') @RequirePermissions('mobile:app:download')
+  appInfo() { return this.app.info(); }
+
+  /** Enlace de descarga firmado y de vida corta (se puede abrir desde el navegador del teléfono sin iniciar sesión). */
+  @Post('mobile/app/link') @RequirePermissions('mobile:app:download')
+  async appLink(@CurrentUser() u: AuthUser) {
+    const info = this.app.info();
+    if (!info.available) throw new HttpException({ error: 'APK_NOT_AVAILABLE', message: 'Aún no hay una app publicada para descargar', details: [] }, 404);
+    const { token, expiresAt } = this.app.createLink(u.userId);
+    await this.audit.log('mobile_app', undefined, 'DOWNLOAD_LINK', { version: info.version });
+    return { url: `/api/v1/mobile/app/download?token=${token}`, expiresAt, ...info };
+  }
+
+  /** Descarga del APK con el enlace firmado (soporta reanudación y descarga parcial). */
+  @Public() @Get('mobile/app/download')
+  download(@Query('token') token: string | undefined, @Res() res: Response) {
+    this.app.verify(token ?? '');
+    const f = this.app.file();
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.download(f.path, f.fileName);
+  }
 
   @Post('devices/register') @RequirePermissions('mobile:sync:use')
   register(@CurrentUser() u: AuthUser, @ZBody(registerDeviceSchema) b: z.infer<typeof registerDeviceSchema>) { return this.devices.register(u, b); }
@@ -65,5 +93,5 @@ export class MobileController {
   }
 }
 
-@Module({ imports: [SalesModule], controllers: [MobileController], providers: [DevicesService, SyncPullService, SyncPushService, AppVersionGuard] })
+@Module({ imports: [SalesModule], controllers: [MobileController], providers: [DevicesService, SyncPullService, SyncPushService, AppVersionGuard, MobileAppService] })
 export class MobileModule {}

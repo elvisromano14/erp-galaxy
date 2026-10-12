@@ -41,6 +41,8 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [{ source: "/api/v1/:path*", destination: `${API_URL}/api/v1/:path*` }];
   },
+  // El APK (decenas de MB) pasa por este proxy: el tiempo máximo por omisión (30 s) cortaría descargas lentas desde el teléfono.
+  experimental: { proxyTimeout: 900_000 },
   transpilePackages: ["@erp/domain"],
   webpack(config) {
     config.module.rules.push({

@@ -35,6 +35,16 @@ Las siguientes solo actualizan imágenes y migran. Es idempotente.
 **Administrador inicial**: `ssh galaxy-vps 'grep ADMIN_ ~/.config/erp/secrets.env'` (cambie la contraseña al entrar).
 Después cree clientes y empresas desde la web (Configuración → Clientes / Empresas).
 
+## App móvil (APK) en el VPS
+
+La app de vendedores se descarga desde **Configuración → App móvil** del ERP (sin tiendas). El APK vive en `~/erp-apk` del VPS (montado en solo lectura en `erp-api` como `/data/apk`) junto con `latest.json`. Se publica con:
+
+```bash
+deploy/publish-apk.sh erp-ventas-prod-0.1.0.apk [versión] ["notas"]   # sube, activa de forma atómica y conserva la versión anterior
+```
+
+El ERP entrega el archivo con **enlaces firmados de 10 minutos** (HMAC con el secreto JWT; no se puede descargar sin un usuario con permiso) y soporta reanudación. El proxy de la web admite descargas lentas (15 min).
+
 ## Operación
 
 ```bash

@@ -6374,6 +6374,63 @@
         ]
       }
     },
+    "/api/v1/mobile/app": {
+      "get": {
+        "operationId": "get_mobile_app",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "mobile"
+        ]
+      }
+    },
+    "/api/v1/mobile/app/download": {
+      "get": {
+        "operationId": "get_mobile_app_download",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "mobile"
+        ]
+      }
+    },
+    "/api/v1/mobile/app/link": {
+      "post": {
+        "operationId": "post_mobile_app_link",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "mobile"
+        ]
+      }
+    },
     "/api/v1/movement-reasons": {
       "get": {
         "operationId": "get_movement_reasons",

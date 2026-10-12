@@ -1,4 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { MobileAppService } from '../src/modules/mobile/mobile-app.service';
 import { bootstrap, Ctx, createTenant, client, Api, seedBasics, uniqueRif, PASSWORD, auth } from './helpers';
 
 /** App móvil: dispositivos, lectura incremental (pull) y envío idempotente (push). */
@@ -184,6 +187,38 @@ describe('Móvil: dispositivos, sync/pull y sync/push', () => {
     expect((await admin.get('/devices')).body.data.find((d: any) => d.id === deviceId)).toMatchObject({ queueSize: 7, appVersion: '1.0.0' });
     await ctx.http.get('/api/v1/sync/pull').set({ ...hdr(vendorToken, deviceId), 'x-queue-size': 'abc' }).query({ entity: 'taxes' }); // valor inválido: se ignora
     expect((await admin.get('/devices')).body.data.find((d: any) => d.id === deviceId).queueSize).toBe(7);
+  });
+
+  it('descarga de la app: sin APK no hay enlace; con APK publicado, enlace firmado, reanudación y permisos', async () => {
+    const dir = process.env.MOBILE_APK_DIR!; rmSync(dir, { recursive: true, force: true });
+    // sin publicar
+    expect((await admin.get('/mobile/app')).body.data).toMatchObject({ available: false, version: null });
+    expect((await admin.post('/mobile/app/link', {})).body.error).toBe('APK_NOT_AVAILABLE');
+    expect((await ctx.http.get('/api/v1/mobile/app/download').query({ token: 'x.y' })).status).toBe(401);
+    // publicación (lo que hace deploy/publish-apk.sh)
+    mkdirSync(dir, { recursive: true });
+    const apk = randomBytes(300_000); const sha = createHash('sha256').update(apk).digest('hex');
+    writeFileSync(path.join(dir, 'erp-ventas-prod-1.2.3.apk'), apk);
+    writeFileSync(path.join(dir, 'latest.json'), JSON.stringify({ version: '1.2.3', fileName: 'erp-ventas-prod-1.2.3.apk', sha256: sha, uploadedAt: '2026-10-12T00:00:00.000Z', notes: 'Primera versión' }));
+    expect((await admin.get('/mobile/app')).body.data).toMatchObject({ available: true, version: '1.2.3', sizeBytes: 300_000, sha256: sha, notes: 'Primera versión', fileName: 'erp-ventas-prod-1.2.3.apk' });
+    // el vendedor (permiso mobile:app:download) genera un enlace y lo abre SIN sesión
+    const link = await ctx.http.post('/api/v1/mobile/app/link').set(auth(vendorToken)).send({});
+    expect(link.status).toBe(201); expect(link.body.data.url).toContain('/api/v1/mobile/app/download?token=');
+    const dl = await ctx.http.get(link.body.data.url).buffer(true).parse((res: any, cb: any) => { const ch: Buffer[] = []; res.on('data', (d: Buffer) => ch.push(d)); res.on('end', () => cb(null, Buffer.concat(ch))); });
+    expect(dl.status).toBe(200); expect(dl.headers['content-type']).toContain('application/vnd.android.package-archive'); expect(dl.headers['content-disposition']).toContain('erp-ventas-prod-1.2.3.apk');
+    expect(Buffer.compare(dl.body, apk)).toBe(0); expect(dl.headers['cache-control']).toContain('no-store');
+    // reanudación (descarga parcial)
+    const part = await ctx.http.get(link.body.data.url).set('Range', 'bytes=0-99').buffer(true).parse((res: any, cb: any) => { const ch: Buffer[] = []; res.on('data', (d: Buffer) => ch.push(d)); res.on('end', () => cb(null, Buffer.concat(ch))); });
+    expect(part.status).toBe(206); expect(part.body.length).toBe(100); expect(Buffer.compare(part.body, apk.subarray(0, 100))).toBe(0);
+    // enlace vencido o alterado → 401
+    const svc = ctx.app.get(MobileAppService);
+    expect((await ctx.http.get('/api/v1/mobile/app/download').query({ token: svc.createLink('u', -5).token })).body.error).toBe('DOWNLOAD_LINK_INVALID');
+    expect((await ctx.http.get('/api/v1/mobile/app/download').query({ token: `${link.body.data.url.split('token=')[1]}x` })).status).toBe(401);
+    // sin permiso: 403 al pedir el enlace
+    const other = await admin.post('/users', { email: `almacen-${Date.now()}@test.local`, fullName: 'Almacén', password: PASSWORD, roleCodes: ['ALMACENISTA'] });
+    const tk = (await ctx.http.post('/api/v1/auth/login').send({ email: other.body.data.email, password: PASSWORD })).body.data.accessToken;
+    expect((await ctx.http.post('/api/v1/mobile/app/link').set(auth(tk)).send({})).status).toBe(403);
+    rmSync(dir, { recursive: true, force: true });
   });
 
   it('seguridad: otro usuario no puede usar un dispositivo ajeno ni operar sin permiso móvil', async () => {

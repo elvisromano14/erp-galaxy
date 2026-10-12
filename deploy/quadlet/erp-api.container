@@ -13,6 +13,8 @@ Network=host
 EnvironmentFile=%h/.config/erp/api.env
 ReadOnly=true
 Tmpfs=/tmp
+# APK de la app móvil publicado desde el ERP (solo lectura; el archivo debe ser legible por todos: lo garantiza publish-apk.sh).
+Volume=%h/erp-apk:/data/apk:ro
 NoNewPrivileges=true
 DropCapability=ALL
 PodmanArgs=--memory=768m

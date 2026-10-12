@@ -31,6 +31,8 @@ const schema = z.object({
   MOBILE_MIN_APP_VERSION: z.string().default('1.0.0'),
   MOBILE_LATEST_APP_VERSION: z.string().default('1.0.0'),
   MOBILE_SCHEMA_VERSION: z.coerce.number().int().default(1),
+  /** Directorio con el APK publicado y su `latest.json` (lo llena `deploy/publish-apk.sh`). */
+  MOBILE_APK_DIR: z.string().default('/data/apk'),
   MOBILE_MAX_DEVICES_PER_USER: z.coerce.number().int().min(1).default(1),
   MOBILE_MAINTENANCE_MESSAGE: z.string().optional(),
   INVOICE_LEGEND: z.string().default('Documento sin validez fiscal: numeración interna provisional'),

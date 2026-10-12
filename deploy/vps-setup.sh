@@ -7,6 +7,8 @@ Q="$HOME/.config/containers/systemd"
 SRC="${1:-$HOME/erp-deploy}"          # carpeta con quadlet/ y erp-backup.*
 umask 077
 mkdir -p "$CFG" "$Q" "$HOME/.config/systemd/user" "$HOME/.local/bin"
+# Directorio del APK de la app móvil (lo llena deploy/publish-apk.sh; el contenedor de la API lo monta en solo lectura).
+mkdir -p "$HOME/erp-apk" && chmod 755 "$HOME/erp-apk"
 rand() { openssl rand -hex "$1"; }
 
 # ── secretos y variables (solo si no existen)
@@ -70,6 +72,7 @@ TRUST_PROXY_HOPS=2
 THROTTLE_DEFAULT_PER_MIN=600
 THROTTLE_LOGIN_PER_MIN=10
 QUEUE_PREFIX=erp
+MOBILE_APK_DIR=/data/apk
 EOT
 cat > "$CFG/migrate.env" <<EOT
 DATABASE_URL=postgresql://erp_migrator:$PG_MIGRATOR_PASSWORD@127.0.0.1:5432/erp

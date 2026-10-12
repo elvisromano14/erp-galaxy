@@ -12,3 +12,4 @@ process.env.QUEUE_PREFIX = 'erp-test';
 process.env.FX_SYNC_ENABLED = 'false';
 process.env.JOBS_ENABLED = 'false';
 process.env.THROTTLE_HEAVY_PER_MIN = '100000';
+process.env.MOBILE_APK_DIR = require('node:path').join(require('node:os').tmpdir(), `erp-apk-test-${process.pid}`);
