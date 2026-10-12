@@ -2820,6 +2820,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sync/stock/{productId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_sync_stock_by_productId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/taxes": {
         parameters: {
             query?: never;
@@ -10485,7 +10501,7 @@ export interface operations {
     get_sync_pull: {
         parameters: {
             query?: {
-                entity?: "app_settings" | "taxes" | "exchange_rates" | "price_lists" | "warehouses" | "customers" | "products" | "product_prices" | "stock_snapshots" | "my_documents";
+                entity?: "app_settings" | "currencies" | "taxes" | "exchange_rates" | "price_lists" | "warehouses" | "customers" | "products" | "product_prices" | "stock_snapshots" | "my_documents";
                 cursor?: string;
                 limit?: number;
                 overlapSeconds?: number;
@@ -10533,6 +10549,25 @@ export interface operations {
         };
         responses: {
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_sync_stock_by_productId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

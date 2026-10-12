@@ -51,6 +51,13 @@ export class MobileController {
     return this.pull.pull(u, q);
   }
 
+  /** Existencia en vivo por depósito (sin costos). */
+  @Get('sync/stock/:productId') @RequirePermissions('mobile:sync:use', 'inventory:stock:read') @UseGuards(AppVersionGuard)
+  async liveStock(@CurrentUser() u: AuthUser, @Headers('x-device-id') deviceId: string | undefined, @Headers('x-app-version') appVersion: string | undefined, @Param('productId', new ZodPipe(uuid)) productId: string) {
+    await this.devices.assertActive(u, deviceId, appVersion);
+    return this.pull.liveStock(productId);
+  }
+
   @Post('sync/push') @RequirePermissions('mobile:sync:use') @UseGuards(AppVersionGuard)
   async pushOps(@CurrentUser() u: AuthUser, @Headers('x-device-id') deviceId: string | undefined, @Headers('x-app-version') appVersion: string | undefined, @ZBody(pushSchema) b: z.infer<typeof pushSchema>) {
     const device = await this.devices.assertActive(u, deviceId, appVersion);

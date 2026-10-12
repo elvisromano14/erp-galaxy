@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/db/prisma.service';
 import { AuthUser } from '../../common/auth/decorators';
-import { BusinessRuleException } from '../../common/errors/errors';
+import { BusinessRuleException, NotFoundError } from '../../common/errors/errors';
 import { DevicesService } from './devices.service';
 import { PullEntity } from './mobile.types';
 
@@ -25,6 +25,7 @@ export class SyncPullService {
     const done = (items: unknown[], extra: Partial<PullPage> = {}): PullPage => ({ entity: q.entity, items, nextCursor: null, hasMore: false, fullRefresh: true, serverTime, ...extra });
     switch (q.entity) {
       case 'app_settings': return done([await this.settings(user)]);
+      case 'currencies': return done((await this.prisma.db.currency.findMany({ orderBy: { code: 'asc' } })).map(c => ({ id: c.id, code: c.code, name: c.name, symbol: c.symbol, decimals: c.decimals })));
       case 'taxes': return done((await this.prisma.db.tax.findMany({ orderBy: [{ code: 'asc' }, { validFrom: 'asc' }] })).map(t => ({
         id: t.id, code: t.code, name: t.name, kind: t.kind, rate: t.rate, validFrom: t.validFrom, validTo: t.validTo, isActive: t.isActive, deletedAt: t.deletedAt })));
       case 'price_lists': return done((await this.prisma.db.priceList.findMany({ orderBy: { code: 'asc' } })).map(p => ({
@@ -42,6 +43,23 @@ export class SyncPullService {
       case 'stock_snapshots': return this.stock(q);
       case 'my_documents': return this.documents(user, q);
     }
+  }
+
+  /**
+   * Existencia en vivo de un producto por depósito, SIN costos (a diferencia de `/products/:id/stock`, que incluye el costo promedio).
+   * La consulta que usa la app al pedir «ver existencia en vivo».
+   */
+  async liveStock(productId: string) {
+    const tx = this.prisma.db;
+    const product = await tx.product.findFirst({ where: { id: productId, deletedAt: null }, select: { id: true, sku: true, name: true } });
+    if (!product) throw new NotFoundError('Producto', productId);
+    const [stock, whs] = await Promise.all([tx.inventoryStock.findMany({ where: { productId } }), tx.warehouse.findMany({ where: { deletedAt: null } })]);
+    const wm = new Map(whs.map(w => [w.id, w]));
+    const rows = stock.filter(s => wm.has(s.warehouseId)).map(s => ({
+      warehouseId: s.warehouseId, code: wm.get(s.warehouseId)!.code, name: wm.get(s.warehouseId)!.name,
+      quantity: s.quantity.toString(), reserved: s.reservedQty.toString(), available: s.quantity.minus(s.reservedQty).toString(),
+    }));
+    return { productId: product.id, sku: product.sku, name: product.name, warehouses: rows, asOf: new Date().toISOString() };
   }
 
   // ───────────────── ajustes y políticas del vendedor ─────────────────

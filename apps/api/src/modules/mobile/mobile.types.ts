@@ -9,7 +9,7 @@ export const registerDeviceSchema = z.object({
 });
 
 export const PULL_ENTITIES = [
-  'app_settings', 'taxes', 'exchange_rates', 'price_lists', 'warehouses', 'customers', 'products', 'product_prices', 'stock_snapshots', 'my_documents',
+  'app_settings', 'currencies', 'taxes', 'exchange_rates', 'price_lists', 'warehouses', 'customers', 'products', 'product_prices', 'stock_snapshots', 'my_documents',
 ] as const;
 export type PullEntity = (typeof PULL_ENTITIES)[number];
 

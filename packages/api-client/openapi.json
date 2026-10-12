@@ -16870,6 +16870,7 @@
               "type": "string",
               "enum": [
                 "app_settings",
+                "currencies",
                 "taxes",
                 "exchange_rates",
                 "price_lists",
@@ -17004,6 +17005,34 @@
         },
         "responses": {
           "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "mobile"
+        ]
+      }
+    },
+    "/api/v1/sync/stock/{productId}": {
+      "get": {
+        "operationId": "get_sync_stock_by_productId",
+        "parameters": [
+          {
+            "name": "productId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": ""
           }
         },

@@ -81,8 +81,15 @@ describe('Móvil: dispositivos, sync/pull y sync/push', () => {
     expect(prices.map((p: any) => Number(p.price)).sort()).toEqual([10, 20]);
     const stock = (await pull('stock_snapshots')).body.data.items;
     expect(stock.every((s: any) => Number(s.quantity) === 10)).toBe(true);
-    // el stock en vivo existente sigue disponible
-    expect((await ctx.http.get(`/api/v1/products/${p1}/stock`).set(hdr(vendorToken, deviceId))).status).toBe(200);
+    // monedas (para mostrar precios)
+    expect((await pull('currencies')).body.data.items.map((c: any) => c.code)).toEqual(expect.arrayContaining(['USD', 'VES']));
+    // existencia en vivo: por depósito y SIN costos
+    const live = await ctx.http.get(`/api/v1/sync/stock/${p1}`).set(hdr(vendorToken, deviceId));
+    expect(live.status).toBe(200);
+    expect(live.body.data.warehouses[0]).toMatchObject({ code: expect.any(String), quantity: '10', reserved: '0', available: '10' });
+    expect(JSON.stringify(live.body)).not.toMatch(/cost/i);
+    expect((await ctx.http.get(`/api/v1/sync/stock/${randomUUID()}`).set(hdr(vendorToken, deviceId))).status).toBe(404);
+    expect((await ctx.http.get(`/api/v1/sync/stock/${p1}`).set(auth(vendorToken))).body.error).toBe('DEVICE_REQUIRED');
   });
 
   it('pull incremental: paginación por cursor, cambios posteriores y lápidas', async () => {
