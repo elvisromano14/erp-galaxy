@@ -42,6 +42,7 @@ export default function DevicesPage() {
     { key: "name", header: t("fields.name") },
     { key: "user", header: t("settings.deviceUser"), render: (r) => (r.user ? `${r.user.fullName} (${r.user.email})` : "—") },
     { key: "appVersion", header: t("settings.appVersion"), render: (r) => r.appVersion ?? "—" },
+    { key: "queueSize", header: t("settings.queueSize"), align: "end", render: (r) => (r.queueSize === null || r.queueSize === undefined ? "—" : <span className={r.queueSize > 20 ? "font-semibold text-error-500" : ""}>{r.queueSize}</span>) },
     { key: "lastSeenAt", header: t("settings.lastSeen"), render: (r) => (r.lastSeenAt ? fmtDateTime(r.lastSeenAt) : "—") },
     { key: "revokedAt", header: t("fields.isActive"), render: (r) => <BoolBadge value={!r.revokedAt} /> },
     {

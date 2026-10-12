@@ -534,6 +534,7 @@
     "deviceUser": "Usuario",
     "appVersion": "Versión de la app",
     "lastSeen": "Última actividad",
+    "queueSize": "Cola pendiente",
     "revoke": "Revocar",
     "restore": "Restaurar",
     "revokeTitle": "Revocar dispositivo",

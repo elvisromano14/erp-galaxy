@@ -63,13 +63,15 @@ export class DevicesService {
   }
 
   /** Valida el dispositivo de la petición (cabecera `X-Device-Id`): debe existir, ser del usuario y no estar revocado. */
-  async assertActive(user: AuthUser, deviceId: string | undefined, appVersion?: string) {
+  async assertActive(user: AuthUser, deviceId: string | undefined, appVersion?: string, queueSize?: string) {
     if (!deviceId) throw new HttpException({ error: 'DEVICE_REQUIRED', message: 'Falta la cabecera X-Device-Id (registre el dispositivo)', details: [] }, 400);
     const device = await this.prisma.db.device.findFirst({ where: { id: deviceId, userId: user.userId } });
     if (!device) throw new ForbiddenException({ error: 'DEVICE_UNKNOWN', message: 'Dispositivo no registrado' });
     if (device.revokedAt) throw new ForbiddenException({ error: 'DEVICE_REVOKED', message: 'Este dispositivo fue revocado por la administración' });
-    if (!device.lastSeenAt || Date.now() - device.lastSeenAt.getTime() > 60_000 || (appVersion && appVersion !== device.appVersion)) {
-      await this.prisma.db.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date(), ...(appVersion ? { appVersion } : {}) } });
+    // Métricas por dispositivo: última actividad, versión y tamaño de la cola de salida (que reporta la app en cada sincronización).
+    const q = queueSize !== undefined && /^\d{1,6}$/.test(queueSize) ? Number(queueSize) : undefined;
+    if (!device.lastSeenAt || Date.now() - device.lastSeenAt.getTime() > 60_000 || (appVersion && appVersion !== device.appVersion) || (q !== undefined && q !== device.queueSize)) {
+      await this.prisma.db.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date(), ...(appVersion ? { appVersion } : {}), ...(q !== undefined ? { queueSize: q } : {}) } });
     }
     return device;
   }
@@ -89,7 +91,7 @@ export class DevicesService {
     return this.view(updated);
   }
 
-  private view(d: { id: string; userId: string; deviceCode: string; name: string; platform: string; appVersion: string | null; lastSeenAt: Date | null; revokedAt: Date | null; createdAt: Date }) {
-    return { id: d.id, userId: d.userId, deviceCode: d.deviceCode, name: d.name, platform: d.platform, appVersion: d.appVersion, lastSeenAt: d.lastSeenAt, revokedAt: d.revokedAt, createdAt: d.createdAt };
+  private view(d: { id: string; userId: string; deviceCode: string; name: string; platform: string; appVersion: string | null; queueSize?: number | null; lastSeenAt: Date | null; revokedAt: Date | null; createdAt: Date }) {
+    return { id: d.id, userId: d.userId, deviceCode: d.deviceCode, name: d.name, platform: d.platform, appVersion: d.appVersion, queueSize: d.queueSize ?? null, lastSeenAt: d.lastSeenAt, revokedAt: d.revokedAt, createdAt: d.createdAt };
   }
 }

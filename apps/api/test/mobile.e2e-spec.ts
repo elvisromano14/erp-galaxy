@@ -179,6 +179,13 @@ describe('Móvil: dispositivos, sync/pull y sync/push', () => {
     expect(docs.find((d: any) => d.id === order.body.data.results[0].serverId)).toMatchObject({ docType: 'ORDER', status: 'CONFIRMED' });
   });
 
+  it('monitoreo: el dispositivo reporta el tamaño de su cola y el administrador lo ve', async () => {
+    await ctx.http.get('/api/v1/sync/pull').set({ ...hdr(vendorToken, deviceId), 'x-queue-size': '7' }).query({ entity: 'taxes' });
+    expect((await admin.get('/devices')).body.data.find((d: any) => d.id === deviceId)).toMatchObject({ queueSize: 7, appVersion: '1.0.0' });
+    await ctx.http.get('/api/v1/sync/pull').set({ ...hdr(vendorToken, deviceId), 'x-queue-size': 'abc' }).query({ entity: 'taxes' }); // valor inválido: se ignora
+    expect((await admin.get('/devices')).body.data.find((d: any) => d.id === deviceId).queueSize).toBe(7);
+  });
+
   it('seguridad: otro usuario no puede usar un dispositivo ajeno ni operar sin permiso móvil', async () => {
     const other = await admin.post('/users', { email: `compras-${Date.now()}@test.local`, fullName: 'Sin móvil', password: PASSWORD, roleCodes: ['ALMACENISTA'] });
     const tk = (await ctx.http.post('/api/v1/auth/login').send({ email: other.body.data.email, password: PASSWORD })).body.data.accessToken;

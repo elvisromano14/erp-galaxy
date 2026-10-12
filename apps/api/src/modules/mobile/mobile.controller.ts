@@ -46,8 +46,8 @@ export class MobileController {
   restore(@CurrentUser() u: AuthUser, @Param('id', new ZodPipe(uuid)) id: string) { return this.devices.setRevoked(id, false, u.userId); }
 
   @Get('sync/pull') @RequirePermissions('mobile:sync:use') @UseGuards(AppVersionGuard)
-  async pullPage(@CurrentUser() u: AuthUser, @Headers('x-device-id') deviceId: string | undefined, @Headers('x-app-version') appVersion: string | undefined, @ZQuery(pullQuery) q: z.infer<typeof pullQuery>) {
-    await this.devices.assertActive(u, deviceId, appVersion);
+  async pullPage(@CurrentUser() u: AuthUser, @Headers('x-device-id') deviceId: string | undefined, @Headers('x-app-version') appVersion: string | undefined, @Headers('x-queue-size') queueSize: string | undefined, @ZQuery(pullQuery) q: z.infer<typeof pullQuery>) {
+    await this.devices.assertActive(u, deviceId, appVersion, queueSize);
     return this.pull.pull(u, q);
   }
 
@@ -59,8 +59,8 @@ export class MobileController {
   }
 
   @Post('sync/push') @RequirePermissions('mobile:sync:use') @UseGuards(AppVersionGuard)
-  async pushOps(@CurrentUser() u: AuthUser, @Headers('x-device-id') deviceId: string | undefined, @Headers('x-app-version') appVersion: string | undefined, @ZBody(pushSchema) b: z.infer<typeof pushSchema>) {
-    const device = await this.devices.assertActive(u, deviceId, appVersion);
+  async pushOps(@CurrentUser() u: AuthUser, @Headers('x-device-id') deviceId: string | undefined, @Headers('x-app-version') appVersion: string | undefined, @Headers('x-queue-size') queueSize: string | undefined, @ZBody(pushSchema) b: z.infer<typeof pushSchema>) {
+    const device = await this.devices.assertActive(u, deviceId, appVersion, queueSize);
     return this.push.push(u, device.id, b.operations);
   }
 }

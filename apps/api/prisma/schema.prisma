@@ -1241,6 +1241,7 @@ model Device {
   name       String
   platform   String    @default("android")
   appVersion String?   @map("app_version")
+  queueSize  Int?      @map("queue_size")
   lastSeenAt DateTime? @map("last_seen_at") @db.Timestamptz
   revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
   revokedBy  String?   @map("revoked_by") @db.Uuid
