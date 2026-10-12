@@ -1,6 +1,6 @@
 # Mini ERP
 
-Implementación de las **fases 0–5** de `docs/erp-v3.md` (fundación, catálogos, terceros, inventario con costeo, compras).
+ERP multiempresa para Venezuela, en producción en un VPS (Podman/Quadlet, Tailscale Funnel). Cubre fundación, catálogos, terceros, inventario con costeo, compras, ventas, facturación fiscal, tesorería, reportes, importaciones y el **backend de la app móvil de vendedores** (offline-first, repo aparte [`erp-galaxy-movil`](https://github.com/elvisromano14/erp-galaxy-movil)). Plan de referencia: `docs/erp-v3.md`.
 Monorepo pnpm: `apps/api` (NestJS 11 + Prisma 6 + PostgreSQL 18), `apps/web` (Next.js 16 + TailAdmin), `packages/domain` (cálculo puro compartido) y `packages/contracts`.
 
 ## Arranque rápido (desarrollo)
@@ -28,17 +28,18 @@ Usuarios de **desarrollo** (contraseña de semilla `Admin12345!`, cambiar `SEED_
 
 ```bash
 pnpm --filter @erp/domain test       # 11 pruebas unitarias (totales, IVA, IGTF, costeo, RIF)
-cd apps/api && npx jest --config jest.e2e.config.js   # 135 pruebas e2e contra PostgreSQL/Redis reales (BD `minierp_test`, se recrea sola)
+cd apps/api && npx jest --config jest.e2e.config.js   # ~151 pruebas e2e contra PostgreSQL/Redis reales (BD `minierp_test`, se recrea sola)
 ```
 
 Las e2e cubren: autenticación (bloqueo, rotación y reutilización de refresh, revocación), aislamiento multiempresa (RLS + FK compuestas),
 RBAC, costeo promedio, kardex inmutable, anulaciones, **concurrencia** (última unidad, numeración sin huecos, costo entre depósitos),
-lotes FEFO, períodos, idempotencia y el flujo completo de compras.
+lotes FEFO, períodos, idempotencia, el flujo completo de compras, facturación y fiscal, y la sincronización móvil (dispositivos, pull/push).
 
 ## Qué incluye
 
 | Fase | Alcance implementado |
 |---|---|
+| Móvil (backend) | Dispositivos de vendedores (registro, un dispositivo activo por usuario, **revocar, restaurar y liberar**), `sync/pull` incremental con cursor y lápidas, `sync/push` idempotente por `clientOpId`, `app/config` con versión mínima (426) y descarga del APK con enlace firmado (Configuración → App móvil). Un **administrador** puede cambiar la clave de cualquier usuario (Configuración → Usuarios → Editar; se cierran sus sesiones) |
 | Clientes | Modelo cliente → empresas → usuarios: cada administrador de cliente ve y crea solo las empresas de su cliente; el administrador global ve todas; un usuario normal solo las que se le asignan (ver `avances.md`) |
 | S0 Fundación | Monorepo, API con config validada, Pino, health, Swagger, errores estándar, JWT (access 15 min + refresh rotativo con detección de robo), RBAC por permisos, auditoría, numeración sin huecos, idempotencia, **RLS obligatorio** + roles `erp_migrator`/`erp_app`, shell web con sesión BFF (cookie `httpOnly`) |
 | S1 Catálogos | Empresa (datos fiscales, feature flags), usuarios/roles, monedas, **factor cambiario** (historial inmutable), impuestos con vigencia, depósitos, instancias, unidades, productos (OEM, códigos de barras, precios con historial), listas de precio |
@@ -67,15 +68,15 @@ Además: tasas BCV automáticas (DolarApi) con tasa manual por empresa, numeraci
 - **Seriales** operativos (se activan por empresa y por producto); el costo sigue siendo promedio por producto (no por serial).
 - **Tasas**: las del BCV son globales (DolarApi, fuente oficial); si la API no responde se carga manual. Una tasa manual solo aplica a su empresa.
 - El ejemplo numérico de `erp-v2.md §9.9` tenía un error: 41,325 × 36,52 = **1.509,189** (no 1.509,219).
-- Los porcentajes fiscales y la lista de bancos son **de referencia**: validar con el contador antes de producción (v3 §8).
+- Reglas fiscales **validadas por el usuario (2026-10-12)**: IVA 16 %, IGTF 3 % en divisas en efectivo, retención de IVA 75/100 %, ISLR 4 %. Sigue abierto el modelo de impresora fiscal y el formato del ticket; la lista de bancos es de referencia.
 
-## Pendiente del Sprint 0 / fases (no hecho)
+## Pendiente (aplazado por decisión del usuario)
 
-CI/CD en GitHub Actions, copia externa de los respaldos y dominio propio (el despliegue manual ya está hecho: ver más abajo). El modo offline/móvil
-se hará en otro proyecto (que puede usar `packages/api-client`).
+Copia externa de los respaldos, CI/CD de despliegue automático, dominio propio, autenticación en dos pasos y carga de datos reales. El despliegue manual está hecho (`deploy/deploy.sh`, ver más abajo) y la CI de pruebas funciona. En la app móvil: auto-actualización del APK (en stand by), cifrado de la base local (SQLCipher, se decide tras el piloto) y Sentry.
 
 ## Despliegue y manual
 
+- **App móvil**: repo [`erp-galaxy-movil`](https://github.com/elvisromano14/erp-galaxy-movil) (Expo; APK firmado, publicado con `deploy/publish-apk.sh`).
 - **Manual de usuario**: [`docs/MANUAL-DE-USUARIO.md`](docs/MANUAL-DE-USUARIO.md).
 - **Despliegue al VPS** (Podman/Quadlet, imágenes construidas en local y subidas por SSH, Tailscale Funnel): [`deploy/README.md`](deploy/README.md) — `deploy/deploy.sh`.
 - **Pruebas de carga**: `bash apps/api/loadtest/run.sh` (base y API propias); resultados en [`docs/PRUEBAS-DE-CARGA.md`](docs/PRUEBAS-DE-CARGA.md).
