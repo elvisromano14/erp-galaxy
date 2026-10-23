@@ -8,6 +8,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { BusinessRuleException, NotFoundError, ValidationError } from '../../common/errors/errors';
 import { Paged } from '../../common/http/paged';
 import { ExchangeRatesService } from '../catalogs/exchange-rates';
+import { ExternalRefsService, IntegrationEventsService } from '../integration/integration-events.service';
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const barcode = z.string().trim().min(1).max(64);
@@ -56,7 +57,10 @@ export const addPriceSchema = price;
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly rates: ExchangeRatesService) {}
+  constructor(
+    private readonly prisma: PrismaService, private readonly audit: AuditService, private readonly rates: ExchangeRatesService,
+    private readonly events: IntegrationEventsService, private readonly refs: ExternalRefsService,
+  ) {}
 
   private async assertFeatures(d: { trackingMode?: string; hasExpiry?: boolean; isService?: boolean }) {
     const company = await this.prisma.db.company.findUniqueOrThrow({ where: { id: this.prisma.companyId } });
@@ -110,7 +114,8 @@ export class ProductsService {
       tx.productUom.findMany({ where: { productId: id } }),
       this.currentPrices(id),
     ]);
-    return { ...product, barcodes: barcodes.map(b => b.barcode), references, uoms, prices };
+    const externalRefs = (await this.refs.forEntity('product', [id])).get(id) ?? [];
+    return { ...product, barcodes: barcodes.map(b => b.barcode), references, uoms, prices, externalRefs };
   }
 
   /** Último precio vigente por lista (validFrom <= hoy). */
@@ -130,8 +135,9 @@ export class ProductsService {
     const { barcodes, references, uoms, prices, ...data } = input;
     const product = await tx.product.create({ data: { ...data, companyId, createdBy: this.prisma.userId, updatedBy: this.prisma.userId } });
     await this.replaceChildren(product.id, { barcodes, references, uoms });
-    for (const p of prices ?? []) await this.addPrice(product.id, p);
+    for (const p of prices ?? []) await this.addPrice(product.id, p, false);
     await this.audit.log('product', product.id, 'CREATE', input);
+    await this.events.emit({ entity: 'product', entityId: product.id, op: 'CREATE', version: product.version });
     return this.get(product.id);
   }
 
@@ -151,10 +157,11 @@ export class ProductsService {
       const stock = await tx.inventoryStock.findFirst({ where: { productId: id, NOT: { quantity: 0 } } });
       if (stock) throw new BusinessRuleException('No se puede cambiar el control de lotes de un producto con existencias', 'TRACKING_LOCKED');
     }
-    await tx.product.update({ where: { id }, data: { ...data, updatedBy: this.prisma.userId, version: { increment: 1 } } });
+    const updated = await tx.product.update({ where: { id }, data: { ...data, updatedBy: this.prisma.userId, version: { increment: 1 } } });
     await this.replaceChildren(id, { barcodes, references, uoms });
-    for (const p of prices ?? []) await this.addPrice(id, p);
+    for (const p of prices ?? []) await this.addPrice(id, p, false);
     await this.audit.log('product', id, 'UPDATE', input);
+    await this.events.emit({ entity: 'product', entityId: id, op: data.isActive === false ? 'DEACTIVATE' : 'UPDATE', version: updated.version });
     return this.get(id);
   }
 
@@ -177,7 +184,7 @@ export class ProductsService {
   }
 
   /** Alta de precio: si ya hay uno para (producto, lista, fecha) se actualiza; todo cambio queda auditado. */
-  async addPrice(productId: string, p: z.infer<typeof price>) {
+  async addPrice(productId: string, p: z.infer<typeof price>, emit = true) {
     const tx = this.prisma.tx;
     const companyId = this.prisma.companyId;
     const validFrom = new Date(p.validFrom ?? caracasToday());
@@ -189,6 +196,8 @@ export class ProductsService {
       create: { companyId, productId, priceListId: p.priceListId, price: p.price, validFrom, createdBy: this.prisma.userId },
     });
     await this.audit.log('product_price', row.id, previous ? 'UPDATE' : 'CREATE', { productId, ...p, previous: previous?.price.toString() });
+    // Un cambio de precio suelto (no el de un alta o una edición del producto, que emiten el suyo) también avisa a la integración.
+    if (emit) await this.events.emit({ entity: 'product', entityId: productId, op: 'UPDATE', summary: { prices: [p.priceListId] } });
     return row;
   }
 
@@ -205,7 +214,7 @@ export class ProductsService {
     const validFrom = new Date(input.validFrom ?? caracasToday());
     const products = await tx.product.findMany({
       where: { deletedAt: null, isActive: true, isService: false, ...(input.categoryId ? { categoryId: input.categoryId } : {}), ...(input.productIds?.length ? { id: { in: input.productIds } } : {}) },
-      select: { id: true, sku: true, name: true }, orderBy: { sku: 'asc' }, take: 5001,
+      select: { id: true, sku: true, name: true, version: true }, orderBy: { sku: 'asc' }, take: 5001,
     });
     if (products.length > 5000) throw new BusinessRuleException('Demasiados productos (máximo 5000); filtre por instancia', 'TOO_MANY_PRODUCTS');
     if (!products.length) throw new BusinessRuleException('Ningún producto coincide con el filtro', 'NO_PRODUCTS');
@@ -241,7 +250,11 @@ export class ProductsService {
     }
     const changes = rows.filter(r => r.newPrice !== null && r.newPrice !== r.oldPrice);
     if (!input.dryRun) {
-      for (const r of changes) await this.addPrice(r.productId, { priceListId: list.id, price: r.newPrice!, validFrom: validFrom.toISOString().slice(0, 10) });
+      const versionOf = new Map(products.map(p => [p.id, p.version]));
+      for (const r of changes) {
+        await this.addPrice(r.productId, { priceListId: list.id, price: r.newPrice!, validFrom: validFrom.toISOString().slice(0, 10) }, false);
+        await this.events.emit({ entity: 'product', entityId: r.productId, op: 'UPDATE', version: versionOf.get(r.productId), summary: { prices: [list.id] } });
+      }
       await this.audit.log('price_list', list.id, 'BULK_UPDATE', { mode: input.mode, value: input.value, changed: changes.length });
     }
     return { dryRun: input.dryRun, priceListId: list.id, validFrom: validFrom.toISOString().slice(0, 10), total: rows.length, changed: changes.length, skipped: rows.filter(r => r.skipped).length, rows };
@@ -259,6 +272,7 @@ export class ProductsService {
     if (stock) throw new BusinessRuleException('No se puede eliminar un producto con existencias', 'PRODUCT_HAS_STOCK');
     await this.prisma.tx.product.update({ where: { id }, data: { deletedAt: new Date(), isActive: false } });
     await this.audit.log('product', id, 'DELETE');
+    await this.events.emit({ entity: 'product', entityId: id, op: 'DEACTIVATE', version: p.version });
   }
 
   async restore(id: string) {
@@ -266,6 +280,7 @@ export class ProductsService {
     if (!p) throw new NotFoundError('Producto', id);
     await this.prisma.tx.product.update({ where: { id }, data: { deletedAt: null, isActive: true } });
     await this.audit.log('product', id, 'RESTORE');
+    await this.events.emit({ entity: 'product', entityId: id, op: 'UPDATE', version: p.version });
     return this.get(id);
   }
 }

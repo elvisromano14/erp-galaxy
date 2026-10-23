@@ -65,8 +65,8 @@ export const CRUD_REGISTRY: Record<string, CrudDef> = {
     ],
   },
   suppliers: {
-    resource: "suppliers", permission: "admin:suppliers", softDelete: true, defaultSort: "legalName",
-    columns: [{ key: "rif", sort: true }, { key: "legalName", sort: true }, { key: "creditDays", type: "int" }, { key: "retentionIvaPct", type: "decimal" }, { key: "isActive", type: "bool" }],
+    resource: "suppliers", permission: "admin:suppliers", softDelete: true, defaultSort: "legalName", externalRefs: true,
+    columns: [{ key: "rif", sort: true }, { key: "legalName", sort: true }, { key: "creditDays", type: "int" }, { key: "retentionIvaPct", type: "decimal" }, { key: "validationStatus", type: "enum" }, { key: "isActive", type: "bool" }],
     fields: [
       { name: "rif", type: "text", required: true, placeholder: "J-12345678-9" },
       { name: "legalName", type: "text", required: true },
@@ -75,13 +75,14 @@ export const CRUD_REGISTRY: Record<string, CrudDef> = {
       { name: "isSpecialTaxpayer", type: "boolean" },
       { name: "retentionIvaPct", type: "decimal", default: "0", hint: "% (75 / 100)" },
       { name: "isIslrSubject", type: "boolean" },
+      { name: "validationStatus", type: "select", options: ["VALIDATED", "PENDING"], default: "VALIDATED" },
       { name: "creditDays", type: "int", default: "0" },
       { name: "zoneId", type: "ref", resource: "zones", labelKey: (r) => `${r.code} — ${r.name}`, nullable: true },
       ...contact, active,
     ],
   },
   customers: {
-    resource: "customers", permission: "admin:customers", softDelete: true, defaultSort: "legalName",
+    resource: "customers", permission: "admin:customers", softDelete: true, defaultSort: "legalName", externalRefs: true,
     columns: [{ key: "rif", sort: true }, { key: "legalName", sort: true }, { key: "creditLimit", type: "decimal" }, { key: "creditDays", type: "int" }, { key: "validationStatus", type: "enum" }, { key: "isActive", type: "bool" }],
     fields: [
       { name: "rif", type: "text", required: true, placeholder: "J-12345678-9" },

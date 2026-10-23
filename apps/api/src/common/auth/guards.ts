@@ -7,7 +7,7 @@ import { AuthUser, IS_PUBLIC, NO_COMPANY, PERMISSIONS } from './decorators';
 import { PermissionsService } from './permissions.service';
 import { env } from '../../config/env';
 
-export interface AccessClaims { sub: string; companyId?: string; jti: string; exp: number; sa?: boolean }
+export interface AccessClaims { sub: string; companyId?: string; jti: string; exp: number; sa?: boolean; svc?: boolean }
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -33,6 +33,7 @@ export class JwtAuthGuard implements CanActivate {
     const store = getStore();
     store.userId = user.userId;
     store.companyId = user.companyId;
+    if (claims.svc) store.isService = true;
     if (!user.companyId && !this.reflector.getAllAndOverride<boolean>(NO_COMPANY, targets)) {
       throw new ForbiddenException({ error: 'COMPANY_REQUIRED', message: 'Seleccione una empresa (POST /auth/select-company)' });
     }

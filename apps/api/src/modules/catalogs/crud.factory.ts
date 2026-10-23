@@ -7,6 +7,7 @@ import { RequirePermissions } from '../../common/auth/decorators';
 import { PrismaService } from '../../common/db/prisma.service';
 import { NotFoundError, ValidationError } from '../../common/errors/errors';
 import { Paged } from '../../common/http/paged';
+import { ExternalRefsService, IntegrationEventsService } from '../integration/integration-events.service';
 import { ZodPipe } from '../../common/http/zod.pipe';
 import { ZBody, ZQuery } from '../../common/http/zod.decorators';
 
@@ -32,6 +33,10 @@ export interface CrudConfig<S extends ZodRawShape> {
   beforeSave?: (data: any, ctx: { prisma: PrismaService; id?: string; isCreate: boolean }) => Promise<any> | any;
   /** Campos Decimal / fecha que llegan como string. */
   dateFields?: string[];
+  /** Si se indica, cada cambio emite un evento de integración (outbox) con este nombre de entidad. */
+  integrationEntity?: string;
+  /** El modelo tiene columna `version`: cada actualización la incrementa (bloqueo optimista de la integración). */
+  versioned?: boolean;
 }
 
 const idPipe = new ZodPipe(uuid);
@@ -44,7 +49,7 @@ export function makeCrud<S extends ZodRawShape>(cfg: CrudConfig<S>): Type<unknow
 
   @Injectable()
   class Service {
-    constructor(readonly prisma: PrismaService, readonly audit: AuditService) {}
+    constructor(readonly prisma: PrismaService, readonly audit: AuditService, readonly events: IntegrationEventsService, readonly refs: ExternalRefsService) {}
     delegate() { return (this.prisma.db as any)[model]; }
 
     private convert(data: Record<string, unknown>) {
@@ -83,6 +88,8 @@ export function makeCrud<S extends ZodRawShape>(cfg: CrudConfig<S>): Type<unknow
     async get(id: string) {
       const row = await this.delegate().findFirst({ where: { id } });
       if (!row) throw new NotFoundError(cfg.entity, id);
+      // Con integración, la ficha muestra también el código o número que el registro tiene en el otro sistema.
+      if (cfg.integrationEntity) return { ...row, externalRefs: (await this.refs.forEntity(cfg.integrationEntity, [id])).get(id) ?? [] };
       return row;
     }
 
@@ -92,6 +99,7 @@ export function makeCrud<S extends ZodRawShape>(cfg: CrudConfig<S>): Type<unknow
       if (!cfg.global) data.companyId = this.prisma.companyId;
       const row = await this.delegate().create({ data });
       await this.audit.log(cfg.entity, row.id, 'CREATE', input);
+      if (cfg.integrationEntity) await this.events.emit({ entity: cfg.integrationEntity, entityId: row.id, op: 'CREATE', version: cfg.versioned ? row.version : null });
       return row;
     }
 
@@ -99,8 +107,10 @@ export function makeCrud<S extends ZodRawShape>(cfg: CrudConfig<S>): Type<unknow
       await this.get(id);
       let data = this.convert({ ...input });
       if (cfg.beforeSave) data = (await cfg.beforeSave(data, { prisma: this.prisma, id, isCreate: false })) ?? data;
+      if (cfg.versioned) data.version = { increment: 1 };
       const row = await this.delegate().update({ where: { id }, data });
       await this.audit.log(cfg.entity, id, 'UPDATE', input);
+      if (cfg.integrationEntity) await this.events.emit({ entity: cfg.integrationEntity, entityId: id, op: input.isActive === false ? 'DEACTIVATE' : 'UPDATE', version: cfg.versioned ? row.version : null });
       return row;
     }
 
@@ -109,6 +119,7 @@ export function makeCrud<S extends ZodRawShape>(cfg: CrudConfig<S>): Type<unknow
       if (cfg.softDelete) await this.delegate().update({ where: { id }, data: { deletedAt: new Date() } });
       else await this.delegate().delete({ where: { id } });
       await this.audit.log(cfg.entity, id, 'DELETE');
+      if (cfg.integrationEntity) await this.events.emit({ entity: cfg.integrationEntity, entityId: id, op: 'DEACTIVATE' });
     }
 
     async restore(id: string) {
@@ -116,6 +127,7 @@ export function makeCrud<S extends ZodRawShape>(cfg: CrudConfig<S>): Type<unknow
       if (!row) throw new NotFoundError(cfg.entity, id);
       const restored = await this.delegate().update({ where: { id }, data: { deletedAt: null } });
       await this.audit.log(cfg.entity, id, 'RESTORE');
+      if (cfg.integrationEntity) await this.events.emit({ entity: cfg.integrationEntity, entityId: id, op: 'UPDATE', version: cfg.versioned ? restored.version : null });
       return restored;
     }
   }
@@ -148,7 +160,7 @@ export function makeCrud<S extends ZodRawShape>(cfg: CrudConfig<S>): Type<unknow
 
   // Nest resuelve el constructor por metadatos de diseño: forzar el tipo del servicio en el controlador dinámico.
   Reflect.defineMetadata('design:paramtypes', [Service], CrudController);
-  Reflect.defineMetadata('design:paramtypes', [PrismaService, AuditService], Service);
+  Reflect.defineMetadata('design:paramtypes', [PrismaService, AuditService, IntegrationEventsService, ExternalRefsService], Service);
   (CrudController as any).__service = Service;
   return CrudController;
 }

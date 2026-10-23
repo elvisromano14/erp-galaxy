@@ -113,6 +113,7 @@ export const NAV: NavSection[] = [
       { key: "users", path: "/settings/users", perm: "security:users:read" },
       { key: "roles", path: "/settings/roles", perm: "security:roles:read" },
       { key: "devices", path: "/settings/devices", perm: "mobile:devices:read" },
+      { key: "integration", path: "/settings/integration", perm: "security:service-accounts:read" },
       { key: "mobileApp", path: "/settings/mobile-app", perm: "mobile:app:download" },
     ],
   },

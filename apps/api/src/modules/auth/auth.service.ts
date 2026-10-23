@@ -42,8 +42,9 @@ export class AuthService {
       await this.audit.log('auth', user?.id, 'LOGIN_FAILED', { email, reason }, { companyId: null, userId: user?.id ?? null });
       throw new UnauthorizedException({ error: 'INVALID_CREDENTIALS', message: 'Credenciales inválidas' });
     };
-    if (!user || !user.isActive) {
+    if (!user || !user.isActive || user.isService) {
       // Misma carga de CPU que un usuario real: la respuesta no delata si el correo existe (enumeración por tiempo).
+      // Las cuentas de servicio no entran por clave: usan POST /auth/service-token.
       await argon2.verify(DUMMY_HASH, password).catch(() => false);
       return fail('unknown_or_inactive');
     }
@@ -105,12 +106,47 @@ export class AuthService {
     }
     if (row.expiresAt < new Date()) throw new UnauthorizedException({ error: 'REFRESH_EXPIRED', message: 'Refresh token expirado' });
     const user = await this.prisma.db.user.findUnique({ where: { id: row.userId } });
-    if (!user?.isActive) throw new UnauthorizedException({ error: 'UNAUTHORIZED', message: 'Usuario inactivo' });
+    if (!user?.isActive || user.isService) throw new UnauthorizedException({ error: 'UNAUTHORIZED', message: 'Usuario inactivo' });
     // Dentro de la ventana de gracia el token ya está revocado: se emite otro de la misma familia sin volver a revocarlo.
     // Si ya no tiene acceso a la empresa del token (la quitaron o se desactivó), la sesión vuelve a «sin empresa».
     const stillAllowed = row.companyId ? !!(await this.access.accessTo(user.id, user.isSuperAdmin, row.companyId)) : false;
     const tokens = await this.issue(user.id, user.isSuperAdmin, stillAllowed ? row.companyId ?? undefined : undefined, ctx, withinGrace ? { id: '', familyId: row.familyId } : row);
     return tokens;
+  }
+
+  // ───────── cuentas de servicio (integraciones) ─────────
+  /**
+   * Token corto (sin refresh) para una cuenta de servicio. La empresa va fija en el token. Sin bloqueo por intentos
+   * (lo cubren el límite de frecuencia y la auditoría); el secreto jamás se guarda en claro.
+   */
+  async serviceToken(clientId: string, clientSecret: string, ctx: Ctx) {
+    const cred = await this.prisma.db.serviceCredential.findUnique({ where: { clientId } });
+    const fail = async (reason: string) => {
+      await this.audit.log('auth', cred?.userId, 'SERVICE_TOKEN_FAILED', { clientId, reason, ip: ctx.ip, companyId: cred?.companyId }, { companyId: null, userId: cred?.userId ?? null });
+      throw new UnauthorizedException({ error: 'INVALID_CREDENTIALS', message: 'Credenciales inválidas' });
+    };
+    if (!cred || cred.revokedAt) {
+      await argon2.verify(DUMMY_HASH, clientSecret).catch(() => false);
+      return fail(cred ? 'revoked' : 'unknown');
+    }
+    const ok = await argon2.verify(cred.secretHash, clientSecret).catch(() => false);
+    if (!ok) return fail('bad_secret');
+    const user = await this.prisma.db.user.findUnique({ where: { id: cred.userId } });
+    if (!user?.isActive || !user.isService) return fail('inactive');
+    const company = await this.prisma.db.company.findUnique({ where: { id: cred.companyId }, select: { isActive: true } });
+    if (!company?.isActive) return fail('company_inactive');
+    const enabled = await this.prisma.runWithTenant(cred.companyId, tx => tx.setting.findUnique({ where: { companyId_key: { companyId: cred.companyId, key: 'integration.enabled' } } }));
+    if (enabled && enabled.value === false) {
+      throw new ForbiddenLike('La integración está pausada para esta empresa', 'INTEGRATION_DISABLED');
+    }
+    const jti = randomUUID();
+    const accessToken = await this.jwt.signAsync(
+      { sub: user.id, companyId: cred.companyId, jti, svc: true },
+      { secret: env.JWT_ACCESS_SECRET, expiresIn: ACCESS_TTL_SECONDS, algorithm: 'HS256' },
+    );
+    await this.prisma.db.serviceCredential.update({ where: { id: cred.id }, data: { lastUsedAt: new Date() } });
+    await this.audit.log('auth', user.id, 'SERVICE_TOKEN', { clientId, ip: ctx.ip, companyId: cred.companyId }, { companyId: null, userId: user.id });
+    return { accessToken, expiresIn: ACCESS_TTL_SECONDS };
   }
 
   // ───────── logout ─────────

@@ -217,7 +217,7 @@ export class CompaniesService implements OnApplicationBootstrap {
   async listUsers() {
     const companyId = this.prisma.companyId;
     const members = await this.prisma.db.userCompany.findMany({ where: { companyId } });
-    const users = await this.prisma.db.user.findMany({ where: { id: { in: members.map(m => m.userId) } }, orderBy: { fullName: 'asc' } });
+    const users = await this.prisma.db.user.findMany({ where: { id: { in: members.map(m => m.userId) }, isService: false }, orderBy: { fullName: 'asc' } });
     const userRoles = await this.prisma.tx.userRole.findMany({ where: { companyId } });
     const roles = await this.prisma.tx.role.findMany({ where: { companyId } });
     const roleById = new Map(roles.map(r => [r.id, r]));

@@ -2,13 +2,14 @@ import { Prisma } from '@prisma/client';
 import { formatRif, isValidRif } from '@erp/domain';
 import { PrismaService } from '../../common/db/prisma.service';
 import { InventoryDocsService } from '../inventory/inventory-docs.service';
+import { IntegrationEventsService } from '../integration/integration-events.service';
 import { parseBool, parseDecimal, splitList } from './import-file';
 
 type Tx = Prisma.TransactionClient;
 
 export interface ImportColumn { key: string; header: string; required?: boolean; help: string; example: string }
 export interface ImportOptions { onExisting: 'skip' | 'update' }
-export interface ImportCtx { prisma: PrismaService; tx: Tx; companyId: string; userId?: string; docs: InventoryDocsService; today: string }
+export interface ImportCtx { prisma: PrismaService; tx: Tx; companyId: string; userId?: string; docs: InventoryDocsService; events: IntegrationEventsService; today: string }
 export interface Planned<T = Record<string, any>> { row: number; action: 'create' | 'update' | 'skip'; errors: string[]; warnings: string[]; data: T; label: string }
 export type RawRow = { row: number; values: Record<string, string> };
 
@@ -191,8 +192,18 @@ function thirdParty(kind: 'suppliers' | 'customers'): ImportTypeDef {
       const { tx, companyId } = ctx;
       const model: any = isCustomer ? tx.customer : tx.supplier;
       const creates = planned.filter(p => p.action === 'create'); const updates = planned.filter(p => p.action === 'update');
-      if (creates.length) await model.createMany({ data: creates.map(p => { const { existingId: _e, ...d } = p.data; return { companyId, ...d }; }) });
-      for (const p of updates) { const { existingId, rif: _r, ...d } = p.data; await model.update({ where: { id: existingId }, data: { ...d, version: { increment: 1 } } }); }
+      const entity = isCustomer ? 'customer' : 'supplier';
+      if (creates.length) {
+        await model.createMany({ data: creates.map(p => { const { existingId: _e, ...d } = p.data; return { companyId, ...d }; }) });
+        // createMany no devuelve los ids: se leen por RIF para emitir los eventos de integración.
+        const made: Array<{ id: string; version: number }> = await model.findMany({ where: { rif: { in: creates.map(p => p.data.rif) } }, select: { id: true, version: true } });
+        for (const m of made) await ctx.events.emit({ entity, entityId: m.id, op: 'CREATE', version: m.version });
+      }
+      for (const p of updates) {
+        const { existingId, rif: _r, ...d } = p.data;
+        const u = await model.update({ where: { id: existingId }, data: { ...d, version: { increment: 1 } } });
+        await ctx.events.emit({ entity, entityId: existingId, op: 'UPDATE', version: u.version });
+      }
       return { created: creates.length, updated: updates.length };
     },
   };

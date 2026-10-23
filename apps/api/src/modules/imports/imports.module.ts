@@ -16,6 +16,7 @@ import { ZQuery } from '../../common/http/zod.decorators';
 import { InventoryDocsService } from '../inventory/inventory-docs.service';
 import { InventoryModule } from '../inventory/inventory.module';
 import { MAX_IMPORT_ROWS, parseImportFile } from './import-file';
+import { IntegrationEventsService } from '../integration/integration-events.service';
 import { findImportType, IMPORT_TYPES, ImportCtx, ImportTypeDef, Planned } from './import-types';
 
 const runQuery = z.object({ mode: z.enum(['validate', 'commit']).default('validate'), onExisting: z.enum(['skip', 'update']).default('skip') });
@@ -24,7 +25,7 @@ const MAX_BYTES = 10 * 1024 * 1024;
 
 @Injectable()
 export class ImportsService {
-  constructor(private readonly prisma: PrismaService, private readonly perms: PermissionsService, private readonly audit: AuditService, private readonly docs: InventoryDocsService) {}
+  constructor(private readonly prisma: PrismaService, private readonly perms: PermissionsService, private readonly audit: AuditService, private readonly docs: InventoryDocsService, private readonly events: IntegrationEventsService) {}
 
   private async can(user: AuthUser, def: ImportTypeDef) {
     if (user.isSuperAdmin) return true;
@@ -80,7 +81,7 @@ export class ImportsService {
     if (missing.length) throw new BusinessRuleException(`Faltan columnas obligatorias: ${missing.map(m => m.header).join(', ')}`, 'MISSING_COLUMNS', missing.map(m => ({ field: m.header, code: 'MISSING_COLUMN' })));
     const unknown = parsed.headers.filter(h => h && !def.columns.some(c => c.header === h));
 
-    const ctx: ImportCtx = { prisma: this.prisma, tx: this.prisma.tx, companyId: this.prisma.companyId, userId: this.prisma.userId, docs: this.docs, today: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' }) };
+    const ctx: ImportCtx = { prisma: this.prisma, tx: this.prisma.tx, companyId: this.prisma.companyId, userId: this.prisma.userId, docs: this.docs, events: this.events, today: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' }) };
     const planned = await def.plan(ctx, parsed.rows, { onExisting });
     const summary = {
       total: planned.length, create: planned.filter(p => p.action === 'create' && !p.errors.length).length, update: planned.filter(p => p.action === 'update').length,

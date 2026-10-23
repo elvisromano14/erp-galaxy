@@ -235,6 +235,9 @@ function CrudForm({ def, row, onClose, onSaved }: { def: CrudDef; row?: Row; onC
   const schema = useMemo(() => schemaFor(def.fields), [def.fields]);
   const form = useForm<Values>({ defaultValues: initialValues(def.fields, row), resolver: zodResolver(schema) as never });
   const [error, setError] = useState<ApiError | null>(null);
+  // La ficha trae también el código o número del registro en otro sistema (Saint), si lo tiene.
+  const detail = useFetch<Row>(!isCreate && def.externalRefs ? `/${def.resource}/${row!.id}` : null);
+  const externalRefs = (detail.data?.externalRefs ?? []) as Array<{ system: string; connector: string; key: string; number: string | null }>;
 
   const serverError = (name: string) => error?.details.find((d) => d.field === name || d.field?.startsWith(`${name}.`))?.message ?? (error?.details.find((d) => d.field === name) ? error.message : null);
 
@@ -277,6 +280,16 @@ function CrudForm({ def, row, onClose, onSaved }: { def: CrudDef; row?: Row; onC
             }
           })}
         </div>
+        {externalRefs.length > 0 && (
+          <div className="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
+            <span className="font-medium text-gray-800 dark:text-white/90">{t("integration.externalCode")}</span>
+            {externalRefs.map((r) => (
+              <span key={`${r.system}:${r.connector}:${r.key}`} className="ms-3 inline-block">
+                {r.system} · {r.connector} · <code className="text-gray-800 dark:text-white/90">{r.key}</code>{r.number ? ` (${r.number})` : ""}
+              </span>
+            ))}
+          </div>
+        )}
         <div className="mt-6 flex justify-end gap-3">
           <Button variant="outline" size="sm" onClick={onClose}>
             {t("common.cancel")}

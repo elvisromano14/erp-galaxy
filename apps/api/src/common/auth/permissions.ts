@@ -41,6 +41,9 @@ export const ALL_PERMISSIONS: string[] = [
   ...build('treasury', 'movements', ['read', 'create']),
   ...build('treasury', 'reconciliations', ['read', 'create']),
   ...REPORT_CATEGORIES.flatMap(c => build('reports', c, ['read'])),
+  // Integración con otros sistemas (Saint): cuentas de servicio y uso de la API de integración
+  ...build('security', 'service-accounts', ['read', 'create', 'update']),
+  ...build('integration', 'sync', ['use']),
   // App móvil de vendedores
   ...build('mobile', 'sync', ['use']),
   ...build('mobile', 'devices', ['read', 'update']),
@@ -51,7 +54,7 @@ const readCatalogs = ADMIN_RESOURCES.map(r => `admin:${r}:read`);
 
 export const ROLE_TEMPLATES: Record<string, { name: string; permissions: string[] }> = {
   ADMIN: { name: 'Administrador', permissions: ALL_PERMISSIONS },
-  GERENTE: { name: 'Gerente', permissions: ALL_PERMISSIONS.filter(p => !p.startsWith('security:companies:') && !p.startsWith('security:roles:')) },
+  GERENTE: { name: 'Gerente', permissions: ALL_PERMISSIONS.filter(p => !p.startsWith('security:companies:') && !p.startsWith('security:roles:') && !p.startsWith('security:service-accounts:') && !p.startsWith('integration:')) },
   VENDEDOR: {
     name: 'Vendedor',
     // Ve y gestiona solo SUS documentos (sin 'sales:documents:read-all').
@@ -72,7 +75,19 @@ export const ROLE_TEMPLATES: Record<string, { name: string; permissions: string[
   },
   CONTADOR: {
     name: 'Contador',
-    permissions: ALL_PERMISSIONS.filter(p => p.endsWith(':read')).concat(['inventory:periods:close']),
+    permissions: ALL_PERMISSIONS.filter(p => p.endsWith(':read') && !p.startsWith('security:service-accounts:')).concat(['inventory:periods:close']),
+  },
+  /**
+   * Rol de las cuentas de servicio del integrador. Mínimos permisos: cada fase de la integración agrega solo lo que
+   * necesita (ventas, compras, bancos…); nunca borra ni administra usuarios.
+   */
+  INTEGRADOR: {
+    name: 'Integrador',
+    permissions: [
+      ...readCatalogs,
+      'integration:sync:use',
+      ...['customers', 'suppliers', 'products', 'price-lists', 'categories'].flatMap(r => build('admin', r, ['create', 'update'])),
+    ],
   },
   COMPRAS: {
     name: 'Compras',

@@ -27,4 +27,6 @@ export interface CrudDef {
   defaultSort?: string;
   /** Campos que no se pueden cambiar al editar. */
   immutableOnEdit?: string[];
+  /** La ficha muestra el código o número que el registro tiene en otro sistema (Saint). */
+  externalRefs?: boolean;
 }

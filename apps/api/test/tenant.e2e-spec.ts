@@ -10,7 +10,8 @@ describe('Multiempresa (RLS + FK compuestas) y catálogos', () => {
       SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity FROM pg_class c
       JOIN information_schema.columns k ON k.table_name = c.relname AND k.column_name = 'company_id' AND k.table_schema = 'public'
       WHERE c.relkind = 'r'`;
-    const exempt = new Set(['user_companies', 'refresh_tokens']);
+    // Tablas globales de autenticación: se consultan ANTES de conocer la empresa (login, refresh, service-token).
+    const exempt = new Set(['user_companies', 'refresh_tokens', 'service_credentials']);
     const bad = rows.filter(r => !exempt.has(r.relname) && !(r.relrowsecurity && r.relforcerowsecurity)).map(r => r.relname);
     expect(bad).toEqual([]);
     expect(rows.length).toBeGreaterThan(30);

@@ -1,12 +1,15 @@
 import { Body, Controller, Get, HttpCode, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { changePasswordSchema, loginSchema, refreshSchema, selectCompanySchema } from '@erp/contracts';
+import { z } from 'zod';
 import { AllowNoCompany, AuthUser, CurrentUser, Public } from '../../common/auth/decorators';
 import { ZodPipe } from '../../common/http/zod.pipe';
 import { AuthService } from './auth.service';
 import { Throttle } from '@nestjs/throttler';
 import { env } from '../../config/env';
 import { ZBody } from '../../common/http/zod.decorators';
+
+const serviceTokenSchema = z.object({ clientId: z.string().min(8).max(100), clientSecret: z.string().min(16).max(200) });
 
 @ApiTags('auth')
 @ApiBearerAuth()
@@ -17,6 +20,12 @@ export class AuthController {
   @Public() @Throttle({ default: { limit: env.THROTTLE_LOGIN_PER_MIN, ttl: 60_000 } }) @Post('login') @HttpCode(200)
   login(@ZBody(loginSchema) b: { email: string; password: string }, @Req() req: any) {
     return this.auth.login(b.email, b.password, { ip: req.ip, userAgent: req.headers['user-agent'] });
+  }
+
+  /** Integraciones (Saint): client_id + secreto → token corto con la empresa fija, sin refresh. */
+  @Public() @Throttle({ default: { limit: env.THROTTLE_LOGIN_PER_MIN, ttl: 60_000 } }) @Post('service-token') @HttpCode(200)
+  serviceToken(@ZBody(serviceTokenSchema) b: { clientId: string; clientSecret: string }, @Req() req: any) {
+    return this.auth.serviceToken(b.clientId, b.clientSecret, { ip: req.ip, userAgent: req.headers['user-agent'] });
   }
 
   @Post('select-company') @HttpCode(200) @AllowNoCompany()

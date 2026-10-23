@@ -7,6 +7,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { PermissionsService } from '../../common/auth/permissions.service';
 import { AuthUser } from '../../common/auth/decorators';
 import { BusinessRuleException } from '../../common/errors/errors';
+import { IntegrationEventsService } from '../integration/integration-events.service';
 import { SalesService } from '../sales/sales.service';
 import { SalesDocInput, Viewer } from '../sales/sales.types';
 import { customerData, customerUpdateData, OpResult, orderCreateData, PushOperation, quoteCreateData, quoteUpdateData, docData } from './mobile.types';
@@ -24,7 +25,7 @@ export class SyncPushService {
   private readonly log = new Logger(SyncPushService.name);
   constructor(
     private readonly prisma: PrismaService, private readonly sales: SalesService, private readonly audit: AuditService,
-    private readonly perms: PermissionsService,
+    private readonly perms: PermissionsService, private readonly events: IntegrationEventsService,
   ) {}
 
   async push(user: AuthUser, deviceId: string, operations: PushOperation[]) {
@@ -144,6 +145,7 @@ export class SyncPushService {
     });
     await this.remember('customer', op.entityId, created.id);
     await this.audit.log('customer', created.id, 'CREATE', { source: 'mobile', rif, device: ctx.deviceId });
+    await this.events.emit({ entity: 'customer', entityId: created.id, op: 'CREATE', version: created.version, origin: 'MOBILE' });
     return { status: 'APPLIED', serverId: created.id, serverStatus: created.validationStatus };
   }
 
@@ -158,6 +160,7 @@ export class SyncPushService {
     if (c.validationStatus !== 'PENDING') throw new Reject('CUSTOMER_LOCKED', 'El cliente ya fue validado: los cambios se hacen desde la oficina');
     const u = await tx.customer.update({ where: { id }, data: { ...d, version: { increment: 1 } } });
     await this.audit.log('customer', id, 'UPDATE', { source: 'mobile', ...d });
+    await this.events.emit({ entity: 'customer', entityId: id, op: 'UPDATE', version: u.version, origin: 'MOBILE' });
     return { status: 'APPLIED', serverId: u.id, serverStatus: u.validationStatus };
   }
 

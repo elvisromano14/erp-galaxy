@@ -9,6 +9,10 @@ export interface RequestStore {
   userId?: string;
   requestId?: string;
   ip?: string;
+  /** La petición viene de una cuenta de servicio (integrador): sus escrituras no se reenvían como eventos. */
+  isService?: boolean;
+  /** Origen de las escrituras de esta petición para los eventos de integración (por defecto ERP). */
+  origin?: 'ERP' | 'MOBILE' | 'INTEGRATION';
 }
 
 export const als = new AsyncLocalStorage<RequestStore>();

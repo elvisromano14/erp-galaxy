@@ -72,6 +72,8 @@ model User {
   fullName     String    @map("full_name")
   isActive     Boolean   @default(true) @map("is_active")
   isSuperAdmin Boolean   @default(false) @map("is_super_admin")
+  /** Usuario de servicio (integraciones): no entra por clave, solo con service-token. */
+  isService    Boolean   @default(false) @map("is_service")
   failedLogins Int       @default(0) @map("failed_logins")
   lockedUntil  DateTime? @map("locked_until") @db.Timestamptz
   lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
@@ -458,6 +460,8 @@ model Supplier {
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz
   deletedAt         DateTime? @map("deleted_at") @db.Timestamptz
+  /// VALIDATED | PENDING (PENDING = RIF por confirmar, p. ej. llegó de otro sistema).
+  validationStatus  String    @default("VALIDATED") @map("validation_status")
 
   @@unique([companyId, rif])
   @@unique([companyId, id])
@@ -1286,4 +1290,59 @@ model SyncEntityMap {
 
   @@id([companyId, entity, localId])
   @@map("sync_entity_map")
+}
+
+/// Credenciales de máquina a máquina de un usuario de servicio (una por empresa).
+model ServiceCredential {
+  id         String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId  String    @map("company_id") @db.Uuid
+  userId     String    @unique @map("user_id") @db.Uuid
+  clientId   String    @unique @map("client_id")
+  secretHash String    @map("secret_hash")
+  name       String
+  createdBy  String?   @map("created_by") @db.Uuid
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
+
+  @@index([companyId])
+  @@map("service_credentials")
+}
+
+/// Código o número que un registro tiene en otro sistema (Saint).
+model ExternalRef {
+  id             String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId      String   @map("company_id") @db.Uuid
+  entity         String
+  entityId       String   @map("entity_id") @db.Uuid
+  system         String
+  connector      String
+  externalKey    String   @map("external_key")
+  externalNumber String?  @map("external_number")
+  origin         String
+  contentHash    String?  @map("content_hash")
+  syncedAt       DateTime @default(now()) @map("synced_at") @db.Timestamptz
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, system, entity, externalKey])
+  @@unique([companyId, system, entity, entityId])
+  @@index([companyId, entity, entityId])
+  @@map("external_refs")
+}
+
+/// Eventos de salida del ERP para el integrador (outbox transaccional).
+model IntegrationEvent {
+  seq       BigInt   @id @default(autoincrement())
+  companyId String   @map("company_id") @db.Uuid
+  entity    String
+  entityId  String   @map("entity_id") @db.Uuid
+  op        String
+  version   Int?
+  origin    String
+  summary   Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([companyId, seq])
+  @@map("integration_events")
 }

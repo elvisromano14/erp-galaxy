@@ -25,6 +25,8 @@ import { FiscalModule } from './modules/fiscal/fiscal.module';
 import { SequencesModule } from './modules/sequences/sequences.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ImportsModule } from './modules/imports/imports.module';
+import { IntegrationEventsModule } from './modules/integration/integration-events.service';
+import { IntegrationModule } from './modules/integration/integration.module';
 
 @Module({
   imports: [
@@ -38,7 +40,7 @@ import { ImportsModule } from './modules/imports/imports.module';
       },
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: env.THROTTLE_DEFAULT_PER_MIN }]),
-    DbModule, QueueModule, OrganizationsModule, AuthModule, HealthModule, CompaniesModule, CatalogsModule, ProductsModule, InventoryModule, PurchasesModule, SalesModule, TreasuryModule, AlertsModule, FiscalModule, SequencesModule, ReportsModule, ImportsModule, MobileModule,
+    DbModule, QueueModule, IntegrationEventsModule, IntegrationModule, OrganizationsModule, AuthModule, HealthModule, CompaniesModule, CatalogsModule, ProductsModule, InventoryModule, PurchasesModule, SalesModule, TreasuryModule, AlertsModule, FiscalModule, SequencesModule, ReportsModule, ImportsModule, MobileModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

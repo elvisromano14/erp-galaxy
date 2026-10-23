@@ -98,9 +98,11 @@ export const CATALOGS: CrudConfig<any>[] = [
       isSpecialTaxpayer: z.boolean().optional(), retentionIvaPct: pct.optional(), isIslrSubject: z.boolean().optional(),
       creditDays: z.number().int().min(0).max(365).optional(), zoneId: optUuid,
       email: z.string().email().nullable().optional(), phone: optStr, address: optStr, isActive: z.boolean().optional(),
+      /** PENDING = RIF por confirmar (p. ej. llegó de otro sistema); administración lo valida. */
+      validationStatus: z.enum(['VALIDATED', 'PENDING']).optional(),
     }),
-    searchFields: ['rif', 'legalName', 'tradeName'], sortable: ['legalName', 'rif', 'createdAt'], defaultSort: 'legalName', filterable: ['isActive', 'zoneId'], softDelete: true,
-    beforeSave: partyHook('supplier'),
+    searchFields: ['rif', 'legalName', 'tradeName'], sortable: ['legalName', 'rif', 'createdAt'], defaultSort: 'legalName', filterable: ['isActive', 'zoneId', 'validationStatus'], softDelete: true,
+    beforeSave: partyHook('supplier'), integrationEntity: 'supplier', versioned: true,
   },
   {
     path: 'customers', entity: 'customer', model: 'customer', permission: 'admin:customers',
@@ -114,7 +116,7 @@ export const CATALOGS: CrudConfig<any>[] = [
       validationStatus: z.enum(['VALIDATED', 'PENDING']).optional(),
     }),
     searchFields: ['rif', 'legalName', 'tradeName'], sortable: ['legalName', 'rif', 'createdAt'], defaultSort: 'legalName', filterable: ['isActive', 'sellerId', 'zoneId', 'validationStatus'], softDelete: true,
-    beforeSave: partyHook('customer'),
+    beforeSave: partyHook('customer'), integrationEntity: 'customer', versioned: true,
   },
   {
     path: 'payment-methods', entity: 'payment_method', model: 'paymentMethod', permission: 'admin:payment-methods',
