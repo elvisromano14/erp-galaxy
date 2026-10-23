@@ -50,7 +50,10 @@ export class IntegrationService {
     private readonly perms: PermissionsService,
     private readonly products: ProductsService,
   ) {
-    this.handlers = { customers: this.partyHandler('customers'), suppliers: this.partyHandler('suppliers'), products: this.productHandler() };
+    this.handlers = {
+      customers: this.partyHandler('customers'), suppliers: this.partyHandler('suppliers'), products: this.productHandler(),
+      zones: this.simpleHandler('zones'), sellers: this.simpleHandler('sellers'), warehouses: this.simpleHandler('warehouses'), categories: this.simpleHandler('categories'),
+    };
   }
 
   handler(path: EntityPath): Handler { return this.handlers[path]; }
@@ -82,7 +85,29 @@ export class IntegrationService {
       findNatural: data => model().findUnique({ where: { companyId_rif: { companyId: this.prisma.companyId, rif: data.rif } } }),
       load: id => model().findUnique({ where: { id } }),
       create: data => model().create({ data: { ...data, companyId: this.prisma.companyId } }),
-      update: (id, data) => model().update({ where: { id }, data: { ...data, version: { increment: 1 } } }),
+      // La validación del RIF es del ERP tras la creación: solo se reevalúa si el RIF cambió.
+      update: async (id, data) => {
+        const d = { ...data };
+        const current = await model().findUnique({ where: { id }, select: { rif: true } });
+        if (current && current.rif === d.rif) delete d.validationStatus;
+        else if (isValidRif(d.rif)) d.validationStatus = 'VALIDATED';
+        return model().update({ where: { id }, data: { ...d, version: { increment: 1 } } });
+      },
+    };
+  }
+
+  /** Catálogos simples (zonas, vendedores, depósitos, categorías): clave natural = código. */
+  private simpleHandler(path: 'zones' | 'sellers' | 'warehouses' | 'categories'): Handler {
+    const entity = ENTITY_PATHS[path];
+    const model = () => (this.prisma.tx as any)[entity];
+    const cfg = CATALOGS.find(c => c.path === path)!;
+    return {
+      entity, path, permissions: this.permsFor(path), schema: cfg.create as ZodLike, ownEvents: false,
+      prepare: input => ({ data: { ...input, code: String(input.code).trim() }, warnings: [] }),
+      findNatural: data => model().findUnique({ where: { companyId_code: { companyId: this.prisma.companyId, code: data.code } } }),
+      load: id => model().findUnique({ where: { id } }),
+      create: data => model().create({ data: { ...data, companyId: this.prisma.companyId } }),
+      update: (id, data) => model().update({ where: { id }, data }),
     };
   }
 

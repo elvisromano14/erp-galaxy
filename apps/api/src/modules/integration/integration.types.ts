@@ -6,9 +6,9 @@ export const SYSTEMS = ['SAINT'] as const;
 export const connectorId = z.string().regex(/^[a-z0-9-]{2,40}$/, 'solo minúsculas, números y guiones (2 a 40)');
 
 /** Entidades expuestas en /integration/:entity (plural en la URL). */
-export const ENTITY_PATHS = { customers: 'customer', suppliers: 'supplier', products: 'product' } as const;
+export const ENTITY_PATHS = { customers: 'customer', suppliers: 'supplier', products: 'product', zones: 'zone', sellers: 'seller', warehouses: 'warehouse', categories: 'category' } as const;
 export type EntityPath = keyof typeof ENTITY_PATHS;
-export const entityPath = z.enum(['customers', 'suppliers', 'products']);
+export const entityPath = z.enum(['customers', 'suppliers', 'products', 'zones', 'sellers', 'warehouses', 'categories']);
 
 export const upsertItemSchema = z.object({
   externalKey: z.string().trim().min(1).max(120),

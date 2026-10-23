@@ -8,7 +8,7 @@ describe('Integración (A1): cuenta de servicio, upsert por lote, referencias y 
   const CONNECTOR = 'electrosur';
 
   const serviceToken = (id: string, secret: string) => ctx.http.post('/api/v1/auth/service-token').send({ clientId: id, clientSecret: secret });
-  const upsert = (entity: 'customers' | 'suppliers', items: object[], extra: object = {}, idem?: string, who: Api = svc) =>
+  const upsert = (entity: 'customers' | 'suppliers' | 'zones' | 'sellers' | 'warehouses' | 'categories', items: object[], extra: object = {}, idem?: string, who: Api = svc) =>
     who.post(`/integration/${entity}/upsert-batch`, { system: 'SAINT', connector: CONNECTOR, items, ...extra }, idem ? { 'Idempotency-Key': idem } : {});
   const item = (key: string, data: object, over: object = {}) => ({ externalKey: key, origin: 'SAINT', hash: createHash('sha256').update(JSON.stringify([key, data])).digest('hex'), data, ...over });
   const events = (q = '', who: Api = svc) => who.get(`/integration/events${q}`);
@@ -198,6 +198,32 @@ describe('Integración (A1): cuenta de servicio, upsert por lote, referencias y 
       expect(created.body.data).toMatchObject({ validationStatus: 'VALIDATED', version: 1 });
       const upd = await admin.patch(`/suppliers/${created.body.data.id}`, { legalName: 'Proveedor Manual 2' });
       expect(upd.body.data.version).toBe(2);
+    });
+  });
+
+  describe('catálogos simples y validación del RIF', () => {
+    it('zonas, depósitos, categorías y vendedores se crean, actualizan y vinculan por código', async () => {
+      const z = (await upsert('zones', [item('Z1', { code: 'Z1', name: 'Centro' })])).body.data.results[0];
+      expect(z.result).toBe('CREATED');
+      const z2 = (await upsert('zones', [item('Z1', { code: 'Z1', name: 'Centro 2' })])).body.data.results[0];
+      expect(z2.result).toBe('UPDATED');
+      const w = (await upsert('warehouses', [item('D1', { code: 'D1', name: 'Principal', allowNegativeStock: true })])).body.data.results[0];
+      const c = (await upsert('categories', [item('5', { code: '5', name: 'Eléctricos' })])).body.data.results[0];
+      const v = (await upsert('sellers', [item('V1', { code: 'V1', name: 'Ana', zoneId: z.erpId, commissionRate: '2.5' })])).body.data.results[0];
+      expect([w.result, c.result, v.result]).toEqual(['CREATED', 'CREATED', 'CREATED']);
+      expect((await admin.get(`/sellers/${v.erpId}`)).body.data).toMatchObject({ name: 'Ana', zoneId: z.erpId });
+      const l = (await upsert('zones', [item('OTRO', { code: 'Z1', name: 'Centro' })], { linkMode: 'REF_ONLY' })).body.data.results[0];
+      expect(l.result).toBe('REJECTED');
+    });
+
+    it('una actualización no pisa validationStatus salvo que cambie el RIF', async () => {
+      const rif = uniqueRif('J');
+      const r = (await upsert('suppliers', [item('PV-1', { rif: '00000002', legalName: 'Sin letra', personType: 'NATURAL' })])).body.data.results[0];
+      await admin.patch(`/suppliers/${r.erpId}`, { validationStatus: 'VALIDATED' });
+      await upsert('suppliers', [item('PV-1', { rif: '00000002', legalName: 'Sin letra 2', personType: 'NATURAL' })]);
+      expect((await admin.get(`/suppliers/${r.erpId}`)).body.data).toMatchObject({ legalName: 'Sin letra 2', validationStatus: 'VALIDATED' });
+      await upsert('suppliers', [item('PV-1', { rif, legalName: 'Con RIF', personType: 'JURIDICAL' })]);
+      expect((await admin.get(`/suppliers/${r.erpId}`)).body.data.validationStatus).toBe('VALIDATED');
     });
   });
 

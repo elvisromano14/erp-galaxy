@@ -86,7 +86,7 @@ export const ROLE_TEMPLATES: Record<string, { name: string; permissions: string[
     permissions: [
       ...readCatalogs,
       'integration:sync:use',
-      ...['customers', 'suppliers', 'products', 'price-lists', 'categories'].flatMap(r => build('admin', r, ['create', 'update'])),
+      ...['customers', 'suppliers', 'products', 'price-lists', 'categories', 'zones', 'sellers', 'warehouses'].flatMap(r => build('admin', r, ['create', 'update'])),
     ],
   },
   COMPRAS: {
