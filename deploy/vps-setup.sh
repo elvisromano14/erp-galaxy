@@ -26,6 +26,11 @@ EOT
   chmod 600 "$CFG/secrets.env"
 fi
 set -a; . "$CFG/secrets.env"; set +a
+# Llave que cifra en reposo las claves de las conexiones a Saint (se agrega a instalaciones anteriores; nunca se regenera).
+if ! grep -q '^INTEGRATION_SECRET_KEY=' "$CFG/secrets.env"; then
+  echo "INTEGRATION_SECRET_KEY=$(rand 32)" >> "$CFG/secrets.env"
+  set -a; . "$CFG/secrets.env"; set +a
+fi
 
 # ── PostgreSQL: roles y base propios (idempotente)
 sudo -n -u postgres psql -v ON_ERROR_STOP=1 -q <<SQL
@@ -63,6 +68,7 @@ DATABASE_URL=postgresql://erp_app:$PG_APP_PASSWORD@127.0.0.1:5432/erp?connection
 REDIS_URL=redis://:$REDIS_PASSWORD@127.0.0.1:6390/0
 JWT_ACCESS_SECRET=$JWT_ACCESS_SECRET
 JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET
+INTEGRATION_SECRET_KEY=$INTEGRATION_SECRET_KEY
 LOG_LEVEL=info
 WORKER_ENABLED=true
 JOBS_ENABLED=true

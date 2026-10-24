@@ -5,6 +5,7 @@ process.env.MIGRATION_DATABASE_URL = 'postgresql://erp_migrator:erp_migrator@127
 process.env.REDIS_URL = 'redis://:minierp_redis@127.0.0.1:56379/1';
 process.env.JWT_ACCESS_SECRET = 'test_access_secret_test_access_secret_test_access_secret_1234';
 process.env.JWT_REFRESH_SECRET = 'test_refresh_secret_test_refresh_secret_test_refresh_secret_12';
+process.env.INTEGRATION_SECRET_KEY = 'test_integration_secret_key_test_integration_secret_1234';
 process.env.THROTTLE_LOGIN_PER_MIN = '100000';
 process.env.THROTTLE_DEFAULT_PER_MIN = '100000';
 process.env.WORKER_ENABLED = 'true';

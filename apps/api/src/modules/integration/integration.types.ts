@@ -78,3 +78,66 @@ export const saintPriceListsSchema = z.object({
   /** Crea también SAINT-P1U a SAINT-P3U (precio por unidad cuando el producto usa empaque). */
   withUnitLists: z.boolean().default(false),
 });
+
+// ───────────────────────── conexiones a Saint y monitoreo ─────────────────────────
+/** Flujos Saint → ERP que el integrador sabe ejecutar. */
+export const STREAMS = ['zones', 'sellers', 'warehouses', 'categories', 'customers', 'products'] as const;
+export const OUTBOUND_STREAMS = ['customers'] as const;
+
+const host = z.string().trim().min(1).max(255).regex(/^[A-Za-z0-9._\-\\]+$/, 'Solo nombre de servidor o IP (sin espacios ni caracteres especiales)');
+const dbName = z.string().trim().min(1).max(128);
+
+const connectionBase = z.object({
+  connectorId,
+  name: z.string().trim().min(2).max(80),
+  host,
+  port: z.number().int().min(1).max(65535).default(1433),
+  databaseName: dbName,
+  username: z.string().trim().min(1).max(128),
+  encrypt: z.boolean().default(false),
+  trustServerCertificate: z.boolean().default(true),
+  mode: z.enum(['READ_ONLY', 'READ_WRITE']).default('READ_ONLY'),
+  allowedWriteDatabases: z.array(dbName).max(10).default([]),
+  pollIntervalSec: z.number().int().min(5).max(3600).default(30),
+  streams: z.array(z.enum(STREAMS)).default(['customers']),
+  outbound: z.array(z.enum(OUTBOUND_STREAMS)).default([]),
+  priceCurrency: z.string().regex(/^[A-Z]{3}$/).default('USD'),
+  enabled: z.boolean().default(true),
+});
+
+/** Reglas entre campos: escribir en Saint exige modo de escritura y una base permitida. */
+const connectionRules = <T extends { mode: string; allowedWriteDatabases: string[]; outbound: string[]; databaseName: string }>(v: T, ctx: z.RefinementCtx) => {
+  if (v.mode === 'READ_ONLY' && v.outbound.length) ctx.addIssue({ code: 'custom', path: ['outbound'], message: 'Los flujos ERP → Saint exigen el modo READ_WRITE' });
+  if (v.mode === 'READ_WRITE' && !v.allowedWriteDatabases.includes(v.databaseName)) ctx.addIssue({ code: 'custom', path: ['allowedWriteDatabases'], message: 'Incluya la base de datos en las bases permitidas para escribir' });
+};
+
+export const createConnectionSchema = connectionBase.extend({ password: z.string().min(1).max(256) }).superRefine(connectionRules);
+export const updateConnectionSchema = connectionBase.omit({ connectorId: true }).partial().extend({ password: z.string().min(1).max(256).optional(), version: z.number().int().min(1).optional() });
+
+export const testResultSchema = z.object({
+  ok: z.boolean(),
+  message: z.string().max(1000),
+  latencyMs: z.number().int().min(0).optional(),
+  databases: z.array(z.string().max(128)).max(200).default([]),
+  schema: z.record(z.unknown()).optional(),
+});
+
+export const reportSchema = z.object({
+  connectorId,
+  runs: z.array(z.object({
+    stream: z.string().min(1).max(60), startedAt: z.string().datetime(), finishedAt: z.string().datetime().nullable().optional(),
+    rowsRead: z.number().int().min(0), rowsApplied: z.number().int().min(0), rowsFailed: z.number().int().min(0), error: z.string().max(2000).nullable().optional(),
+  })).max(200).default([]),
+  conflicts: z.array(z.object({
+    op: z.enum(['OPEN', 'RESOLVED']), entity: z.string().min(1).max(40), saintKey: z.string().max(200).default(''), erpId: uuid.nullable().optional(),
+    kind: z.string().min(1).max(80), detail: z.unknown().optional(),
+  })).max(500).default([]),
+});
+
+export const conflictsQuery = z.object({
+  status: z.enum(['OPEN', 'RESOLVED', 'ACKNOWLEDGED']).optional(),
+  connectorId: connectorId.optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+export const runsQuery = z.object({ connectorId: connectorId.optional(), limit: z.coerce.number().int().min(1).max(200).default(50) });
+export const conflictStatusSchema = z.object({ status: z.enum(['OPEN', 'ACKNOWLEDGED']), note: z.string().trim().max(500).optional() });

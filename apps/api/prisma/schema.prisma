@@ -1346,3 +1346,77 @@ model IntegrationEvent {
   @@index([companyId, seq])
   @@map("integration_events")
 }
+
+/// Conexión del integrador a una base de Saint. La clave se guarda cifrada y nunca se devuelve por la API de usuarios.
+model IntegrationConnection {
+  id                     String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId              String    @map("company_id") @db.Uuid
+  connectorId            String    @map("connector_id")
+  name                   String
+  host                   String
+  port                   Int       @default(1433)
+  databaseName           String    @map("database_name")
+  username               String
+  passwordEnc            String    @map("password_enc")
+  encrypt                Boolean   @default(false)
+  trustServerCertificate Boolean   @default(true) @map("trust_server_certificate")
+  mode                   String    @default("READ_ONLY")
+  allowedWriteDatabases  String[]  @default([]) @map("allowed_write_databases")
+  pollIntervalSec        Int       @default(30) @map("poll_interval_sec")
+  streams                String[]  @default(["customers"])
+  outbound               String[]  @default([])
+  priceCurrency          String    @default("USD") @map("price_currency")
+  enabled                Boolean   @default(true)
+  testRequestedAt        DateTime? @map("test_requested_at") @db.Timestamptz
+  testAt                 DateTime? @map("test_at") @db.Timestamptz
+  testOk                 Boolean?  @map("test_ok")
+  testMessage            String?   @map("test_message")
+  testLatencyMs          Int?      @map("test_latency_ms")
+  testDatabases          String[]  @default([]) @map("test_databases")
+  testSchema             Json?     @map("test_schema")
+  lastSeenAt             DateTime? @map("last_seen_at") @db.Timestamptz
+  version                Int       @default(1)
+  createdBy              String?   @map("created_by") @db.Uuid
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt              DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@map("integration_connections")
+}
+
+model IntegrationRun {
+  id          BigInt    @id @default(autoincrement())
+  companyId   String    @map("company_id") @db.Uuid
+  connectorId String    @map("connector_id")
+  stream      String
+  startedAt   DateTime  @map("started_at") @db.Timestamptz
+  finishedAt  DateTime? @map("finished_at") @db.Timestamptz
+  rowsRead    Int       @default(0) @map("rows_read")
+  rowsApplied Int       @default(0) @map("rows_applied")
+  rowsFailed  Int       @default(0) @map("rows_failed")
+  error       String?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([companyId, connectorId, startedAt(sort: Desc)])
+  @@map("integration_runs")
+}
+
+model IntegrationConflict {
+  id          String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId   String    @map("company_id") @db.Uuid
+  connectorId String    @map("connector_id")
+  entity      String
+  saintKey    String    @default("") @map("saint_key")
+  erpId       String?   @map("erp_id") @db.Uuid
+  kind        String
+  detail      Json?
+  status      String    @default("OPEN")
+  note        String?
+  openedAt    DateTime  @default(now()) @map("opened_at") @db.Timestamptz
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  resolvedAt  DateTime? @map("resolved_at") @db.Timestamptz
+
+  @@unique([companyId, connectorId, entity, saintKey, kind])
+  @@index([companyId, status])
+  @@map("integration_conflicts")
+}

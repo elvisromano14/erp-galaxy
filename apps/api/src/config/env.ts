@@ -9,6 +9,8 @@ const schema = z.object({
   REDIS_URL: z.string().url(),
   JWT_ACCESS_SECRET: z.string().min(32),
   JWT_REFRESH_SECRET: z.string().min(32),
+  /** Llave para cifrar en reposo las claves de las conexiones a Saint (sin ella no se pueden guardar). */
+  INTEGRATION_SECRET_KEY: z.string().min(32).optional(),
   JWT_ACCESS_TTL: z.string().default('15m'),
   JWT_REFRESH_TTL_DAYS: z.coerce.number().default(7),
   /** Ventana en que reusar un refresh token recién rotado se considera una carrera benigna (p. ej. dos pestañas). */

@@ -14,6 +14,8 @@ import { fmtDateTime } from "@/lib/format";
 import { post } from "@/lib/api";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
+import ConnectionsTab from "./ConnectionsTab";
+import MonitorTab from "./MonitorTab";
 
 type Row = Record<string, any>;
 interface Status {
@@ -38,6 +40,9 @@ export default function IntegrationPage() {
   const canUpdate = can("security:service-accounts:update");
   const activeAccount = (accounts.data ?? []).find((a) => a.active);
 
+  const canConnections = can("integration:connections:read");
+  const canMonitor = can("integration:monitor:read");
+  const [tab, setTab] = useState<"general" | "connections" | "monitor">("general");
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [secret, setSecret] = useState<{ clientId: string; clientSecret: string } | null>(null);
@@ -130,7 +135,23 @@ export default function IntegrationPage() {
     <div className="space-y-6">
       <PageHeader title={t("title")} subtitle={t("subtitle")} />
 
-      {can("integration:sync:use") && (
+      {(canConnections || canMonitor) && (
+        <div role="tablist" className="flex gap-1 border-b border-gray-200 dark:border-gray-800">
+          {([["general", t("tabGeneral"), true], ["connections", t("tabConnections"), canConnections], ["monitor", t("tabMonitor"), canMonitor]] as const)
+            .filter(([, , visible]) => visible)
+            .map(([key, label]) => (
+              <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
+                className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === key ? "border-brand-500 text-brand-500" : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400"}`}>
+                {label}
+              </button>
+            ))}
+        </div>
+      )}
+
+      {tab === "connections" && canConnections && <ConnectionsTab />}
+      {tab === "monitor" && canMonitor && <MonitorTab />}
+
+      {tab === "general" && can("integration:sync:use") && (
         <Card
           title={t("statusTitle")}
           actions={canUpdate && s && (
@@ -158,14 +179,14 @@ export default function IntegrationPage() {
         </Card>
       )}
 
-      <Card
+      {tab === "general" && <Card
         title={t("accountsTitle")}
         actions={canCreate && !activeAccount && <Button size="sm" onClick={() => setCreating(true)}>{t("create")}</Button>}
       >
         <ErrorBox error={accounts.error} />
         {!accounts.loading && (accounts.data ?? []).length === 0 && <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">{t("noAccounts")}</p>}
         <DataTable columns={columns} rows={accounts.data} loading={accounts.loading} rowKey={(r) => r.id} />
-      </Card>
+      </Card>}
 
       <Modal isOpen={creating} onClose={() => setCreating(false)} className="m-4 max-w-md p-6">
         <div role="dialog" aria-modal="true" aria-label={t("createTitle")}>

@@ -131,6 +131,11 @@ export class IntegrationService {
 
   // ───────────────────────── interruptor ─────────────────────────
   /** Interruptor por empresa: `integration.enabled = false` pausa toda la integración. */
+  async isEnabled(): Promise<boolean> {
+    const s = await this.prisma.tx.setting.findUnique({ where: { companyId_key: { companyId: this.prisma.companyId, key: 'integration.enabled' } } });
+    return !(s && s.value === false);
+  }
+
   async assertEnabled() {
     const companyId = this.prisma.companyId;
     const s = await this.prisma.tx.setting.findUnique({ where: { companyId_key: { companyId, key: 'integration.enabled' } } });

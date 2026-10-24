@@ -1,14 +1,19 @@
-import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { getStore } from '../../common/db/tenant-context';
+import { Body, Controller, ForbiddenException, Delete, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { uuid } from '@erp/contracts';
 import { RequirePermissions } from '../../common/auth/decorators';
 import { ZBody, ZQuery } from '../../common/http/zod.decorators';
 import { ZodPipe } from '../../common/http/zod.pipe';
+import { ConnectionsService } from './connections.service';
 import { ServiceAccountsService } from './service-accounts.service';
 import { IntegrationService } from './integration.service';
-import { EntityPath, entityPath, eventsQuery, getBatchSchema, refsQuery, saintPriceListsSchema, upsertBatchSchema } from './integration.types';
+import { conflictsQuery, conflictStatusSchema, createConnectionSchema, EntityPath, entityPath, eventsQuery, getBatchSchema, refsQuery, reportSchema, runsQuery, saintPriceListsSchema, testResultSchema, updateConnectionSchema, upsertBatchSchema } from './integration.types';
 
+const onlyService = () => {
+  if (!getStore().isService) throw new ForbiddenException({ error: 'SERVICE_ACCOUNT_ONLY', message: 'Solo la cuenta de servicio del integrador puede usar esta ruta', details: [] });
+};
 const entityPipe = new ZodPipe(entityPath);
 const idPipe = new ZodPipe(uuid);
 
@@ -58,4 +63,71 @@ export class ServiceAccountsController {
 
   @Post(':id/revoke') @HttpCode(200) @RequirePermissions('security:service-accounts:update')
   revoke(@Param('id', idPipe) id: string) { return this.svc.revoke(id); }
+}
+
+/**
+ * Rutas fijas de integración que no son una entidad (`/integration/connections`, `/integration/monitor`, `/integration/runtime`).
+ * Se declaran antes que `:entity/...` en el módulo para que el enrutador no las confunda.
+ */
+@ApiTags('integration') @ApiBearerAuth()
+@Controller('integration/connections')
+export class ConnectionsController {
+  constructor(private readonly svc: ConnectionsService) {}
+
+  @Get() @RequirePermissions('integration:connections:read')
+  list() { return this.svc.list(); }
+
+  @Get(':id') @RequirePermissions('integration:connections:read')
+  get(@Param('id', idPipe) id: string) { return this.svc.get(id); }
+
+  @Post() @RequirePermissions('integration:connections:create')
+  create(@ZBody(createConnectionSchema) b: z.infer<typeof createConnectionSchema>) { return this.svc.create(b); }
+
+  @Patch(':id') @RequirePermissions('integration:connections:update')
+  update(@Param('id', idPipe) id: string, @ZBody(updateConnectionSchema) b: z.infer<typeof updateConnectionSchema>) { return this.svc.update(id, b); }
+
+  @Delete(':id') @RequirePermissions('integration:connections:delete')
+  remove(@Param('id', idPipe) id: string) { return this.svc.remove(id); }
+
+  @Post(':id/test') @HttpCode(200) @RequirePermissions('integration:connections:update')
+  test(@Param('id', idPipe) id: string) { return this.svc.requestTest(id); }
+}
+
+@ApiTags('integration') @ApiBearerAuth()
+@Controller('integration/monitor')
+export class MonitorController {
+  constructor(private readonly svc: ConnectionsService) {}
+
+  @Get() @RequirePermissions('integration:monitor:read')
+  summary() { return this.svc.monitor(); }
+
+  @Get('runs') @RequirePermissions('integration:monitor:read')
+  runs(@ZQuery(runsQuery) q: z.infer<typeof runsQuery>) { return this.svc.runs(q); }
+
+  @Get('conflicts') @RequirePermissions('integration:monitor:read')
+  conflicts(@ZQuery(conflictsQuery) q: z.infer<typeof conflictsQuery>) { return this.svc.conflicts(q); }
+
+  @Post('conflicts/:id/status') @HttpCode(200) @RequirePermissions('integration:monitor:update')
+  status(@Param('id', idPipe) id: string, @ZBody(conflictStatusSchema) b: z.infer<typeof conflictStatusSchema>) { return this.svc.setConflictStatus(id, b); }
+}
+
+/** Lo que usa el integrador (cuenta de servicio): configuración con la clave descifrada, resultado de pruebas e informes. */
+@ApiTags('integration') @ApiBearerAuth()
+@Controller('integration/runtime')
+export class RuntimeController {
+  constructor(private readonly svc: ConnectionsService, private readonly integration: IntegrationService) {}
+
+  /** Entrega claves descifradas: solo la cuenta de servicio (ni siquiera un administrador con todos los permisos). */
+  @Get('connections') @RequirePermissions('integration:sync:use')
+  async connections() {
+    onlyService();
+    const enabled = await this.integration.isEnabled();
+    return { paused: !enabled, connections: enabled ? await this.svc.runtime() : [] };
+  }
+
+  @Post('connections/:id/test-result') @HttpCode(200) @RequirePermissions('integration:sync:use')
+  testResult(@Param('id', idPipe) id: string, @ZBody(testResultSchema) b: z.infer<typeof testResultSchema>) { onlyService(); return this.svc.saveTestResult(id, b); }
+
+  @Post('report') @HttpCode(200) @RequirePermissions('integration:sync:use')
+  report(@ZBody(reportSchema) b: z.infer<typeof reportSchema>) { onlyService(); return this.svc.report(b); }
 }

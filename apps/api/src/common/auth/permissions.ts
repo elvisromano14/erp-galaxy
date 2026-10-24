@@ -44,6 +44,8 @@ export const ALL_PERMISSIONS: string[] = [
   // Integración con otros sistemas (Saint): cuentas de servicio y uso de la API de integración
   ...build('security', 'service-accounts', ['read', 'create', 'update']),
   ...build('integration', 'sync', ['use']),
+  ...build('integration', 'connections', ['read', 'create', 'update', 'delete']),
+  ...build('integration', 'monitor', ['read', 'update']),
   // App móvil de vendedores
   ...build('mobile', 'sync', ['use']),
   ...build('mobile', 'devices', ['read', 'update']),
@@ -75,7 +77,7 @@ export const ROLE_TEMPLATES: Record<string, { name: string; permissions: string[
   },
   CONTADOR: {
     name: 'Contador',
-    permissions: ALL_PERMISSIONS.filter(p => p.endsWith(':read') && !p.startsWith('security:service-accounts:')).concat(['inventory:periods:close']),
+    permissions: ALL_PERMISSIONS.filter(p => p.endsWith(':read') && !p.startsWith('security:service-accounts:') && !p.startsWith('integration:')).concat(['inventory:periods:close']),
   },
   /**
    * Rol de las cuentas de servicio del integrador. Mínimos permisos: cada fase de la integración agrega solo lo que
