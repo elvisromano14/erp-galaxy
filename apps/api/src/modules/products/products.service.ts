@@ -26,6 +26,9 @@ export const createProductSchema = z.object({
   trackingMode: z.enum(['NONE', 'LOT', 'SERIAL']).default('NONE'),
   hasExpiry: z.boolean().default(false),
   isService: z.boolean().default(false),
+  /** Marca (texto libre) y ubicación en el almacén (catálogo `locations`): ambas opcionales. */
+  brand: z.string().trim().max(80).nullable().optional(),
+  locationId: uuid.nullable().optional(),
   minStock: decimalStr.optional(),
   maxStock: decimalStr.optional(),
   isActive: z.boolean().default(true),
@@ -37,7 +40,7 @@ export const createProductSchema = z.object({
 export const updateProductSchema = createProductSchema.partial().extend({ version: z.number().int().optional() });
 export const listProductsSchema = paginationQuery.extend({
   trackingMode: z.enum(['NONE', 'LOT', 'SERIAL']).optional(),
-  categoryId: uuid.optional(), isActive: z.coerce.boolean().optional(), isService: z.coerce.boolean().optional(), includeDeleted: z.coerce.boolean().optional(),
+  categoryId: uuid.optional(), locationId: uuid.optional(), brand: z.string().trim().max(80).optional(), isActive: z.coerce.boolean().optional(), isService: z.coerce.boolean().optional(), includeDeleted: z.coerce.boolean().optional(),
 });
 export const bulkPriceSchema = z.object({
   priceListId: uuid,
@@ -72,11 +75,20 @@ export class ProductsService {
     if (d.isService && d.trackingMode && d.trackingMode !== 'NONE') throw new BusinessRuleException('Un servicio no puede tener lotes/seriales', 'INVALID_TRACKING');
   }
 
+  /** La ubicación debe existir (no borrada) en la empresa; la FK compuesta ya impide usar la de otra empresa. */
+  private async assertLocation(locationId?: string | null) {
+    if (!locationId) return;
+    const loc = await this.prisma.tx.location.findFirst({ where: { id: locationId, deletedAt: null } });
+    if (!loc) throw new BusinessRuleException('La ubicación no existe', 'LOCATION_NOT_FOUND', [{ field: 'locationId', code: 'NOT_FOUND' }]);
+  }
+
   async list(q: z.infer<typeof listProductsSchema>) {
     const tx = this.prisma.tx;
     const where: any = {};
     if (!q.includeDeleted) where.deletedAt = null;
     if (q.categoryId) where.categoryId = q.categoryId;
+    if (q.locationId) where.locationId = q.locationId;
+    if (q.brand) where.brand = { equals: q.brand, mode: 'insensitive' };
     if (q.trackingMode) where.trackingMode = q.trackingMode;
     if (q.isActive !== undefined) where.isActive = q.isActive;
     if (q.isService !== undefined) where.isService = q.isService;
@@ -88,13 +100,14 @@ export class ProductsService {
       where.OR = [
         { sku: { contains: q.search, mode: 'insensitive' } },
         { name: { contains: q.search, mode: 'insensitive' } },
+        { brand: { contains: q.search, mode: 'insensitive' } },
         { id: { in: [...bc, ...refs].map(x => x.productId) } },
       ];
     }
     const sort = q.sort ?? 'name';
     const orderBy = sort.split(',').map(s => {
       const desc = s.startsWith('-'); const f = desc ? s.slice(1) : s;
-      if (!['sku', 'name', 'createdAt'].includes(f)) throw new ValidationError(`Orden no permitido: ${f}`);
+      if (!['sku', 'name', 'brand', 'createdAt'].includes(f)) throw new ValidationError(`Orden no permitido: ${f}`);
       return { [f]: desc ? 'desc' : 'asc' };
     });
     const [rows, total] = await Promise.all([
@@ -132,6 +145,7 @@ export class ProductsService {
     const tx = this.prisma.tx;
     const companyId = this.prisma.companyId;
     await this.assertFeatures(input);
+    await this.assertLocation(input.locationId);
     const { barcodes, references, uoms, prices, ...data } = input;
     const product = await tx.product.create({ data: { ...data, companyId, createdBy: this.prisma.userId, updatedBy: this.prisma.userId } });
     await this.replaceChildren(product.id, { barcodes, references, uoms });
@@ -152,6 +166,7 @@ export class ProductsService {
     await this.assertFeatures({
       trackingMode: data.trackingMode ?? current.trackingMode, hasExpiry: data.hasExpiry ?? current.hasExpiry, isService: data.isService ?? current.isService,
     });
+    if (data.locationId !== undefined && data.locationId !== current.locationId) await this.assertLocation(data.locationId);
     // Cambiar el control de lotes con existencias rompería el saldo por lote.
     if (data.trackingMode && data.trackingMode !== current.trackingMode) {
       const stock = await tx.inventoryStock.findFirst({ where: { productId: id, NOT: { quantity: 0 } } });

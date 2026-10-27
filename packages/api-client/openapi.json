@@ -239,6 +239,51 @@
         ]
       }
     },
+    "/api/v1/auth/service-token": {
+      "post": {
+        "operationId": "post_auth_service_token",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "clientId": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 100
+                  },
+                  "clientSecret": {
+                    "type": "string",
+                    "minLength": 16,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "clientId",
+                  "clientSecret"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/bank-accounts": {
       "get": {
         "operationId": "get_bank_accounts",
@@ -2368,6 +2413,34 @@
         ]
       }
     },
+    "/api/v1/devices/{id}/release": {
+      "post": {
+        "operationId": "post_devices_by_id_release",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "mobile"
+        ]
+      }
+    },
     "/api/v1/devices/{id}/restore": {
       "post": {
         "operationId": "post_devices_by_id_restore",
@@ -3291,6 +3364,1290 @@
         ],
         "tags": [
           "imports"
+        ]
+      }
+    },
+    "/api/v1/integration/connections": {
+      "get": {
+        "operationId": "get_integration_connections",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      },
+      "post": {
+        "operationId": "post_integration_connections",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "connectorId": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9-]{2,40}$"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 80
+                  },
+                  "host": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "pattern": "^[A-Za-z0-9._\\-\\\\]+$"
+                  },
+                  "port": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "exclusiveMinimum": false,
+                    "maximum": 65535,
+                    "exclusiveMaximum": false,
+                    "default": 1433
+                  },
+                  "databaseName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "username": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "encrypt": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "trustServerCertificate": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "READ_ONLY",
+                      "READ_WRITE"
+                    ],
+                    "default": "READ_ONLY"
+                  },
+                  "allowedWriteDatabases": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "default": []
+                  },
+                  "pollIntervalSec": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "exclusiveMinimum": false,
+                    "maximum": 3600,
+                    "exclusiveMaximum": false,
+                    "default": 30
+                  },
+                  "streams": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "zones",
+                        "sellers",
+                        "warehouses",
+                        "categories",
+                        "customers",
+                        "products"
+                      ]
+                    },
+                    "default": [
+                      "customers"
+                    ]
+                  },
+                  "outbound": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "customers"
+                      ]
+                    },
+                    "default": []
+                  },
+                  "priceCurrency": {
+                    "type": "string",
+                    "pattern": "^[A-Z]{3}$",
+                    "default": "USD"
+                  },
+                  "enabled": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  }
+                },
+                "required": [
+                  "connectorId",
+                  "name",
+                  "host",
+                  "databaseName",
+                  "username",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/connections/{id}": {
+      "get": {
+        "operationId": "get_integration_connections_by_id",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_integration_connections_by_id",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 80
+                  },
+                  "host": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "pattern": "^[A-Za-z0-9._\\-\\\\]+$"
+                  },
+                  "port": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "exclusiveMinimum": false,
+                    "maximum": 65535,
+                    "exclusiveMaximum": false,
+                    "default": 1433
+                  },
+                  "databaseName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "username": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "encrypt": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "trustServerCertificate": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "READ_ONLY",
+                      "READ_WRITE"
+                    ],
+                    "default": "READ_ONLY"
+                  },
+                  "allowedWriteDatabases": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "default": []
+                  },
+                  "pollIntervalSec": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "exclusiveMinimum": false,
+                    "maximum": 3600,
+                    "exclusiveMaximum": false,
+                    "default": 30
+                  },
+                  "streams": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "zones",
+                        "sellers",
+                        "warehouses",
+                        "categories",
+                        "customers",
+                        "products"
+                      ]
+                    },
+                    "default": [
+                      "customers"
+                    ]
+                  },
+                  "outbound": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "customers"
+                      ]
+                    },
+                    "default": []
+                  },
+                  "priceCurrency": {
+                    "type": "string",
+                    "pattern": "^[A-Z]{3}$",
+                    "default": "USD"
+                  },
+                  "enabled": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "exclusiveMinimum": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      },
+      "delete": {
+        "operationId": "delete_integration_connections_by_id",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/connections/{id}/test": {
+      "post": {
+        "operationId": "post_integration_connections_by_id_test",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/enabled": {
+      "post": {
+        "operationId": "post_integration_enabled",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/events": {
+      "get": {
+        "operationId": "get_integration_events",
+        "parameters": [
+          {
+            "name": "after",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": false,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "exclusiveMinimum": false,
+              "maximum": 1000,
+              "exclusiveMaximum": false,
+              "default": 500
+            }
+          },
+          {
+            "name": "entity",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeIntegration",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/monitor": {
+      "get": {
+        "operationId": "get_integration_monitor",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/monitor/conflicts": {
+      "get": {
+        "operationId": "get_integration_monitor_conflicts",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "OPEN",
+                "RESOLVED",
+                "ACKNOWLEDGED"
+              ]
+            }
+          },
+          {
+            "name": "connectorId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9-]{2,40}$"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "exclusiveMinimum": false,
+              "maximum": 200,
+              "exclusiveMaximum": false,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/monitor/conflicts/{id}/status": {
+      "post": {
+        "operationId": "post_integration_monitor_conflicts_by_id_status",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "OPEN",
+                      "ACKNOWLEDGED"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/monitor/runs": {
+      "get": {
+        "operationId": "get_integration_monitor_runs",
+        "parameters": [
+          {
+            "name": "connectorId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9-]{2,40}$"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "exclusiveMinimum": false,
+              "maximum": 200,
+              "exclusiveMaximum": false,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/refs": {
+      "get": {
+        "operationId": "get_integration_refs",
+        "parameters": [
+          {
+            "name": "entity",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "customers",
+                "suppliers",
+                "products",
+                "price_lists"
+              ]
+            }
+          },
+          {
+            "name": "system",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "SAINT"
+              ],
+              "default": "SAINT"
+            }
+          },
+          {
+            "name": "externalKey",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entityId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/runtime/connections": {
+      "get": {
+        "operationId": "get_integration_runtime_connections",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/runtime/connections/{id}/test-result": {
+      "post": {
+        "operationId": "post_integration_runtime_connections_by_id_test_result",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "message": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "latencyMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": false
+                  },
+                  "databases": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 128
+                    },
+                    "default": []
+                  },
+                  "schema": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "ok",
+                  "message"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/runtime/report": {
+      "post": {
+        "operationId": "post_integration_runtime_report",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "connectorId": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9-]{2,40}$"
+                  },
+                  "runs": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "stream": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 60
+                        },
+                        "startedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "finishedAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "rowsRead": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": false
+                        },
+                        "rowsApplied": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": false
+                        },
+                        "rowsFailed": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": false
+                        },
+                        "error": {
+                          "type": "string",
+                          "maxLength": 2000,
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "stream",
+                        "startedAt",
+                        "rowsRead",
+                        "rowsApplied",
+                        "rowsFailed"
+                      ]
+                    },
+                    "default": []
+                  },
+                  "conflicts": {
+                    "type": "array",
+                    "maxItems": 500,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "enum": [
+                            "OPEN",
+                            "RESOLVED"
+                          ]
+                        },
+                        "entity": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "saintKey": {
+                          "type": "string",
+                          "maxLength": 200,
+                          "default": ""
+                        },
+                        "erpId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "nullable": true
+                        },
+                        "kind": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 80
+                        },
+                        "detail": {}
+                      },
+                      "required": [
+                        "op",
+                        "entity",
+                        "kind"
+                      ]
+                    },
+                    "default": []
+                  }
+                },
+                "required": [
+                  "connectorId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/service-accounts": {
+      "get": {
+        "operationId": "get_integration_service_accounts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      },
+      "post": {
+        "operationId": "post_integration_service_accounts",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/service-accounts/{id}/revoke": {
+      "post": {
+        "operationId": "post_integration_service_accounts_by_id_revoke",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/service-accounts/{id}/rotate": {
+      "post": {
+        "operationId": "post_integration_service_accounts_by_id_rotate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/setup/saint-price-lists": {
+      "post": {
+        "operationId": "post_integration_setup_saint_price_lists",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "system": {
+                    "type": "string",
+                    "enum": [
+                      "SAINT"
+                    ],
+                    "default": "SAINT"
+                  },
+                  "connector": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9-]{2,40}$"
+                  },
+                  "currencyId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "withUnitLists": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "required": [
+                  "connector"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/status": {
+      "get": {
+        "operationId": "get_integration_status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/{entity}/get-batch": {
+      "post": {
+        "operationId": "post_integration_by_entity_get_batch",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "system": {
+                    "type": "string",
+                    "enum": [
+                      "SAINT"
+                    ],
+                    "default": "SAINT"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "externalKeys": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
+        ]
+      }
+    },
+    "/api/v1/integration/{entity}/upsert-batch": {
+      "post": {
+        "operationId": "post_integration_by_entity_upsert_batch",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "system": {
+                    "type": "string",
+                    "enum": [
+                      "SAINT"
+                    ],
+                    "default": "SAINT"
+                  },
+                  "connector": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9-]{2,40}$"
+                  },
+                  "linkMode": {
+                    "type": "string",
+                    "enum": [
+                      "REF_ONLY",
+                      "REF_AND_UPDATE"
+                    ],
+                    "default": "REF_ONLY"
+                  },
+                  "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "externalKey": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 120
+                        },
+                        "externalNumber": {
+                          "type": "string",
+                          "maxLength": 60,
+                          "nullable": true
+                        },
+                        "origin": {
+                          "type": "string",
+                          "enum": [
+                            "SAINT",
+                            "ERP"
+                          ]
+                        },
+                        "hash": {
+                          "type": "string",
+                          "minLength": 8,
+                          "maxLength": 128
+                        },
+                        "expectedVersion": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "exclusiveMinimum": false
+                        },
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "externalKey",
+                        "origin",
+                        "hash",
+                        "data"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "connector",
+                  "items"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "integration"
         ]
       }
     },
@@ -6374,6 +7731,264 @@
         ]
       }
     },
+    "/api/v1/locations": {
+      "get": {
+        "operationId": "get_locations",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "exclusiveMinimum": false,
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "exclusiveMinimum": false,
+              "maximum": 100,
+              "exclusiveMaximum": false,
+              "default": 20
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "includeDeleted",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "locations"
+        ]
+      },
+      "post": {
+        "operationId": "post_locations",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 30
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "code",
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "locations"
+        ]
+      }
+    },
+    "/api/v1/locations/{id}": {
+      "get": {
+        "operationId": "get_locations_by_id",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "locations"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_locations_by_id",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 30
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "locations"
+        ]
+      },
+      "delete": {
+        "operationId": "delete_locations_by_id",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "locations"
+        ]
+      }
+    },
+    "/api/v1/locations/{id}/restore": {
+      "post": {
+        "operationId": "post_locations_by_id_restore",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "locations"
+        ]
+      }
+    },
     "/api/v1/mobile/app": {
       "get": {
         "operationId": "get_mobile_app",
@@ -7818,6 +9433,24 @@
             }
           },
           {
+            "name": "locationId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "brand",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 80
+            }
+          },
+          {
             "name": "isActive",
             "required": false,
             "in": "query",
@@ -7911,6 +9544,16 @@
                   "isService": {
                     "type": "boolean",
                     "default": false
+                  },
+                  "brand": {
+                    "type": "string",
+                    "maxLength": 80,
+                    "nullable": true
+                  },
+                  "locationId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
                   },
                   "minStock": {
                     "oneOf": [
@@ -8248,6 +9891,16 @@
                   "isService": {
                     "type": "boolean",
                     "default": false
+                  },
+                  "brand": {
+                    "type": "string",
+                    "maxLength": 80,
+                    "nullable": true
+                  },
+                  "locationId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
                   },
                   "minStock": {
                     "oneOf": [
@@ -16702,6 +18355,13 @@
                   },
                   "isActive": {
                     "type": "boolean"
+                  },
+                  "validationStatus": {
+                    "type": "string",
+                    "enum": [
+                      "VALIDATED",
+                      "PENDING"
+                    ]
                   }
                 },
                 "required": [
@@ -16840,6 +18500,13 @@
                   },
                   "isActive": {
                     "type": "boolean"
+                  },
+                  "validationStatus": {
+                    "type": "string",
+                    "enum": [
+                      "VALIDATED",
+                      "PENDING"
+                    ]
                   }
                 }
               }
@@ -16932,6 +18599,9 @@
                 "exchange_rates",
                 "price_lists",
                 "warehouses",
+                "locations",
+                "units",
+                "categories",
                 "customers",
                 "products",
                 "product_prices",
@@ -17022,6 +18692,7 @@
                           "type": "string",
                           "enum": [
                             "customer",
+                            "product",
                             "sales_quote",
                             "sales_order"
                           ]
@@ -19272,6 +20943,11 @@
                   },
                   "isOrgAdmin": {
                     "type": "boolean"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 10,
+                    "maxLength": 128
                   }
                 }
               }

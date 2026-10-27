@@ -47,17 +47,20 @@ const products: ImportTypeDef = {
     c('sku', 'sku', 'Código único del producto', 'PAS-001', true), c('nombre', 'nombre', 'Nombre del producto', 'Pastillas de freno delanteras', true),
     c('descripcion', 'descripcion', 'Descripción opcional', 'Juego x4'), c('instancia', 'instancia', 'Código de la instancia (categoría) existente', 'FRENOS'),
     c('unidad', 'unidad', 'Código de la unidad (por defecto UND)', 'UND'), c('impuesto', 'impuesto', 'Código del impuesto (p. ej. IVA_GENERAL, EXENTO)', 'IVA_GENERAL'),
+    c('marca', 'marca', 'Marca (texto libre, opcional, máx. 80)', 'MHW'), c('ubicacion', 'ubicacion', 'Código de la ubicación existente (opcional)', 'P1-E6-P4'),
     c('es_servicio', 'es_servicio', SI_NO + ' (por defecto NO)', 'NO'), c('stock_minimo', 'stock_minimo', 'Mínimo para reposición', '5'), c('stock_maximo', 'stock_maximo', 'Máximo para reposición', '20'),
     c('codigos_barras', 'codigos_barras', 'Varios separados por coma, | o ;', '7591234567890;7591234567891'), c('codigos_oem', 'codigos_oem', 'Referencias OEM separadas por coma, | o ;', '04465-0K290'),
     c('precio', 'precio', 'Precio en la lista predeterminada (moneda de la lista)', '25,50'), c('activo', 'activo', SI_NO + ' (por defecto SI)', 'SI'),
   ],
   async plan(ctx, rows, o) {
     const { tx } = ctx;
-    const [cats, units, taxes, existing, lists] = await Promise.all([
+    const [cats, units, taxes, existing, lists, locs] = await Promise.all([
       tx.category.findMany({ where: { deletedAt: null } }), tx.unit.findMany({ where: { deletedAt: null } }),
       tx.tax.findMany({ where: { deletedAt: null, isActive: true, validFrom: { lte: new Date(ctx.today) } }, orderBy: { validFrom: 'desc' } }),
       tx.product.findMany({ where: { deletedAt: null }, select: { id: true, sku: true } }), tx.priceList.findMany({ where: { deletedAt: null, isDefault: true } }),
+      tx.location.findMany({ where: { deletedAt: null }, select: { id: true, code: true } }),
     ]);
+    const locBy = new Map(locs.map(x => [x.code.toLowerCase(), x.id]));
     const catBy = new Map(cats.map(x => [x.code.toLowerCase(), x.id])); const unitBy = new Map(units.map(x => [x.code.toLowerCase(), x.id]));
     const taxBy = new Map<string, string>(); for (const t of taxes) if (!taxBy.has(t.code.toLowerCase())) taxBy.set(t.code.toLowerCase(), t.id);
     const skuBy = new Map(existing.map(x => [x.sku.toLowerCase(), x.id]));
@@ -77,6 +80,8 @@ const products: ImportTypeDef = {
       if (name) data.name = name;
       if (v(r, 'descripcion')) data.description = v(r, 'descripcion');
       if (v(r, 'instancia')) { const id = catBy.get(v(r, 'instancia').toLowerCase()); if (id) data.categoryId = id; else p.errors.push(`La instancia «${v(r, 'instancia')}» no existe (impórtela antes)`); }
+      if (v(r, 'marca')) { if (v(r, 'marca').length > 80) p.errors.push('La marca no puede pasar de 80 caracteres'); else data.brand = v(r, 'marca'); }
+      if (v(r, 'ubicacion')) { const id = locBy.get(v(r, 'ubicacion').toLowerCase()); if (id) data.locationId = id; else p.errors.push(`La ubicación «${v(r, 'ubicacion')}» no existe (impórtela antes)`); }
       const unitCode = v(r, 'unidad') || (existingId ? '' : 'UND');
       if (unitCode) { const id = unitBy.get(unitCode.toLowerCase()); if (id) data.unitId = id; else p.errors.push(`La unidad «${unitCode}» no existe`); }
       if (v(r, 'impuesto')) { const id = taxBy.get(v(r, 'impuesto').toLowerCase()); if (id) data.taxId = id; else p.errors.push(`El impuesto «${v(r, 'impuesto')}» no existe o no está vigente`); }
@@ -109,7 +114,7 @@ const products: ImportTypeDef = {
     if (creates.length) {
       const rows = await tx.product.createManyAndReturn({
         data: creates.map(p => { const d = p.data; return {
-          companyId, sku: d.sku, name: d.name, description: d.description ?? null, categoryId: d.categoryId ?? null, unitId: d.unitId, taxId: d.taxId ?? null,
+          companyId, sku: d.sku, name: d.name, description: d.description ?? null, categoryId: d.categoryId ?? null, unitId: d.unitId, taxId: d.taxId ?? null, brand: d.brand ?? null, locationId: d.locationId ?? null,
           isService: d.isService ?? false, isActive: d.isActive ?? true, minStock: d.minStock ?? '0', maxStock: d.maxStock ?? '0', createdBy: userId, updatedBy: userId,
         }; }),
       });
@@ -248,6 +253,39 @@ const categories: ImportTypeDef = {
     for (const p of planned) { // paso 2: enlazar padres (ya existen todos)
       if (p.action === 'skip' || !p.data.parentCode) continue;
       await tx.category.update({ where: { id: ids.get(p.data.code.toLowerCase())! }, data: { parentId: ids.get(p.data.parentCode.toLowerCase())! } });
+    }
+    return { created, updated };
+  },
+};
+
+// ═══════════════════════════ UBICACIONES ═══════════════════════════
+const locations: ImportTypeDef = {
+  key: 'locations', title: 'Ubicaciones', description: 'Ubicaciones del almacén (vitrina, estante, pasillo…) para asignar a los productos.',
+  permission: 'admin:locations:create', supportsExisting: true,
+  columns: [c('codigo', 'codigo', 'Código único (máx. 30)', 'P1-E6-P4', true), c('nombre', 'nombre', 'Nombre', 'Pasillo 1, estante 6, piso 4', true), c('activo', 'activo', SI_NO + ' (por defecto SI)', 'SI')],
+  async plan(ctx, rows, o) {
+    const existing = await ctx.tx.location.findMany({ where: { deletedAt: null }, select: { id: true, code: true } });
+    const byCode = new Map(existing.map(x => [x.code.toLowerCase(), x.id]));
+    const seen = new Map<string, number>();
+    return rows.map(r => {
+      const code = v(r, 'codigo'); const p: Planned = { row: r.row, action: 'create', errors: [], warnings: [], data: {}, label: `${code} ${v(r, 'nombre')}`.trim() };
+      if (!code) p.errors.push('El código es obligatorio'); else if (code.length > 30) p.errors.push('Código demasiado largo (máx. 30)'); else dup(seen, code.toLowerCase(), r.row, p, 'Código');
+      const existingId = code ? byCode.get(code.toLowerCase()) : undefined;
+      if (!v(r, 'nombre') && !existingId) p.errors.push('El nombre es obligatorio');
+      const d: Record<string, any> = { code, existingId, name: v(r, 'nombre') || undefined };
+      const act = parseBool(v(r, 'activo'), true); if (act === null) p.errors.push('activo debe ser SI o NO'); else if (v(r, 'activo')) d.isActive = act;
+      p.data = d;
+      if (!p.errors.length) actionFor(!!existingId, o, p);
+      return p;
+    });
+  },
+  async apply(ctx, planned) {
+    const { tx, companyId } = ctx;
+    let created = 0, updated = 0;
+    for (const p of planned) {
+      const { existingId, code, ...d } = p.data;
+      if (p.action === 'create') { await tx.location.create({ data: { companyId, code, ...d, name: d.name! } }); created++; }
+      else if (p.action === 'update') { await tx.location.update({ where: { id: existingId }, data: d }); updated++; }
     }
     return { created, updated };
   },
@@ -458,5 +496,5 @@ const openingPayables: ImportTypeDef = {
 };
 
 
-export const IMPORT_TYPES: ImportTypeDef[] = [categories, products, thirdParty('suppliers'), thirdParty('customers'), openingStock, prices, openingReceivables, openingPayables];
+export const IMPORT_TYPES: ImportTypeDef[] = [categories, locations, products, thirdParty('suppliers'), thirdParty('customers'), openingStock, prices, openingReceivables, openingPayables];
 export const findImportType = (key: string) => IMPORT_TYPES.find(t => t.key === key);

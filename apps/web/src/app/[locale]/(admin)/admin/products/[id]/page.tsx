@@ -23,14 +23,14 @@ import { z } from "zod";
 type Row = Record<string, any>;
 
 const productSchema = z.object({
-  sku: reqText(60), name: reqText(250), description: optText(2000), categoryId: z.string(), unitId: reqSelect, taxId: z.string(),
+  sku: reqText(60), name: reqText(250), description: optText(2000), brand: optText(80), locationId: z.string(), categoryId: z.string(), unitId: reqSelect, taxId: z.string(),
   trackingMode: z.string(), hasExpiry: z.boolean(), isService: z.boolean(), minStock: optDecimal, maxStock: optDecimal, isActive: z.boolean(),
   barcodes: z.array(z.string()), references: z.array(z.object({ refType: z.string(), code: z.string(), brand: z.string() })),
 });
 type Form = z.infer<typeof productSchema>;
 
 const empty: Form = {
-  sku: "", name: "", description: "", categoryId: "", unitId: "", taxId: "", trackingMode: "NONE", hasExpiry: false, isService: false,
+  sku: "", name: "", description: "", brand: "", locationId: "", categoryId: "", unitId: "", taxId: "", trackingMode: "NONE", hasExpiry: false, isService: false,
   minStock: "0", maxStock: "0", isActive: true, barcodes: [], references: [],
 };
 
@@ -55,7 +55,7 @@ export default function ProductEditor() {
     if (!p) return;
     setVersion(p.version);
     form.reset({
-      sku: p.sku, name: p.name, description: p.description ?? "", categoryId: p.categoryId ?? "", unitId: p.unitId, taxId: p.taxId ?? "",
+      sku: p.sku, name: p.name, description: p.description ?? "", brand: p.brand ?? "", locationId: p.locationId ?? "", categoryId: p.categoryId ?? "", unitId: p.unitId, taxId: p.taxId ?? "",
       trackingMode: p.trackingMode, hasExpiry: p.hasExpiry, isService: p.isService, minStock: String(p.minStock), maxStock: String(p.maxStock), isActive: p.isActive,
       barcodes: p.barcodes ?? [], references: (p.references ?? []).map((r: Row) => ({ refType: r.refType, code: r.code, brand: r.brand ?? "" })),
     });
@@ -66,7 +66,7 @@ export default function ProductEditor() {
   const save = form.handleSubmit(async (f) => {
     setError(null);
     const body: Record<string, unknown> = {
-      sku: f.sku.trim(), name: f.name.trim(), description: f.description.trim() || null,
+      sku: f.sku.trim(), name: f.name.trim(), description: f.description.trim() || null, brand: f.brand.trim() || null, locationId: f.locationId || null,
       categoryId: f.categoryId || null, unitId: f.unitId, taxId: f.taxId || null,
       trackingMode: f.trackingMode, hasExpiry: f.hasExpiry, isService: f.isService,
       minStock: f.minStock || "0", maxStock: f.maxStock || "0", isActive: f.isActive,
@@ -122,6 +122,8 @@ export default function ProductEditor() {
             <RText control={c} name="sku" label={t("fields.sku")} required disabled={!canEdit} serverError={fe("sku")} />
             <RText control={c} name="name" label={t("fields.name")} required disabled={!canEdit} serverError={fe("name")} />
             <RTextArea control={c} name="description" label={t("fields.description")} className="sm:col-span-2" disabled={!canEdit} />
+            <RText control={c} name="brand" label={t("fields.brand")} disabled={!canEdit} serverError={fe("brand")} />
+            <RRef control={c} name="locationId" label={t("fields.locationId")} resource="/locations" labelKey={(r) => `${r.code} — ${r.name}`} disabled={!canEdit} serverError={fe("locationId")} />
             <RRef control={c} name="categoryId" label={t("fields.categoryId")} resource="/categories" labelKey={(r) => `${r.code} — ${r.name}`} disabled={!canEdit} serverError={fe("categoryId")} />
             <RRef control={c} name="unitId" label={t("fields.unitId")} required resource="/units" labelKey={(r) => `${r.code} — ${r.name}`} disabled={!canEdit} serverError={fe("unitId")} />
             <RRef control={c} name="taxId" label={t("fields.taxId")} resource="/taxes" labelKey={(r) => `${r.name} (${fmtNumber(r.rate)}%)`} disabled={!canEdit} serverError={fe("taxId")} />

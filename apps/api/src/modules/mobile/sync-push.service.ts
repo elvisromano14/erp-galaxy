@@ -9,8 +9,9 @@ import { AuthUser } from '../../common/auth/decorators';
 import { BusinessRuleException } from '../../common/errors/errors';
 import { IntegrationEventsService } from '../integration/integration-events.service';
 import { SalesService } from '../sales/sales.service';
+import { createProductSchema, ProductsService, updateProductSchema } from '../products/products.service';
 import { SalesDocInput, Viewer } from '../sales/sales.types';
-import { customerData, customerUpdateData, OpResult, orderCreateData, PushOperation, quoteCreateData, quoteUpdateData, docData } from './mobile.types';
+import { customerData, customerUpdateData, OpResult, productData, productUpdateData, orderCreateData, PushOperation, quoteCreateData, quoteUpdateData, docData } from './mobile.types';
 
 type Ctx = { user: AuthUser; deviceId: string; have: string[]; viewer: Viewer; seller: Awaited<ReturnType<PrismaService['db']['seller']['findFirst']>> };
 type Applied = Omit<OpResult, 'clientOpId'>;
@@ -25,7 +26,7 @@ export class SyncPushService {
   private readonly log = new Logger(SyncPushService.name);
   constructor(
     private readonly prisma: PrismaService, private readonly sales: SalesService, private readonly audit: AuditService,
-    private readonly perms: PermissionsService, private readonly events: IntegrationEventsService,
+    private readonly perms: PermissionsService, private readonly events: IntegrationEventsService, private readonly products: ProductsService,
   ) {}
 
   async push(user: AuthUser, deviceId: string, operations: PushOperation[]) {
@@ -98,6 +99,8 @@ export class SyncPushService {
     switch (`${op.entity}.${op.action}`) {
       case 'customer.create': return this.customerCreate(ctx, op);
       case 'customer.update': return this.customerUpdate(ctx, op);
+      case 'product.create': return this.productCreate(ctx, op);
+      case 'product.update': return this.productUpdate(ctx, op);
       case 'sales_quote.create': return this.quoteCreate(ctx, op);
       case 'sales_quote.update': return this.quoteUpdate(ctx, op);
       case 'sales_order.create': return this.orderCreate(ctx, op);
@@ -162,6 +165,43 @@ export class SyncPushService {
     await this.audit.log('customer', id, 'UPDATE', { source: 'mobile', ...d });
     await this.events.emit({ entity: 'customer', entityId: id, op: 'UPDATE', version: u.version, origin: 'MOBILE' });
     return { status: 'APPLIED', serverId: u.id, serverStatus: u.validationStatus };
+  }
+
+  // ───────────────── productos ─────────────────
+  /** Precio inicial/nuevo: va a la lista predeterminada de la empresa. */
+  private async defaultPriceList(price: string | undefined) {
+    if (price === undefined) return [];
+    const list = await this.prisma.tx.priceList.findFirst({ where: { isDefault: true, deletedAt: null } });
+    if (!list) throw new Reject('PRICE_LIST_REQUIRED', 'No hay lista de precios predeterminada');
+    return [{ priceListId: list.id, price }];
+  }
+
+  private async productCreate(ctx: Ctx, op: PushOperation): Promise<Applied> {
+    this.need(ctx, 'admin:products:create');
+    const d = productData.parse(op.data);
+    const tx = this.prisma.tx;
+    // Reenvío tras perder la respuesta (o producto ya creado en la oficina): se vincula al existente, no se duplica.
+    const existing = await tx.product.findFirst({ where: { sku: { equals: d.sku, mode: 'insensitive' } } });
+    if (existing) { await this.remember('product', op.entityId, existing.id); return { status: 'APPLIED', serverId: existing.id, serverNumber: existing.sku, serverStatus: existing.isActive ? 'ACTIVE' : 'INACTIVE', linked: true }; }
+    const { price, ...rest } = d;
+    const input = createProductSchema.parse({ ...rest, prices: await this.defaultPriceList(price) });
+    const p = await this.products.create(input);
+    await this.remember('product', op.entityId, p.id);
+    await this.audit.log('product', p.id, 'CREATE', { source: 'mobile', sku: p.sku, device: ctx.deviceId });
+    return { status: 'APPLIED', serverId: p.id, serverNumber: p.sku, serverStatus: 'ACTIVE' };
+  }
+
+  private async productUpdate(ctx: Ctx, op: PushOperation): Promise<Applied> {
+    this.need(ctx, 'admin:products:update');
+    const d = productUpdateData.parse(op.data);
+    const id = await this.resolve('product', op.entityId);
+    const current = await this.prisma.tx.product.findFirst({ where: { id, deletedAt: null } });
+    if (!current) throw new Reject('PRODUCT_NOT_FOUND', 'Producto inexistente');
+    const { price, ...rest } = d;
+    const input = updateProductSchema.parse({ ...rest, ...(price !== undefined ? { prices: await this.defaultPriceList(price) } : {}) });
+    const p = await this.products.update(id, input);
+    await this.audit.log('product', id, 'UPDATE', { source: 'mobile', device: ctx.deviceId });
+    return { status: 'APPLIED', serverId: p.id, serverNumber: p.sku, serverStatus: p.isActive ? 'ACTIVE' : 'INACTIVE' };
   }
 
   // ───────────────── documentos ─────────────────

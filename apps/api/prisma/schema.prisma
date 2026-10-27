@@ -321,6 +321,8 @@ model Product {
   trackingMode String    @default("NONE") @map("tracking_mode") // NONE | LOT | SERIAL
   hasExpiry    Boolean   @default(false) @map("has_expiry")
   isService    Boolean   @default(false) @map("is_service")
+  brand        String?
+  locationId   String?   @map("location_id") @db.Uuid
   minStock     Decimal   @default(0) @map("min_stock") @db.Decimal(18, 4)
   maxStock     Decimal   @default(0) @map("max_stock") @db.Decimal(18, 4)
   isActive     Boolean   @default(true) @map("is_active")
@@ -401,6 +403,21 @@ model ProductPrice {
 
   @@unique([companyId, productId, priceListId, validFrom])
   @@map("product_prices")
+}
+
+model Location {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  code      String
+  name      String
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([companyId, id])
+  @@map("locations")
 }
 
 model Zone {

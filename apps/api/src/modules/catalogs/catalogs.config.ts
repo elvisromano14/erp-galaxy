@@ -78,6 +78,11 @@ export const CATALOGS: CrudConfig<any>[] = [
     },
   },
   {
+    path: 'locations', entity: 'location', model: 'location', permission: 'admin:locations',
+    create: z.object({ code, name, isActive: z.boolean().optional() }),
+    searchFields: ['code', 'name'], sortable: ['code', 'name', 'createdAt'], defaultSort: 'code', filterable: ['isActive'], softDelete: true,
+  },
+  {
     path: 'zones', entity: 'zone', model: 'zone', permission: 'admin:zones',
     create: z.object({ code, name, parentId: optUuid }),
     searchFields: ['code', 'name'], sortable: ['code', 'name'], defaultSort: 'code', filterable: ['parentId'], softDelete: true,

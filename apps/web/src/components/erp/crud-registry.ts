@@ -43,6 +43,11 @@ export const CRUD_REGISTRY: Record<string, CrudDef> = {
     columns: [{ key: "code", sort: true }, { key: "name" }, { key: "isDefault", type: "bool" }],
     fields: [code, name, { name: "currencyId", type: "ref", resource: "currencies", labelKey: (r) => `${r.code} — ${r.name}`, required: true }, { name: "isDefault", type: "boolean" }],
   },
+  locations: {
+    resource: "locations", permission: "admin:locations", softDelete: true, defaultSort: "code",
+    columns: [{ key: "code", sort: true }, { key: "name", sort: true }, { key: "isActive", type: "bool" }],
+    fields: [code, name, active],
+  },
   zones: {
     resource: "zones", permission: "admin:zones", softDelete: true, defaultSort: "code",
     columns: [{ key: "code", sort: true }, { key: "name", sort: true }],

@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/db/prisma.service';
 import { AuthUser } from '../../common/auth/decorators';
 import { BusinessRuleException, NotFoundError } from '../../common/errors/errors';
+import { PermissionsService } from '../../common/auth/permissions.service';
 import { DevicesService } from './devices.service';
 import { PullEntity } from './mobile.types';
 
@@ -18,7 +19,7 @@ type Row = Record<string, any> & { id: string; _ts: string };
  */
 @Injectable()
 export class SyncPullService {
-  constructor(private readonly prisma: PrismaService, private readonly devices: DevicesService) {}
+  constructor(private readonly prisma: PrismaService, private readonly devices: DevicesService, private readonly perms: PermissionsService) {}
 
   async pull(user: AuthUser, q: { entity: PullEntity; cursor?: string; limit: number; overlapSeconds: number }): Promise<PullPage> {
     const serverTime = new Date().toISOString();
@@ -32,6 +33,10 @@ export class SyncPullService {
         id: p.id, code: p.code, name: p.name, currencyId: p.currencyId, isDefault: p.isDefault, deletedAt: p.deletedAt })));
       case 'warehouses': return done((await this.prisma.db.warehouse.findMany({ orderBy: { code: 'asc' } })).map(w => ({
         id: w.id, code: w.code, name: w.name, isActive: w.isActive, deletedAt: w.deletedAt })));
+      case 'locations': return done((await this.prisma.db.location.findMany({ orderBy: { code: 'asc' } })).map(l => ({
+        id: l.id, code: l.code, name: l.name, isActive: l.isActive, updatedAt: l.updatedAt, deletedAt: l.deletedAt })));
+      case 'units': return done((await this.prisma.db.unit.findMany({ orderBy: { code: 'asc' } })).map(u => ({ id: u.id, code: u.code, name: u.name, deletedAt: u.deletedAt })));
+      case 'categories': return done((await this.prisma.db.category.findMany({ orderBy: { code: 'asc' } })).map(c => ({ id: c.id, code: c.code, name: c.name, parentId: c.parentId, deletedAt: c.deletedAt })));
       case 'exchange_rates': {
         const since = new Date(Date.now() - 120 * 86_400_000);
         const rows = await this.prisma.db.exchangeRate.findMany({ where: { date: { gte: since }, OR: [{ companyId: null }, { companyId: this.prisma.companyId }] }, orderBy: [{ date: 'desc' }, { createdAt: 'desc' }] });
@@ -65,9 +70,9 @@ export class SyncPullService {
   // ───────────────── ajustes y políticas del vendedor ─────────────────
   private async settings(user: AuthUser) {
     const tx = this.prisma.db;
-    const [company, seller, all] = await Promise.all([
+    const [company, seller, all, have] = await Promise.all([
       tx.company.findUniqueOrThrow({ where: { id: this.prisma.companyId } }),
-      this.devices.sellerOf(user.userId), this.devices.canSeeAll(user),
+      this.devices.sellerOf(user.userId), this.devices.canSeeAll(user), this.perms.forUser(user.userId, user.companyId!),
     ]);
     const warehouse = await tx.warehouse.findFirst({ where: { deletedAt: null, isActive: true }, orderBy: { code: 'asc' }, select: { id: true } });
     return {
@@ -78,6 +83,9 @@ export class SyncPullService {
       allowPriceEdit: seller?.allowPriceEdit ?? false,
       maxDiscountPct: seller?.maxDiscountPct ?? 0,
       allowCustomerCreate: seller?.allowCustomerCreate ?? false,
+      /** Alta/edición de productos desde el móvil: la da el permiso del usuario (admin:products:create / update). */
+      allowProductCreate: have.includes('admin:products:create'),
+      allowProductUpdate: have.includes('admin:products:update'),
       /** Política de precios al sincronizar: el servidor respeta el precio de la lista vigente (el pactado solo si el vendedor puede editarlo). */
       pricePolicy: 'SERVER_LIST',
     };
@@ -140,7 +148,7 @@ export class SyncPullService {
     const tx = this.prisma.db;
     const cur = this.parseCursor(q.cursor);
     const rows = await tx.$queryRaw<Row[]>`
-      SELECT id, sku, name, description, category_id, unit_id, tax_id, tracking_mode, has_expiry, is_service, is_active, version, deleted_at, updated_at, updated_at::text AS _ts
+      SELECT id, sku, name, description, category_id, unit_id, tax_id, brand, location_id, min_stock, max_stock, tracking_mode, has_expiry, is_service, is_active, version, deleted_at, updated_at, updated_at::text AS _ts
       FROM products WHERE ${this.after('updated_at', cur, q.overlapSeconds)} ORDER BY updated_at, id LIMIT ${q.limit + 1}`;
     const { items, hasMore, nextCursor } = await this.page(rows, q.limit);
     const ids = items.map(r => r.id as string);
@@ -155,8 +163,8 @@ export class SyncPullService {
     return {
       entity: 'products', nextCursor, hasMore, fullRefresh: false, serverTime: new Date().toISOString(),
       items: items.map(r => ({
-        id: r.id, sku: r.sku, name: r.name, description: r.description, categoryName: r.category_id ? cat.get(r.category_id) ?? null : null,
-        unitCode: unit.get(r.unit_id) ?? null, taxId: r.tax_id, trackingMode: r.tracking_mode, isService: r.is_service, isActive: r.is_active, version: r.version,
+        id: r.id, sku: r.sku, name: r.name, description: r.description, categoryId: r.category_id, categoryName: r.category_id ? cat.get(r.category_id) ?? null : null,
+        unitId: r.unit_id, unitCode: unit.get(r.unit_id) ?? null, taxId: r.tax_id, brand: r.brand, locationId: r.location_id, minStock: r.min_stock, maxStock: r.max_stock, trackingMode: r.tracking_mode, isService: r.is_service, isActive: r.is_active, version: r.version,
         deletedAt: r.deleted_at, updatedAt: r.updated_at,
         refs: (refMap.get(r.id) ?? []).map(x => ({ kind: x.refType, code: x.code, brand: x.brand })),
         barcodes: (barMap.get(r.id) ?? []).map(x => x.barcode),

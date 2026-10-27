@@ -14,6 +14,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { MobileAppService } from './mobile-app.service';
 import { SyncPullService } from './sync-pull.service';
 import { SyncPushService } from './sync-push.service';
+import { ProductsModule } from '../products/products.module';
 
 /** Versión mínima de la app (cabecera `X-App-Version`): por debajo → 426 y la app conserva su cola pendiente. */
 @Injectable()
@@ -96,5 +97,5 @@ export class MobileController {
   }
 }
 
-@Module({ imports: [SalesModule], controllers: [MobileController], providers: [DevicesService, SyncPullService, SyncPushService, AppVersionGuard, MobileAppService] })
+@Module({ imports: [SalesModule, ProductsModule], controllers: [MobileController], providers: [DevicesService, SyncPullService, SyncPushService, AppVersionGuard, MobileAppService] })
 export class MobileModule {}

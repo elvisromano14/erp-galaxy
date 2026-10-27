@@ -23,7 +23,7 @@ export const NAV: NavSection[] = [
     key: "administration",
     icon: "box",
     items: [
-      admin("products"), admin("categories"), admin("units"), admin("warehouses"),
+      admin("products"), admin("categories"), admin("units"), admin("warehouses"), admin("locations"),
       admin("suppliers"), admin("customers"), admin("zones"), admin("sellers"),
       admin("price-lists"), admin("taxes"), admin("currencies"), admin("exchange-rates"),
       { key: "price-update", path: "/admin/price-update", perm: "admin:products:update" },

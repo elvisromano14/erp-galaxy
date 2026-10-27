@@ -9,7 +9,7 @@ export const registerDeviceSchema = z.object({
 });
 
 export const PULL_ENTITIES = [
-  'app_settings', 'currencies', 'taxes', 'exchange_rates', 'price_lists', 'warehouses', 'customers', 'products', 'product_prices', 'stock_snapshots', 'my_documents',
+  'app_settings', 'currencies', 'taxes', 'exchange_rates', 'price_lists', 'warehouses', 'locations', 'units', 'categories', 'customers', 'products', 'product_prices', 'stock_snapshots', 'my_documents',
 ] as const;
 export type PullEntity = (typeof PULL_ENTITIES)[number];
 
@@ -22,7 +22,7 @@ export const pullQuery = z.object({
   overlapSeconds: z.coerce.number().int().min(0).max(600).default(0),
 });
 
-export const SYNC_ENTITIES = ['customer', 'sales_quote', 'sales_order'] as const;
+export const SYNC_ENTITIES = ['customer', 'product', 'sales_quote', 'sales_order'] as const;
 export const SYNC_ACTIONS = ['create', 'update'] as const;
 
 /** Sobre de una operación: el `data` se valida por tipo al procesarla, para que una operación inválida no tumbe todo el lote. */
@@ -49,6 +49,22 @@ export const customerData = z.object({
   personType: z.enum(['LEGAL', 'NATURAL']).optional(), priceListId: uuid.nullable().optional(),
 });
 export const customerUpdateData = customerData.omit({ rif: true }).partial();
+
+/** Alta de producto desde el móvil: solo productos simples (sin lotes ni seriales); precio inicial en la lista predeterminada. */
+export const productData = z.object({
+  sku: z.string().trim().min(1).max(60),
+  name: z.string().trim().min(1).max(250),
+  description: optText(2000),
+  categoryId: uuid.nullable().optional(), unitId: uuid, taxId: uuid.nullable().optional(),
+  brand: optText(80), locationId: uuid.nullable().optional(),
+  minStock: decimalStr.optional(), maxStock: decimalStr.optional(),
+  isService: z.boolean().optional(),
+  barcodes: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
+  /** Precio en la lista predeterminada (moneda de la lista). */
+  price: decimalStr.refine(v => Number(v) >= 0, 'El precio no puede ser negativo').optional(),
+});
+/** `version` es obligatoria: el servidor rechaza la edición si el producto cambió desde la versión que vio la app. */
+export const productUpdateData = productData.omit({ sku: true }).partial().extend({ version: z.number().int().min(1) });
 
 const lineData = z.object({
   productId: uuid, quantity: decimalStr.refine(v => Number(v) > 0, 'La cantidad debe ser mayor que cero'),

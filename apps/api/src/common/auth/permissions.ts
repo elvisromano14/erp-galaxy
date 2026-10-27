@@ -3,7 +3,7 @@ const CRUD = ['read', 'create', 'update', 'delete'];
 const DOC = ['read', 'create', 'update', 'confirm', 'cancel'];
 
 export const ADMIN_RESOURCES = [
-  'warehouses', 'categories', 'products', 'suppliers', 'zones', 'sellers', 'customers',
+  'warehouses', 'locations', 'categories', 'products', 'suppliers', 'zones', 'sellers', 'customers',
   'payment-methods', 'operation-types', 'units', 'price-lists', 'taxes', 'currencies',
   'exchange-rates', 'movement-reasons', 'banks', 'bank-accounts',
 ] as const;

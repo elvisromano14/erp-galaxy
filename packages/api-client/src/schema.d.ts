@@ -132,6 +132,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/service-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_auth_service_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bank-accounts": {
         parameters: {
             query?: never;
@@ -500,6 +516,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/devices/{id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_devices_by_id_release"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/devices/{id}/restore": {
         parameters: {
             query?: never;
@@ -782,6 +814,326 @@ export interface paths {
         get: operations["get_imports_by_type_template"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_integration_connections"];
+        put?: never;
+        post: operations["post_integration_connections"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/connections/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_integration_connections_by_id"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_integration_connections_by_id"];
+        options?: never;
+        head?: never;
+        patch: operations["patch_integration_connections_by_id"];
+        trace?: never;
+    };
+    "/api/v1/integration/connections/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_integration_connections_by_id_test"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_integration_enabled"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_integration_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/monitor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_integration_monitor"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/monitor/conflicts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_integration_monitor_conflicts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/monitor/conflicts/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_integration_monitor_conflicts_by_id_status"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/monitor/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_integration_monitor_runs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/refs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_integration_refs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/runtime/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_integration_runtime_connections"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/runtime/connections/{id}/test-result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_integration_runtime_connections_by_id_test_result"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/runtime/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_integration_runtime_report"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/service-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_integration_service_accounts"];
+        put?: never;
+        post: operations["post_integration_service_accounts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/service-accounts/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_integration_service_accounts_by_id_revoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/service-accounts/{id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_integration_service_accounts_by_id_rotate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/setup/saint-price-lists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_integration_setup_saint_price_lists"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_integration_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/{entity}/get-batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_integration_by_entity_get_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration/{entity}/upsert-batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_integration_by_entity_upsert_batch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1246,6 +1598,54 @@ export interface paths {
         get: operations["get_inventory_valuation"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_locations"];
+        put?: never;
+        post: operations["post_locations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/locations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_locations_by_id"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_locations_by_id"];
+        options?: never;
+        head?: never;
+        patch: operations["patch_locations_by_id"];
+        trace?: never;
+    };
+    "/api/v1/locations/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_locations_by_id_restore"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3604,6 +4004,30 @@ export interface operations {
             };
         };
     };
+    post_auth_service_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    clientId: string;
+                    clientSecret: string;
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_bank_accounts: {
         parameters: {
             query?: {
@@ -4632,6 +5056,25 @@ export interface operations {
             };
         };
     };
+    post_devices_by_id_release: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     post_devices_by_id_restore: {
         parameters: {
             query?: never;
@@ -5063,6 +5506,640 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_integration_connections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_integration_connections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    connectorId: string;
+                    name: string;
+                    host: string;
+                    /** @default 1433 */
+                    port?: number;
+                    databaseName: string;
+                    username: string;
+                    /** @default false */
+                    encrypt?: boolean;
+                    /** @default true */
+                    trustServerCertificate?: boolean;
+                    /**
+                     * @default READ_ONLY
+                     * @enum {string}
+                     */
+                    mode?: "READ_ONLY" | "READ_WRITE";
+                    /** @default [] */
+                    allowedWriteDatabases?: string[];
+                    /** @default 30 */
+                    pollIntervalSec?: number;
+                    /**
+                     * @default [
+                     *       "customers"
+                     *     ]
+                     */
+                    streams?: ("zones" | "sellers" | "warehouses" | "categories" | "customers" | "products")[];
+                    /** @default [] */
+                    outbound?: "customers"[];
+                    /** @default USD */
+                    priceCurrency?: string;
+                    /** @default true */
+                    enabled?: boolean;
+                    password: string;
+                };
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_integration_connections_by_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_integration_connections_by_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    patch_integration_connections_by_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    host?: string;
+                    /** @default 1433 */
+                    port?: number;
+                    databaseName?: string;
+                    username?: string;
+                    /** @default false */
+                    encrypt?: boolean;
+                    /** @default true */
+                    trustServerCertificate?: boolean;
+                    /**
+                     * @default READ_ONLY
+                     * @enum {string}
+                     */
+                    mode?: "READ_ONLY" | "READ_WRITE";
+                    /** @default [] */
+                    allowedWriteDatabases?: string[];
+                    /** @default 30 */
+                    pollIntervalSec?: number;
+                    /**
+                     * @default [
+                     *       "customers"
+                     *     ]
+                     */
+                    streams?: ("zones" | "sellers" | "warehouses" | "categories" | "customers" | "products")[];
+                    /** @default [] */
+                    outbound?: "customers"[];
+                    /** @default USD */
+                    priceCurrency?: string;
+                    /** @default true */
+                    enabled?: boolean;
+                    password?: string;
+                    version?: number;
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_integration_connections_by_id_test: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_integration_enabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_integration_events: {
+        parameters: {
+            query?: {
+                after?: number;
+                limit?: number;
+                entity?: string;
+                includeIntegration?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_integration_monitor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_integration_monitor_conflicts: {
+        parameters: {
+            query?: {
+                status?: "OPEN" | "RESOLVED" | "ACKNOWLEDGED";
+                connectorId?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_integration_monitor_conflicts_by_id_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    status: "OPEN" | "ACKNOWLEDGED";
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_integration_monitor_runs: {
+        parameters: {
+            query?: {
+                connectorId?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_integration_refs: {
+        parameters: {
+            query?: {
+                entity?: "customers" | "suppliers" | "products" | "price_lists";
+                system?: "SAINT";
+                externalKey?: string;
+                entityId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_integration_runtime_connections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_integration_runtime_connections_by_id_test_result: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ok: boolean;
+                    message: string;
+                    latencyMs?: number;
+                    /** @default [] */
+                    databases?: string[];
+                    schema?: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_integration_runtime_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    connectorId: string;
+                    /** @default [] */
+                    runs?: {
+                        stream: string;
+                        /** Format: date-time */
+                        startedAt: string;
+                        /** Format: date-time */
+                        finishedAt?: string | null;
+                        rowsRead: number;
+                        rowsApplied: number;
+                        rowsFailed: number;
+                        error?: string | null;
+                    }[];
+                    /** @default [] */
+                    conflicts?: {
+                        /** @enum {string} */
+                        op: "OPEN" | "RESOLVED";
+                        entity: string;
+                        /** @default  */
+                        saintKey?: string;
+                        /** Format: uuid */
+                        erpId?: string | null;
+                        kind: string;
+                        detail?: unknown;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_integration_service_accounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_integration_service_accounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_integration_service_accounts_by_id_revoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_integration_service_accounts_by_id_rotate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_integration_setup_saint_price_lists: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @default SAINT
+                     * @enum {string}
+                     */
+                    system?: "SAINT";
+                    connector: string;
+                    /** Format: uuid */
+                    currencyId?: string;
+                    /** @default false */
+                    withUnitLists?: boolean;
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_integration_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_integration_by_entity_get_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @default SAINT
+                     * @enum {string}
+                     */
+                    system?: "SAINT";
+                    ids?: string[];
+                    externalKeys?: string[];
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_integration_by_entity_upsert_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @default SAINT
+                     * @enum {string}
+                     */
+                    system?: "SAINT";
+                    connector: string;
+                    /**
+                     * @default REF_ONLY
+                     * @enum {string}
+                     */
+                    linkMode?: "REF_ONLY" | "REF_AND_UPDATE";
+                    items: {
+                        externalKey: string;
+                        externalNumber?: string | null;
+                        /** @enum {string} */
+                        origin: "SAINT" | "ERP";
+                        hash: string;
+                        expectedVersion?: number;
+                        data: {
+                            [key: string]: unknown;
+                        };
+                    }[];
+                };
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -6240,6 +7317,141 @@ export interface operations {
             };
         };
     };
+    get_locations: {
+        parameters: {
+            query?: {
+                page?: number;
+                limit?: number;
+                search?: string;
+                sort?: string;
+                filter?: {
+                    [key: string]: string;
+                };
+                includeDeleted?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_locations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                    name: string;
+                    isActive?: boolean;
+                };
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_locations_by_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_locations_by_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    patch_locations_by_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code?: string;
+                    name?: string;
+                    isActive?: boolean;
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_locations_by_id_restore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_mobile_app: {
         parameters: {
             query?: never;
@@ -6969,6 +8181,8 @@ export interface operations {
                 sort?: string;
                 trackingMode?: "NONE" | "LOT" | "SERIAL";
                 categoryId?: string;
+                locationId?: string;
+                brand?: string;
                 isActive?: boolean;
                 isService?: boolean;
                 includeDeleted?: boolean;
@@ -7015,6 +8229,9 @@ export interface operations {
                     hasExpiry?: boolean;
                     /** @default false */
                     isService?: boolean;
+                    brand?: string | null;
+                    /** Format: uuid */
+                    locationId?: string | null;
                     minStock?: string | number;
                     maxStock?: string | number;
                     /** @default true */
@@ -7157,6 +8374,9 @@ export interface operations {
                     hasExpiry?: boolean;
                     /** @default false */
                     isService?: boolean;
+                    brand?: string | null;
+                    /** Format: uuid */
+                    locationId?: string | null;
                     minStock?: string | number;
                     maxStock?: string | number;
                     /** @default true */
@@ -10488,6 +11708,8 @@ export interface operations {
                     phone?: string | null;
                     address?: string | null;
                     isActive?: boolean;
+                    /** @enum {string} */
+                    validationStatus?: "VALIDATED" | "PENDING";
                 };
             };
         };
@@ -10566,6 +11788,8 @@ export interface operations {
                     phone?: string | null;
                     address?: string | null;
                     isActive?: boolean;
+                    /** @enum {string} */
+                    validationStatus?: "VALIDATED" | "PENDING";
                 };
             };
         };
@@ -10600,7 +11824,7 @@ export interface operations {
     get_sync_pull: {
         parameters: {
             query?: {
-                entity?: "app_settings" | "currencies" | "taxes" | "exchange_rates" | "price_lists" | "warehouses" | "customers" | "products" | "product_prices" | "stock_snapshots" | "my_documents";
+                entity?: "app_settings" | "currencies" | "taxes" | "exchange_rates" | "price_lists" | "warehouses" | "locations" | "units" | "categories" | "customers" | "products" | "product_prices" | "stock_snapshots" | "my_documents";
                 cursor?: string;
                 limit?: number;
                 overlapSeconds?: number;
@@ -10634,7 +11858,7 @@ export interface operations {
                         clientOpId: string;
                         clientSeq: number;
                         /** @enum {string} */
-                        entity: "customer" | "sales_quote" | "sales_order";
+                        entity: "customer" | "product" | "sales_quote" | "sales_order";
                         /** @enum {string} */
                         action: "create" | "update";
                         /** Format: uuid */
@@ -11614,6 +12838,7 @@ export interface operations {
                     isActive?: boolean;
                     roleCodes?: string[];
                     isOrgAdmin?: boolean;
+                    password?: string;
                 };
             };
         };
