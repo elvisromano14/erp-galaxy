@@ -8027,6 +8027,54 @@
         ]
       }
     },
+    "/api/v1/mobile/app/latest": {
+      "get": {
+        "operationId": "get_mobile_app_latest",
+        "parameters": [
+          {
+            "name": "current",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+\\.\\d+\\.\\d+([-+][\\w.]+)?$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "mobile"
+        ]
+      }
+    },
+    "/api/v1/mobile/app/latest/file": {
+      "get": {
+        "operationId": "get_mobile_app_latest_file",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "mobile"
+        ]
+      }
+    },
     "/api/v1/mobile/app/link": {
       "post": {
         "operationId": "post_mobile_app_link",

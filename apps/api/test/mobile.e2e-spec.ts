@@ -221,6 +221,43 @@ describe('Móvil: dispositivos, sync/pull y sync/push', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it('actualización automática: /mobile/app/latest y /latest/file con sesión, Range, mandatory y sin sesión → 401', async () => {
+    const dir = process.env.MOBILE_APK_DIR!; rmSync(dir, { recursive: true, force: true });
+    const latest = (current?: string, token = vendorToken) => ctx.http.get('/api/v1/mobile/app/latest').set(hdr(token, deviceId, current ?? '1.0.0')).query(current ? { current } : {});
+    // sin APK publicado
+    expect((await latest('1.0.0')).body.data).toMatchObject({ available: false, updateAvailable: false, downloadPath: null, version: null });
+    expect((await ctx.http.get('/api/v1/mobile/app/latest/file').set(auth(vendorToken))).status).toBe(404);
+    // publicación
+    mkdirSync(dir, { recursive: true });
+    const apk = randomBytes(250_000); const sha = createHash('sha256').update(apk).digest('hex');
+    writeFileSync(path.join(dir, 'erp-ventas-prod-1.5.0.apk'), apk);
+    writeFileSync(path.join(dir, 'latest.json'), JSON.stringify({ version: '1.5.0', versionCode: 15, fileName: 'erp-ventas-prod-1.5.0.apk', sha256: sha, uploadedAt: '2026-10-27T00:00:00.000Z', notes: 'Crea productos' }));
+    const minNow = process.env.MOBILE_MIN_APP_VERSION ?? '1.0.0';
+    const old = await latest('0.0.1'); // por debajo del mínimo: igual puede consultar (no pasa por AppVersionGuard)
+    expect(old.status).toBe(200);
+    expect(old.body.data).toMatchObject({ available: true, version: '1.5.0', versionCode: 15, updateAvailable: true, mandatory: true, minAppVersion: minNow, notes: 'Crea productos', sizeBytes: 250_000, sha256: sha, fileName: 'erp-ventas-prod-1.5.0.apk', downloadPath: '/api/v1/mobile/app/latest/file' });
+    expect((await latest(minNow)).body.data).toMatchObject({ updateAvailable: true, mandatory: false });
+    expect((await latest('1.5.0')).body.data).toMatchObject({ updateAvailable: false, mandatory: false });
+    expect((await latest('2.0.0')).body.data.updateAvailable).toBe(false);
+    expect((await ctx.http.get('/api/v1/mobile/app/latest').set(auth(vendorToken)).query({ current: 'abc' })).status).toBe(400);
+    // descarga completa con sesión
+    const bin = (r: any, cb: any) => { const ch: Buffer[] = []; r.on('data', (d: Buffer) => ch.push(d)); r.on('end', () => cb(null, Buffer.concat(ch))); };
+    const full = await ctx.http.get('/api/v1/mobile/app/latest/file').set(auth(vendorToken)).buffer(true).parse(bin);
+    expect(full.status).toBe(200); expect(full.headers['content-type']).toContain('application/vnd.android.package-archive');
+    expect(full.headers['cache-control']).toContain('no-store'); expect(Number(full.headers['content-length'])).toBe(250_000); expect(Buffer.compare(full.body, apk)).toBe(0);
+    // reanudación
+    const part = await ctx.http.get('/api/v1/mobile/app/latest/file').set({ ...auth(vendorToken), Range: 'bytes=200000-' }).buffer(true).parse(bin);
+    expect(part.status).toBe(206); expect(part.headers['content-range']).toBe('bytes 200000-249999/250000'); expect(Buffer.compare(part.body, apk.subarray(200_000))).toBe(0);
+    // sin sesión → 401; sin permiso mobile:sync:use → 403
+    expect((await ctx.http.get('/api/v1/mobile/app/latest')).status).toBe(401);
+    expect((await ctx.http.get('/api/v1/mobile/app/latest/file')).status).toBe(401);
+    const other = await admin.post('/users', { email: `alm2-${Date.now()}@test.local`, fullName: 'Almacén 2', password: PASSWORD, roleCodes: ['ALMACENISTA'] });
+    const tk = (await ctx.http.post('/api/v1/auth/login').send({ email: other.body.data.email, password: PASSWORD })).body.data.accessToken;
+    expect((await ctx.http.get('/api/v1/mobile/app/latest').set(auth(tk))).status).toBe(403);
+    expect((await ctx.http.get('/api/v1/mobile/app/latest/file').set(auth(tk))).status).toBe(403);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it('seguridad: otro usuario no puede usar un dispositivo ajeno ni operar sin permiso móvil', async () => {
     const other = await admin.post('/users', { email: `compras-${Date.now()}@test.local`, fullName: 'Sin móvil', password: PASSWORD, roleCodes: ['ALMACENISTA'] });
     const tk = (await ctx.http.post('/api/v1/auth/login').send({ email: other.body.data.email, password: PASSWORD })).body.data.accessToken;

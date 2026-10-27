@@ -9,7 +9,7 @@ import { ZodPipe } from '../../common/http/zod.pipe';
 import { env } from '../../config/env';
 import { SalesModule } from '../sales/sales.module';
 import { appConfig, DevicesService, versionLt } from './devices.service';
-import { pullQuery, pushSchema, registerDeviceSchema } from './mobile.types';
+import { latestQuery, pullQuery, pushSchema, registerDeviceSchema } from './mobile.types';
 import { AuditService } from '../../common/audit/audit.service';
 import { MobileAppService } from './mobile-app.service';
 import { SyncPullService } from './sync-pull.service';
@@ -57,6 +57,33 @@ export class MobileController {
   download(@Query('token') token: string | undefined, @Res() res: Response) {
     this.app.verify(token ?? '');
     const f = this.app.file();
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.download(f.path, f.fileName);
+  }
+
+  // ───────────── actualización automática de la app (dispositivo con sesión) ─────────────
+  /**
+   * Versión publicada para el dispositivo (`current` = versión instalada). Sin AppVersionGuard a propósito: una app por debajo de la
+   * versión mínima debe poder consultar y descargar su actualización.
+   */
+  @Get('mobile/app/latest') @RequirePermissions('mobile:sync:use')
+  latest(@ZQuery(latestQuery) q: z.infer<typeof latestQuery>) {
+    const info = this.app.info();
+    const mandatory = !!q.current && versionLt(q.current, info.minAppVersion);
+    const updateAvailable = info.available && !!info.version && (!q.current || versionLt(q.current, info.version));
+    return {
+      available: info.available, version: info.version, versionCode: info.versionCode, updateAvailable, mandatory, minAppVersion: info.minAppVersion,
+      notes: info.notes, sizeBytes: info.sizeBytes, sha256: info.sha256, fileName: info.fileName, uploadedAt: info.uploadedAt,
+      downloadPath: info.available ? '/api/v1/mobile/app/latest/file' : null,
+    };
+  }
+
+  /** APK vigente con la sesión del dispositivo: `Content-Length` y `Range` (reanudación) los resuelve `res.download`. */
+  @Get('mobile/app/latest/file') @RequirePermissions('mobile:sync:use')
+  async latestFile(@CurrentUser() u: AuthUser, @Headers('range') range: string | undefined, @Res() res: Response) {
+    const f = this.app.file();
+    if (!range || /^bytes=0-/.test(range)) await this.audit.log('mobile_app', undefined, 'UPDATE_DOWNLOAD', { version: f.info.version, userId: u.userId });
     res.setHeader('Content-Type', 'application/vnd.android.package-archive');
     res.setHeader('Cache-Control', 'private, no-store');
     res.download(f.path, f.fileName);

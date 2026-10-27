@@ -94,3 +94,6 @@ export type OpResult = {
   /** El cliente ya existía por RIF y se vinculó al existente. */
   linked?: boolean;
 };
+
+/** Consulta de la versión publicada: `current` = versión instalada en el dispositivo (x.y.z). */
+export const latestQuery = z.object({ current: z.string().regex(/^\d+\.\d+\.\d+([-+][\w.]+)?$/, 'Formato x.y.z').optional() });

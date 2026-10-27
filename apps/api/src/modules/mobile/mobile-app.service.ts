@@ -8,7 +8,7 @@ import { NotFoundError } from '../../common/errors/errors';
 
 export interface ApkInfo {
   available: boolean;
-  version: string | null; fileName: string | null; sizeBytes: number | null; sha256: string | null; uploadedAt: string | null; notes: string | null;
+  version: string | null; versionCode: number | null; fileName: string | null; sizeBytes: number | null; sha256: string | null; uploadedAt: string | null; notes: string | null;
   /** Versión mínima que exige el servidor (las menores deben actualizarse). */
   minAppVersion: string;
 }
@@ -23,7 +23,7 @@ export class MobileAppService {
   private dir() { return path.resolve(env.MOBILE_APK_DIR); }
 
   info(): ApkInfo {
-    const none: ApkInfo = { available: false, version: null, fileName: null, sizeBytes: null, sha256: null, uploadedAt: null, notes: null, minAppVersion: env.MOBILE_MIN_APP_VERSION };
+    const none: ApkInfo = { available: false, version: null, versionCode: null, fileName: null, sizeBytes: null, sha256: null, uploadedAt: null, notes: null, minAppVersion: env.MOBILE_MIN_APP_VERSION };
     const meta = path.join(this.dir(), 'latest.json');
     if (!existsSync(meta)) return none;
     try {
@@ -31,7 +31,7 @@ export class MobileAppService {
       const fileName = path.basename(String(j.fileName ?? ''));
       const file = path.join(this.dir(), fileName);
       if (!fileName.endsWith('.apk') || !existsSync(file)) return none;
-      return { available: true, version: String(j.version ?? ''), fileName, sizeBytes: statSync(file).size, sha256: String(j.sha256 ?? ''), uploadedAt: String(j.uploadedAt ?? ''), notes: j.notes ? String(j.notes) : null, minAppVersion: env.MOBILE_MIN_APP_VERSION };
+      const vc = Number(j.versionCode); return { available: true, version: String(j.version ?? ''), versionCode: Number.isInteger(vc) && vc > 0 ? vc : null, fileName, sizeBytes: statSync(file).size, sha256: String(j.sha256 ?? ''), uploadedAt: String(j.uploadedAt ?? ''), notes: j.notes ? String(j.notes) : null, minAppVersion: env.MOBILE_MIN_APP_VERSION };
     } catch { return none; }
   }
 
