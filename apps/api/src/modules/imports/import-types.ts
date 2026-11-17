@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { formatRif, isValidRif } from '@erp/domain';
 import { PrismaService } from '../../common/db/prisma.service';
 import { InventoryDocsService } from '../inventory/inventory-docs.service';
+import { ProductsService } from '../products/products.service';
 import { IntegrationEventsService } from '../integration/integration-events.service';
 import { parseBool, parseDecimal, splitList } from './import-file';
 
@@ -9,7 +10,7 @@ type Tx = Prisma.TransactionClient;
 
 export interface ImportColumn { key: string; header: string; required?: boolean; help: string; example: string }
 export interface ImportOptions { onExisting: 'skip' | 'update' }
-export interface ImportCtx { prisma: PrismaService; tx: Tx; companyId: string; userId?: string; docs: InventoryDocsService; events: IntegrationEventsService; today: string }
+export interface ImportCtx { prisma: PrismaService; tx: Tx; companyId: string; userId?: string; docs: InventoryDocsService; products: ProductsService; events: IntegrationEventsService; today: string }
 export interface Planned<T = Record<string, any>> { row: number; action: 'create' | 'update' | 'skip'; errors: string[]; warnings: string[]; data: T; label: string }
 export type RawRow = { row: number; values: Record<string, string> };
 
@@ -19,6 +20,8 @@ export interface ImportTypeDef {
   permission: string;
   columns: ImportColumn[];
   supportsExisting: boolean;
+  /** Libro con una hoja por depósito: se leen todas las hojas (ver `parseImportFile`). */
+  allSheets?: boolean;
   plan(ctx: ImportCtx, rows: RawRow[], o: ImportOptions): Promise<Planned[]>;
   apply(ctx: ImportCtx, planned: Planned[]): Promise<{ created: number; updated: number; note?: string }>;
 }
@@ -355,6 +358,156 @@ const openingStock: ImportTypeDef = {
   },
 };
 
+// ═══════════════════════════ INVENTARIO (sincronización recurrente) ═══════════════════════════
+const normName = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const whCodeOf = (name: string) => normName(name).replace(/ /g, '_').toUpperCase().slice(0, 20) || 'DEPOSITO';
+
+/**
+ * Archivo de inventario del cliente (p. ej. «INVENTARIO ELECTRO SUR.xlsx»), que se vuelve a subir cada vez que cambia:
+ * una hoja por depósito, columnas CODIGO · DESCRIPCION · MARCA · CANTIDAD · Precio_Vta. Idempotente: subir el mismo
+ * archivo dos veces no cambia nada. Lo que no aparece en el archivo no se toca.
+ */
+const inventorySync: ImportTypeDef = {
+  key: 'inventory-sync', title: 'Inventario (sincronización)', allSheets: true, supportsExisting: true,
+  description: 'Se puede subir una y otra vez. Una sola hoja con CODIGO · DESCRIPCION · MARCA · CANTIDAD · Precio_Vta. Agrega los productos nuevos y lleva la existencia de cada código a la CANTIDAD del archivo mediante un ajuste de inventario (queda en el kardex); los productos que no aparecen en el archivo no se tocan. Precio_Vta (USD, mayor que cero) actualiza solo la Lista 1 (predeterminada) y de ahí se recalculan las listas derivadas en Bs (precio 1 + % × tasa BCV del día). Se usa el depósito principal salvo que haya columna «deposito» (o varias hojas: cada hoja es un depósito). Con «Si ya existe: actualizar» también se actualizan nombre y marca. Un código repetido suma sus cantidades.',
+  permission: 'inventory:adjustments:confirm',
+  columns: [
+    c('codigo', 'codigo', 'Código del producto (SKU)', '69-8317', true), c('descripcion', 'descripcion', 'Nombre del producto (obligatorio para productos nuevos)', 'CARBONERA ARRANQUE FORD LASER', true),
+    c('marca', 'marca', 'Marca (opcional, máx. 80)', 'MOTTA'), c('cantidad', 'cantidad', 'Existencia contada; el sistema queda con esta cantidad (vacío = 0)', '4', true),
+    c('precio_vta', 'precio_vta', 'Precio de venta en USD para la Lista 1 (0 o vacío = no cambia)', '12,50'),
+    c('deposito', 'deposito', 'Opcional: código o nombre del depósito (por defecto, el principal)', 'PRINCIPAL'),
+  ],
+  async plan(ctx, rows, o) {
+    const { tx } = ctx;
+    const [prods, whs, units, taxes, lists, stock] = await Promise.all([
+      tx.product.findMany({ where: { deletedAt: null } }), tx.warehouse.findMany({ where: { deletedAt: null } }), tx.unit.findMany({ where: { deletedAt: null } }),
+      tx.tax.findMany({ where: { deletedAt: null, isActive: true, validFrom: { lte: new Date(ctx.today) } }, orderBy: { validFrom: 'desc' } }),
+      tx.priceList.findMany({ where: { deletedAt: null, isDefault: true } }), tx.inventoryStock.findMany({ select: { productId: true, warehouseId: true, quantity: true } }),
+    ]);
+    const prodBy = new Map(prods.map(p => [p.sku.toLowerCase(), p]));
+    const whBy = new Map<string, { id: string; name: string }>();
+    for (const w of whs) { whBy.set(normName(w.code), w); whBy.set(normName(w.name), w); }
+    const activeWhs = whs.filter(w => w.isActive).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const mainWh = activeWhs.find(w => w.code.toUpperCase() === 'PRINCIPAL') ?? activeWhs[0];
+    const unit = units.find(u => u.code.toUpperCase() === 'UND') ?? units[0];
+    const tax = taxes.find(t => t.code.toUpperCase() === 'IVA_GENERAL');
+    const sysQty = new Map(stock.map(s => [`${s.productId}|${s.warehouseId}`, Number(s.quantity)]));
+    const defaultList = lists[0];
+    const curPrice = new Map<string, number>(); // precio vigente por producto en la lista predeterminada
+    if (defaultList) for (const pp of await tx.productPrice.findMany({ where: { priceListId: defaultList.id, validFrom: { lte: new Date(ctx.today) } }, orderBy: { validFrom: 'desc' } })) if (!curPrice.has(pp.productId)) curPrice.set(pp.productId, Number(pp.price));
+    const defCur = defaultList ? await tx.currency.findUnique({ where: { id: defaultList.currencyId } }) : null;
+    const first = new Map<string, Planned>(); // `${depósito}|${sku}` → fila que acumula
+    const sheetsNoted = new Set<string>();
+    let curNoted = false;
+
+    const out = rows.map(r => {
+      const sku = v(r, 'codigo'), name = v(r, 'descripcion'), depName = v(r, 'deposito') || mainWh?.name || '';
+      const p: Planned = { row: r.row, action: 'create', errors: [], warnings: [], data: {}, label: `${sku} · ${depName || '—'}${name ? ' · ' + name.slice(0, 60) : ''}` };
+      if (!sku) p.errors.push('El código es obligatorio'); else if (sku.length > 60) p.errors.push('Código demasiado largo (máx. 60)');
+      if (!depName) p.errors.push('No hay depósito: cree uno o indique la columna deposito');
+      const wh = depName ? whBy.get(normName(depName)) : undefined;
+      const whKey = normName(depName);
+      if (depName && !wh && !sheetsNoted.has(whKey)) { sheetsNoted.add(whKey); p.warnings.push(`El depósito «${depName}» no existe: se creará con código ${whCodeOf(depName)}`); }
+      const prod = sku ? prodBy.get(sku.toLowerCase()) : undefined;
+      if (!name && !prod) p.errors.push('La descripción es obligatoria para un producto nuevo');
+      if (v(r, 'marca').length > 80) p.errors.push('La marca no puede pasar de 80 caracteres');
+      let qty = 0;
+      if (!v(r, 'cantidad')) p.warnings.push('Cantidad vacía: se toma como 0');
+      else { const n = parseDecimal(v(r, 'cantidad')); if (n === null || Number(n) < 0) p.errors.push('cantidad no es un número válido'); else qty = Number(n); }
+      let price: string | undefined;
+      if (defCur && defCur.code !== 'USD' && v(r, 'precio_vta') && !curNoted) { curNoted = true; p.warnings.push(`La Lista 1 (${defaultList!.name}) está en ${defCur.code}, no en USD: Precio_Vta se guardará en esa moneda`); }
+      if (v(r, 'precio_vta')) { const n = parseDecimal(v(r, 'precio_vta')); if (n === null || Number(n) < 0) p.errors.push('precio_vta no es un número válido'); else if (Number(n) > 0) { if (!defaultList) p.errors.push('No hay lista de precios predeterminada'); else price = n; } }
+      if (prod) {
+        if (prod.isService) p.errors.push('Es un servicio: no tiene existencias');
+        else if (prod.trackingMode !== 'NONE') p.errors.push('El producto se controla por lote/serial: ajústelo desde Inventario');
+        else if (!prod.isActive) p.errors.push('El producto está inactivo');
+      } else if (!unit) p.errors.push('No hay unidades de medida configuradas');
+
+      const key = `${whKey}|${sku.toLowerCase()}`;
+      const head = sku && depName ? first.get(key) : undefined;
+      if (head) { // repetido en la misma hoja: suma a la primera fila
+        head.data.quantity += qty; head.data.merged += 1;
+        if (price && !head.data.price) head.data.price = price;
+        head.warnings = head.warnings.filter(w => !w.startsWith('Código repetido')); head.warnings.push(`Código repetido en el archivo (${head.data.merged + 1} filas): se suman las cantidades → ${head.data.quantity}`);
+        p.action = 'skip'; p.warnings.push(`Repetido: su cantidad (${qty}) se sumó a la fila ${head.row}`);
+        return p;
+      }
+      const sys = prod && wh ? (sysQty.get(`${prod.id}|${wh.id}`) ?? 0) : 0;
+      p.data = { sku, name, brand: v(r, 'marca') || undefined, price, quantity: qty, merged: 0, productId: prod?.id, warehouseId: wh?.id, warehouseName: depName, sys, unitId: unit?.id, taxId: tax?.id };
+      if (sku && depName) first.set(key, p);
+      return p;
+    });
+
+    // Acción final por fila (ya con cantidades acumuladas)
+    const willCreate = new Set<string>(); // un mismo código nuevo en varias hojas se crea una sola vez
+    for (const p of out) {
+      if (p.action === 'skip' || p.errors.length) continue;
+      const d = p.data; const prod = d.productId ? prods.find(x => x.id === d.productId) : undefined;
+      d.needsStock = d.quantity !== d.sys;
+      const masterChange = !!prod && o.onExisting === 'update' && ((d.name && d.name !== prod.name) || (d.brand && d.brand !== prod.brand));
+      d.updateMaster = masterChange;
+      if (!prod && willCreate.has(d.sku.toLowerCase())) { d.followsNew = true; p.action = d.needsStock || d.price ? 'update' : 'skip'; }
+      else if (!prod) { willCreate.add(d.sku.toLowerCase()); p.action = 'create'; if (!tax) p.warnings.push('Sin impuesto IVA_GENERAL configurado: el producto se crea sin impuesto'); }
+      else {
+        if (d.price && curPrice.get(prod.id) === Number(d.price)) d.price = undefined; // sin cambio de precio
+        p.action = d.needsStock || masterChange || d.price ? 'update' : 'skip';
+      }
+      if (d.needsStock) p.label += `  (existencia ${d.sys} → ${d.quantity})`;
+    }
+    return out;
+  },
+  async apply(ctx, planned) {
+    const { tx, companyId, userId } = ctx;
+    // 1. depósitos nuevos
+    const newWh = new Map<string, string>(); // clave normalizada → id
+    for (const p of planned) if (!p.data.warehouseId) {
+      const k = normName(p.data.warehouseName);
+      if (!newWh.has(k)) {
+        const code = whCodeOf(p.data.warehouseName);
+        const w = await tx.warehouse.create({ data: { companyId, code, name: p.data.warehouseName.trim().slice(0, 120) } });
+        newWh.set(k, w.id);
+      }
+    }
+    const whId = (p: Planned) => (p.data.warehouseId ?? newWh.get(normName(p.data.warehouseName))) as string;
+
+    // 2. productos nuevos
+    const creates = planned.filter(p => p.action === 'create');
+    const idBySku = new Map<string, string>();
+    if (creates.length) {
+      const made = await tx.product.createManyAndReturn({ data: creates.map(p => ({ companyId, sku: p.data.sku, name: p.data.name, brand: p.data.brand ?? null, unitId: p.data.unitId, taxId: p.data.taxId ?? null, createdBy: userId, updatedBy: userId })) });
+      made.forEach(x => idBySku.set(x.sku, x.id));
+    }
+    const productIdOf = (p: Planned) => (p.data.productId ?? idBySku.get(p.data.sku)) as string;
+
+    // 3. datos de productos existentes
+    let updated = 0;
+    for (const p of planned.filter(x => x.action === 'update')) {
+      if (p.data.updateMaster) await tx.product.update({ where: { id: p.data.productId }, data: { ...(p.data.name ? { name: p.data.name } : {}), ...(p.data.brand ? { brand: p.data.brand } : {}), updatedBy: userId, version: { increment: 1 } } });
+      if (!p.data.followsNew) updated++;
+    }
+    // 4. precios
+    const defaultList = await tx.priceList.findFirst({ where: { deletedAt: null, isDefault: true } });
+    if (defaultList) for (const p of planned.filter(x => x.data.price)) {
+      const productId = productIdOf(p); const validFrom = new Date(ctx.today);
+      await tx.productPrice.upsert({
+        where: { companyId_productId_priceListId_validFrom: { companyId, productId, priceListId: defaultList.id, validFrom } },
+        update: { price: p.data.price, createdBy: userId }, create: { companyId, productId, priceListId: defaultList.id, price: p.data.price, validFrom, createdBy: userId },
+      });
+    }
+    // 5. existencias: un ajuste de inventario por depósito, solo con las líneas que cambian
+    const byWh = new Map<string, Planned[]>();
+    for (const p of planned) if (p.data.needsStock) byWh.set(whId(p), [...(byWh.get(whId(p)) ?? []), p]);
+    const reason = await tx.movementReason.findFirst({ where: { code: 'AJU-INV', deletedAt: null } });
+    for (const [warehouseId, list] of byWh) {
+      const doc = await ctx.docs.create('ADJUSTMENT', { warehouseId, reasonId: reason?.id ?? null, notes: 'Sincronización de inventario (importación)', lines: list.map(p => ({ productId: productIdOf(p), countedQty: String(p.data.quantity) })) });
+      await ctx.docs.confirm('ADJUSTMENT', doc.id);
+    }
+    const derived = await ctx.products.recomputeDerivedLists(ctx.today);
+    const dNote = derived.length ? `; listas derivadas: ${derived.map(d => d.error ? `${d.code} (${d.error})` : `${d.code} ${d.changed} precio(s)`).join(', ')}` : '';
+    return { created: creates.length, updated, note: `${byWh.size} ajuste(s) de inventario confirmados (${[...byWh.values()].reduce((a, l) => a + l.length, 0)} líneas)${newWh.size ? `; ${newWh.size} depósito(s) creados` : ''}${dNote}` };
+  },
+};
+
 // ═══════════════════════════ LISTAS DE PRECIOS ═══════════════════════════
 const prices: ImportTypeDef = {
   key: 'prices', title: 'Precios por lista', description: 'Precio de cada producto en una lista de precios (en la moneda de la lista). Si ya hay precio para esa fecha se actualiza; cada cambio queda en el historial.',
@@ -496,5 +649,5 @@ const openingPayables: ImportTypeDef = {
 };
 
 
-export const IMPORT_TYPES: ImportTypeDef[] = [categories, locations, products, thirdParty('suppliers'), thirdParty('customers'), openingStock, prices, openingReceivables, openingPayables];
+export const IMPORT_TYPES: ImportTypeDef[] = [inventorySync, categories, locations, products, thirdParty('suppliers'), thirdParty('customers'), openingStock, prices, openingReceivables, openingPayables];
 export const findImportType = (key: string) => IMPORT_TYPES.find(t => t.key === key);

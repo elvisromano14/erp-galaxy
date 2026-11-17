@@ -13,7 +13,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useNotice } from "@/context/NoticeContext";
 import { Link, useRouter } from "@/i18n/navigation";
 import { Modal } from "@/components/ui/modal";
-import { ApiError, api, del, openPdf, patch, post } from "@/lib/api";
+import { ApiError, api, del, openPdf, printReceipt, patch, post } from "@/lib/api";
 import { fmtDate, fmtDateTime, fmtMoney, fmtNumber, fmtQty, todayCaracas } from "@/lib/format";
 import { notFound, useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -430,6 +430,9 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
     if ((T === "INVOICE" || T === "CREDIT_NOTE" || T === "DEBIT_NOTE") && doc && status !== "DRAFT") {
       add("pdf", <Button variant="outline" size="sm" onClick={() => openPdf(`${meta.api}/${id}/pdf`).catch((e) => setError(e instanceof ApiError ? e : new ApiError(0, "ERROR", String(e))))}>{t("sales.pdf")}</Button>);
       add("tk", <Button variant="outline" size="sm" onClick={() => openPdf(`${meta.api}/${id}/pdf`, { format: "ticket" }).catch((e) => setError(e instanceof ApiError ? e : new ApiError(0, "ERROR", String(e))))}>{t("sales.pdfTicket")}</Button>);
+    }
+    if (T === "INVOICE" && doc && status !== "DRAFT") {
+      add("rc", <Button variant="outline" size="sm" onClick={() => printReceipt(`${meta.api}/${id}/receipt`).catch((e) => setError(e instanceof ApiError ? e : new ApiError(0, "ERROR", String(e))))}>{t("sales.receipt58")}</Button>);
     }
     if (T === "QUOTE") {
       if (status === "DRAFT" && can(P("confirm"))) add("send", <Button size="sm" disabled={busy} onClick={() => setDialog("send")}>{t("purchases.send")}</Button>);

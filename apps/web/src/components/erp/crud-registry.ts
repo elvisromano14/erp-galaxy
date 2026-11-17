@@ -40,8 +40,13 @@ export const CRUD_REGISTRY: Record<string, CrudDef> = {
   },
   "price-lists": {
     resource: "price-lists", permission: "admin:price-lists", softDelete: true, defaultSort: "code",
-    columns: [{ key: "code", sort: true }, { key: "name" }, { key: "isDefault", type: "bool" }],
-    fields: [code, name, { name: "currencyId", type: "ref", resource: "currencies", labelKey: (r) => `${r.code} — ${r.name}`, required: true }, { name: "isDefault", type: "boolean" }],
+    columns: [{ key: "code", sort: true }, { key: "name" }, { key: "isDefault", type: "bool" }, { key: "markupPercent" }],
+    fields: [
+      code, name, { name: "currencyId", type: "ref", resource: "currencies", labelKey: (r) => `${r.code} — ${r.name}`, required: true }, { name: "isDefault", type: "boolean" },
+      // Lista derivada (p. ej. Bs): precio = precio de la lista base × (1 + %) × tasa BCV del día. Se recalcula sola al cambiar la tasa.
+      { name: "baseListId", type: "ref", resource: "price-lists", labelKey: (r) => `${r.code} — ${r.name}`, nullable: true },
+      { name: "markupPercent", type: "decimal", nullable: true, hint: "% sobre el precio de la lista base; se multiplica por la tasa BCV del día" },
+    ],
   },
   locations: {
     resource: "locations", permission: "admin:locations", softDelete: true, defaultSort: "code",

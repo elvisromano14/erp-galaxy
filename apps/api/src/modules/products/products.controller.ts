@@ -8,6 +8,7 @@ import { addPriceSchema, bulkPriceSchema, createProductSchema, listProductsSchem
 import { ZBody, ZQuery } from '../../common/http/zod.decorators';
 
 const id = new ZodPipe(uuid);
+const recalcSchema = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
 
 @ApiTags('products') @ApiBearerAuth()
 @Controller('products')
@@ -16,6 +17,9 @@ export class ProductsController {
 
   @Get() @RequirePermissions('admin:products:read')
   list(@ZQuery(listProductsSchema) q: z.infer<typeof listProductsSchema>) { return this.svc.list(q); }
+
+  @Post('prices/recalculate') @RequirePermissions('admin:price-lists:update')
+  recalc(@ZBody(recalcSchema) b: z.infer<typeof recalcSchema>) { return this.svc.recomputeDerivedLists(b.date); }
 
   @Post('prices/bulk') @RequirePermissions('admin:products:update', 'admin:price-lists:update')
   bulkPrices(@ZBody(bulkPriceSchema) b: z.infer<typeof bulkPriceSchema>) { return this.svc.bulkPrices(b); }

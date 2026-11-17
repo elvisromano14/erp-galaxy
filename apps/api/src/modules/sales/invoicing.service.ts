@@ -11,6 +11,7 @@ import { MoveRequest, PostingService } from '../inventory/posting.service';
 import { ReceivablesService } from '../treasury/receivables.service';
 import { TreasuryService } from '../treasury/treasury.service';
 import { invoicePdf, InvoicePdfData } from './invoice-pdf';
+import { receiptEscPos, receiptHtml, receiptLines, receiptText } from './receipt58';
 import { SalesService } from './sales.service';
 import { confirmInvoiceSchema, creditNoteSchema, debitNoteSchema, SalesDocInput, Viewer } from './sales.types';
 
@@ -391,6 +392,23 @@ export class InvoicingService {
   // ═════════════════════════ PDF ═════════════════════════
 
   async pdf(docType: 'INVOICE' | 'CREDIT_NOTE' | 'DEBIT_NOTE', id: string, format: 'a4' | 'ticket', v: Viewer) {
+    const data = await this.printData(docType, id, v);
+    const doc = { number: data.number };
+    const buffer = await invoicePdf(data, format);
+    return { buffer, filename: `${docType === 'INVOICE' ? 'factura' : docType === 'CREDIT_NOTE' ? 'nota-credito' : 'nota-debito'}-${doc.number}${format === 'ticket' ? '-ticket' : ''}.pdf` };
+  }
+
+  /** Recibo para impresora térmica de 58 mm (MP58-04): `escpos` (bytes para enviar por Bluetooth), `text` (32 columnas) o `html` (imprimible desde el navegador). */
+  async receipt(docType: 'INVOICE' | 'CREDIT_NOTE' | 'DEBIT_NOTE', id: string, format: 'escpos' | 'text' | 'html', v: Viewer) {
+    const data = await this.printData(docType, id, v);
+    const lines = receiptLines(data);
+    const base = `recibo-${data.number}`;
+    if (format === 'escpos') return { buffer: receiptEscPos(lines), mime: 'application/octet-stream', filename: `${base}.bin` };
+    if (format === 'text') return { buffer: Buffer.from(receiptText(lines), 'utf8'), mime: 'text/plain; charset=utf-8', filename: `${base}.txt` };
+    return { buffer: Buffer.from(receiptHtml(lines, `Recibo ${data.number}`), 'utf8'), mime: 'text/html; charset=utf-8', filename: `${base}.html` };
+  }
+
+  private async printData(docType: 'INVOICE' | 'CREDIT_NOTE' | 'DEBIT_NOTE', id: string, v: Viewer): Promise<InvoicePdfData> {
     const tx = this.prisma.tx;
     const doc = await this.sales.get(docType, id, v);
     if (doc.status === 'DRAFT') throw new BusinessRuleException('El borrador no tiene PDF fiscal; emita el documento primero', 'DRAFT_NO_PDF');
@@ -417,7 +435,6 @@ export class InvoicingService {
       payments: payments.map(p => ({ method: methods.get(p.paymentMethodId) ?? '', currency: currencies.get(p.currencyId) ?? '', amount: p.amount.toString(), reference: p.reference })),
       legend: doc.fiscalNumber ? 'Comprobante de gestión interna. El documento fiscal válido es el emitido por la impresora fiscal.' : env.INVOICE_LEGEND,
     };
-    const buffer = await invoicePdf(data, format);
-    return { buffer, filename: `${docType === 'INVOICE' ? 'factura' : docType === 'CREDIT_NOTE' ? 'nota-credito' : 'nota-debito'}-${doc.number}${format === 'ticket' ? '-ticket' : ''}.pdf` };
+    return data;
   }
 }

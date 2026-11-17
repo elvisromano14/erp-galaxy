@@ -15,6 +15,8 @@ import { BusinessRuleException, NotFoundError } from '../../common/errors/errors
 import { ZQuery } from '../../common/http/zod.decorators';
 import { InventoryDocsService } from '../inventory/inventory-docs.service';
 import { InventoryModule } from '../inventory/inventory.module';
+import { ProductsModule } from '../products/products.module';
+import { ProductsService } from '../products/products.service';
 import { MAX_IMPORT_ROWS, parseImportFile } from './import-file';
 import { IntegrationEventsService } from '../integration/integration-events.service';
 import { findImportType, IMPORT_TYPES, ImportCtx, ImportTypeDef, Planned } from './import-types';
@@ -25,7 +27,7 @@ const MAX_BYTES = 10 * 1024 * 1024;
 
 @Injectable()
 export class ImportsService {
-  constructor(private readonly prisma: PrismaService, private readonly perms: PermissionsService, private readonly audit: AuditService, private readonly docs: InventoryDocsService, private readonly events: IntegrationEventsService) {}
+  constructor(private readonly prisma: PrismaService, private readonly perms: PermissionsService, private readonly audit: AuditService, private readonly docs: InventoryDocsService, private readonly products: ProductsService, private readonly events: IntegrationEventsService) {}
 
   private async can(user: AuthUser, def: ImportTypeDef) {
     if (user.isSuperAdmin) return true;
@@ -74,14 +76,14 @@ export class ImportsService {
     if (!def || !(await this.can(user, def))) throw new NotFoundError('Tipo de importación', key);
     if (!file) throw new BadRequestException({ error: 'FILE_REQUIRED', message: 'Adjunte el archivo en el campo «file»' });
     let parsed;
-    try { parsed = await parseImportFile(file.buffer, file.originalname); } catch (e) { throw new BusinessRuleException((e as Error).message, 'INVALID_FILE'); }
+    try { parsed = await parseImportFile(file.buffer, file.originalname, { allSheets: def.allSheets, requiredHeaders: def.columns.filter(c => c.required).map(c => c.header) }); } catch (e) { throw new BusinessRuleException((e as Error).message, 'INVALID_FILE'); }
     if (!parsed.rows.length) throw new BusinessRuleException('El archivo no tiene filas de datos', 'EMPTY_FILE');
     if (parsed.rows.length > MAX_IMPORT_ROWS) throw new BusinessRuleException(`El archivo tiene ${parsed.rows.length} filas; el máximo es ${MAX_IMPORT_ROWS}. Divídalo en varios`, 'TOO_MANY_ROWS');
     const missing = def.columns.filter(c => c.required && !parsed.headers.includes(c.header));
     if (missing.length) throw new BusinessRuleException(`Faltan columnas obligatorias: ${missing.map(m => m.header).join(', ')}`, 'MISSING_COLUMNS', missing.map(m => ({ field: m.header, code: 'MISSING_COLUMN' })));
     const unknown = parsed.headers.filter(h => h && !def.columns.some(c => c.header === h));
 
-    const ctx: ImportCtx = { prisma: this.prisma, tx: this.prisma.tx, companyId: this.prisma.companyId, userId: this.prisma.userId, docs: this.docs, events: this.events, today: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' }) };
+    const ctx: ImportCtx = { prisma: this.prisma, tx: this.prisma.tx, companyId: this.prisma.companyId, userId: this.prisma.userId, docs: this.docs, products: this.products, events: this.events, today: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' }) };
     const planned = await def.plan(ctx, parsed.rows, { onExisting });
     const summary = {
       total: planned.length, create: planned.filter(p => p.action === 'create' && !p.errors.length).length, update: planned.filter(p => p.action === 'update').length,
@@ -129,5 +131,5 @@ export class ImportsController {
   }
 }
 
-@Module({ imports: [InventoryModule], controllers: [ImportsController], providers: [ImportsService] })
+@Module({ imports: [InventoryModule, ProductsModule], controllers: [ImportsController], providers: [ImportsService] })
 export class ImportsModule {}

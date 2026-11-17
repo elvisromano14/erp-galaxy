@@ -10,7 +10,7 @@ import { ZBody, ZQuery } from '../../common/http/zod.decorators';
 import { InvoicingService } from './invoicing.service';
 import { SalesService } from './sales.service';
 import {
-  SalesRoute, SALES_ROUTES, salesCancelSchema, salesDocSchema, salesDocUpdateSchema, salesListSchema, confirmSchema, confirmInvoiceSchema, creditNoteSchema, debitNoteSchema, pdfQuery, Viewer,
+  SalesRoute, SALES_ROUTES, salesCancelSchema, salesDocSchema, salesDocUpdateSchema, salesListSchema, receiptQuery, confirmSchema, confirmInvoiceSchema, creditNoteSchema, debitNoteSchema, pdfQuery, Viewer,
 } from './sales.types';
 
 const id = new ZodPipe(uuid);
@@ -119,6 +119,14 @@ export class SalesActionsController {
   @Get('invoices/:id/pdf') @RequirePermissions('sales:invoices:read')
   async invoicePdf(@CurrentUser() u: AuthUser, @Param('id', id) did: string, @ZQuery(pdfQuery) q: z.infer<typeof pdfQuery>, @Res({ passthrough: true }) res: Response) {
     return this.sendPdf(res, await this.inv.pdf('INVOICE', did, q.format, await viewerOf(this.perms, u)));
+  }
+
+  /** Recibo 58 mm para impresora térmica (MP58-04): format=html (imprimir desde el navegador) · escpos (bytes para Bluetooth) · text. */
+  @Get('invoices/:id/receipt') @RequirePermissions('sales:invoices:read')
+  async invoiceReceipt(@CurrentUser() u: AuthUser, @Param('id', id) did: string, @ZQuery(receiptQuery) q: z.infer<typeof receiptQuery>, @Res({ passthrough: true }) res: Response) {
+    const r = await this.inv.receipt('INVOICE', did, q.format, await viewerOf(this.perms, u));
+    res.setHeader('Content-Disposition', `${q.format === 'html' ? 'inline' : 'attachment'}; filename="${r.filename}"`);
+    return new StreamableFile(r.buffer, { type: r.mime });
   }
 
   @Get('credit-notes/:id/pdf') @RequirePermissions('sales:credit-notes:read')

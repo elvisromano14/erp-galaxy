@@ -41,29 +41,28 @@ export function parseCsv(text: string): string[][] {
   return rows;
 }
 
-export async function parseImportFile(buf: Buffer, filename: string): Promise<ParsedFile> {
-  let table: string[][];
-  if (/\.xlsx$/i.test(filename)) {
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buf as unknown as ExcelJS.Buffer);
-    const ws = wb.getWorksheet('Datos') ?? wb.worksheets[0];
-    if (!ws) throw new Error('El archivo no tiene hojas');
-    // Protección contra libros enormes (la hoja ya está en memoria, pero no se recorre ni se copia a texto).
-    if (ws.rowCount > MAX_IMPORT_ROWS + 100) throw new Error(`La hoja tiene ${ws.rowCount} filas; el máximo es ${MAX_IMPORT_ROWS}`);
-    if (ws.columnCount > 80) throw new Error('La hoja tiene demasiadas columnas');
-    table = [];
-    ws.eachRow({ includeEmpty: true }, (row, n) => {
-      const vals: string[] = [];
-      for (let c = 1; c <= ws.columnCount; c++) vals.push(cellText(row.getCell(c).value));
-      table[n - 1] = vals;
-    });
-    for (let i = 0; i < table.length; i++) table[i] = table[i] ?? [];
-  } else if (/\.csv$/i.test(filename) || /\.txt$/i.test(filename)) {
-    table = parseCsv(buf.toString('utf8'));
-  } else throw new Error('Formato no soportado: use .xlsx o .csv');
+export interface ParseOptions {
+  /** Lee todas las hojas del libro (cada hoja = un depósito). El encabezado se busca por la columna «codigo». */
+  allSheets?: boolean;
+  /** Columnas (ya normalizadas) que cada hoja debe traer; solo con `allSheets`. */
+  requiredHeaders?: string[];
+}
 
-  const headerIdx = table.findIndex(r => r.some(c => c.trim() !== ''));
-  if (headerIdx < 0) throw new Error('El archivo está vacío');
+function sheetTable(ws: ExcelJS.Worksheet): string[][] {
+  // Protección contra libros enormes (la hoja ya está en memoria, pero no se recorre ni se copia a texto).
+  if (ws.rowCount > MAX_IMPORT_ROWS + 100) throw new Error(`La hoja «${ws.name}» tiene ${ws.rowCount} filas; el máximo es ${MAX_IMPORT_ROWS}`);
+  if (ws.columnCount > 80) throw new Error(`La hoja «${ws.name}» tiene demasiadas columnas`);
+  const table: string[][] = [];
+  ws.eachRow({ includeEmpty: true }, (row, n) => {
+    const vals: string[] = [];
+    for (let c = 1; c <= ws.columnCount; c++) vals.push(cellText(row.getCell(c).value));
+    table[n - 1] = vals;
+  });
+  for (let i = 0; i < table.length; i++) table[i] = table[i] ?? [];
+  return table;
+}
+
+function tableRows(table: string[][], headerIdx: number, extra?: Record<string, string>) {
   const headers = table[headerIdx].map(normHeader);
   const rows: ParsedFile['rows'] = [];
   for (let i = headerIdx + 1; i < table.length; i++) {
@@ -71,9 +70,53 @@ export async function parseImportFile(buf: Buffer, filename: string): Promise<Pa
     if (!r.some(c => c.trim() !== '')) continue; // fila vacía
     const values: Record<string, string> = {};
     headers.forEach((h, c) => { if (h) values[h] = (r[c] ?? '').trim(); });
+    if (extra) for (const [k, val] of Object.entries(extra)) if (!values[k]) values[k] = val;
     rows.push({ row: i + 1, values });
   }
   return { headers, rows };
+}
+
+export async function parseImportFile(buf: Buffer, filename: string, opts: ParseOptions = {}): Promise<ParsedFile> {
+  let table: string[][];
+  if (/\.xlsx$/i.test(filename)) {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as unknown as ExcelJS.Buffer);
+    if (opts.allSheets) {
+      const headers = new Set<string>(); const rows: ParsedFile['rows'] = [];
+      const sheets: { name: string; rows: ParsedFile['rows'] }[] = [];
+      for (const ws of wb.worksheets) {
+        if (/^(ejemplo|instrucciones)$/i.test(ws.name.trim())) continue; // hojas de la plantilla descargable
+        const t = sheetTable(ws);
+        if (!t.some(r => r.some(c => c.trim() !== ''))) continue; // hoja vacía
+        const idx = t.findIndex(r => r.some(c => normHeader(c) === 'codigo'));
+        if (idx < 0) throw new Error(`La hoja «${ws.name}» no tiene la columna CODIGO`);
+        const parsed = tableRows(t, idx);
+        const lacking = (opts.requiredHeaders ?? []).filter(h => !parsed.headers.includes(h));
+        if (lacking.length) throw new Error(`La hoja «${ws.name}» no tiene la(s) columna(s): ${lacking.join(', ')}`);
+        parsed.headers.forEach(h => h && headers.add(h));
+        sheets.push({ name: ws.name.trim(), rows: parsed.rows });
+      }
+      // Una sola hoja: el depósito sale de la columna «deposito» o es el principal. Varias hojas: cada hoja es un depósito.
+      const multi = sheets.length > 1 && !/^datos$/i.test(sheets[0].name);
+      if (multi) headers.add('deposito');
+      for (const sh of sheets) {
+        if (multi) for (const r of sh.rows) if (!r.values.deposito) r.values.deposito = sh.name;
+        rows.push(...sh.rows); // mismo número de fila que en Excel
+        if (rows.length > MAX_IMPORT_ROWS + 100) throw new Error(`El libro supera ${MAX_IMPORT_ROWS} filas de datos`);
+      }
+      if (!rows.length) throw new Error('El archivo está vacío');
+      return { headers: [...headers], rows };
+    }
+    const ws = wb.getWorksheet('Datos') ?? wb.worksheets[0];
+    if (!ws) throw new Error('El archivo no tiene hojas');
+    table = sheetTable(ws);
+  } else if (/\.csv$/i.test(filename) || /\.txt$/i.test(filename)) {
+    table = parseCsv(buf.toString('utf8'));
+  } else throw new Error('Formato no soportado: use .xlsx o .csv');
+
+  const headerIdx = table.findIndex(r => r.some(c => c.trim() !== ''));
+  if (headerIdx < 0) throw new Error('El archivo está vacío');
+  return tableRows(table, headerIdx);
 }
 
 // ───────── conversión de valores ─────────

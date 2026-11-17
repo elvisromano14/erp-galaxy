@@ -68,9 +68,22 @@ export const CATALOGS: CrudConfig<any>[] = [
   },
   {
     path: 'price-lists', entity: 'price_list', model: 'priceList', permission: 'admin:price-lists',
-    create: z.object({ code, name, currencyId: uuid, isDefault: z.boolean().optional() }),
+    create: z.object({ code, name, currencyId: uuid, isDefault: z.boolean().optional(), baseListId: optUuid, markupPercent: decimalStr.refine(v => Number(v) > -100 && Number(v) <= 1000, 'Debe estar entre -100 y 1000').nullable().optional() }),
     searchFields: ['code', 'name'], sortable: ['code', 'name'], defaultSort: 'code', softDelete: true,
     beforeSave: async (d, { prisma, id }) => {
+      // Lista derivada: precio = precio de la lista base × (1 + %) × tasa del día. Base y % van juntos; sin cadenas ni lista predeterminada.
+      if (d.baseListId !== undefined || d.markupPercent !== undefined) {
+        const base = d.baseListId ?? null; const pctV = d.markupPercent ?? null;
+        if ((base === null) !== (pctV === null)) throw new BusinessRuleException('La lista base y el porcentaje deben indicarse juntos', 'PRICE_LIST_DERIVED_INCOMPLETE');
+        if (base) {
+          if (base === id) throw new BusinessRuleException('Una lista no puede ser base de sí misma', 'PRICE_LIST_SELF_BASE');
+          const b = await prisma.tx.priceList.findFirst({ where: { id: base, deletedAt: null } });
+          if (!b) throw new BusinessRuleException('Lista base inexistente', 'PRICE_LIST_BASE_NOT_FOUND');
+          if (b.baseListId) throw new BusinessRuleException('La lista base no puede ser a su vez derivada', 'PRICE_LIST_BASE_DERIVED');
+          if (d.isDefault) throw new BusinessRuleException('Una lista derivada no puede ser la predeterminada', 'PRICE_LIST_DERIVED_DEFAULT');
+          if (id && (await prisma.tx.priceList.count({ where: { baseListId: id, deletedAt: null } }))) throw new BusinessRuleException('Esta lista es base de otras; no puede ser derivada', 'PRICE_LIST_HAS_DERIVED');
+        }
+      }
       if (d.isDefault) {
         await prisma.tx.priceList.updateMany({ where: { companyId: prisma.companyId, isDefault: true, ...(id ? { id: { not: id } } : {}) }, data: { isDefault: false } });
       }

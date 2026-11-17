@@ -382,6 +382,9 @@ model PriceList {
   name       String
   currencyId String    @map("currency_id") @db.Uuid
   isDefault  Boolean   @default(false) @map("is_default")
+  /// Lista derivada: precio = precio de `baseListId` × (1 + markupPercent/100) × tasa del día (moneda base → moneda de esta lista).
+  baseListId    String?   @map("base_list_id") @db.Uuid
+  markupPercent Decimal?  @map("markup_percent") @db.Decimal(9, 4)
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt  DateTime  @default(now()) @map("updated_at") @db.Timestamptz
   deletedAt  DateTime? @map("deleted_at") @db.Timestamptz

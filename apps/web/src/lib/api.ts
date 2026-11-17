@@ -240,6 +240,22 @@ export async function openPdf(path: string, query?: Query): Promise<void> {
   }
 }
 
+/** Abre el recibo de 58 mm (HTML autenticado) en una ventana nueva y lanza el diálogo de impresión. */
+export async function printReceipt(path: string): Promise<void> {
+  const w = window.open("", "_blank", "width=380,height=640");
+  try {
+    const res = await authedFetch(path, { method: "GET", query: { format: "html" } });
+    const url = URL.createObjectURL(new Blob([await res.blob()], { type: "text/html" }));
+    if (!w) { window.location.href = url; return; }
+    w.location.href = url;
+    w.addEventListener("load", () => setTimeout(() => w.print(), 250), { once: true });
+    setTimeout(() => URL.revokeObjectURL(url), 120_000);
+  } catch (e) {
+    w?.close();
+    throw e;
+  }
+}
+
 /** Sube un archivo (multipart) y devuelve la respuesta JSON de la API. */
 export async function uploadFile<T = unknown>(path: string, file: File, query?: Query): Promise<ApiResult<T>> {
   const form = new FormData();

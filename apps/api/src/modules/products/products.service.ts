@@ -275,6 +275,48 @@ export class ProductsService {
     return { dryRun: input.dryRun, priceListId: list.id, validFrom: validFrom.toISOString().slice(0, 10), total: rows.length, changed: changes.length, skipped: rows.filter(r => r.skipped).length, rows };
   }
 
+  /**
+   * Recalcula las listas derivadas (Bs): precio = precio vigente de la lista base × (1 + % / 100) × tasa de cambio del día
+   * (moneda de la base → moneda de la lista), redondeado a los decimales de la moneda. Solo escribe lo que cambió; el historial
+   * por fecha de vigencia se conserva. Se llama tras importar el inventario, al cambiar la tasa y a demanda.
+   */
+  async recomputeDerivedLists(onDate?: string) {
+    const tx = this.prisma.tx;
+    const companyId = this.prisma.companyId;
+    const date = new Date(onDate ?? caracasToday());
+    const lists = await tx.priceList.findMany({ where: { deletedAt: null, baseListId: { not: null } }, orderBy: { code: 'asc' } });
+    const out: { listId: string; code: string; baseCode?: string; rate?: string; total: number; changed: number; error?: string }[] = [];
+    for (const list of lists) {
+      const base = await tx.priceList.findFirst({ where: { id: list.baseListId!, deletedAt: null } });
+      if (!base) { out.push({ listId: list.id, code: list.code, total: 0, changed: 0, error: 'LISTA_BASE_INEXISTENTE' }); continue; }
+      const [rb, rl, cur] = await Promise.all([this.rates.rateFor(base.currencyId, date), this.rates.rateFor(list.currencyId, date), tx.currency.findUnique({ where: { id: list.currencyId } })]);
+      if (!rb || !rl) { out.push({ listId: list.id, code: list.code, baseCode: base.code, total: 0, changed: 0, error: 'SIN_TASA' }); continue; }
+      const rate = D(rb.rate).div(D(rl.rate));
+      const factor = D(1).plus(D(list.markupPercent!.toString()).div(100)).mul(rate);
+      const dp = cur?.decimals ?? 2;
+      const latest = async (listId: string) => {
+        const m = new Map<string, { price: Decimal; validFrom: number }>();
+        for (const r of await tx.productPrice.findMany({ where: { priceListId: listId, validFrom: { lte: date } }, orderBy: [{ validFrom: 'asc' }, { createdAt: 'asc' }] })) m.set(r.productId, { price: D(r.price.toString()), validFrom: r.validFrom.getTime() });
+        return m;
+      };
+      const [basePrices, own] = [await latest(base.id), await latest(list.id)];
+      let changed = 0;
+      for (const [productId, b] of basePrices) {
+        const next = round(b.price.mul(factor), dp);
+        const old = own.get(productId);
+        if (old && old.price.eq(next)) continue;
+        await tx.productPrice.upsert({
+          where: { companyId_productId_priceListId_validFrom: { companyId, productId, priceListId: list.id, validFrom: date } },
+          update: { price: next.toFixed(4), createdBy: this.prisma.userId }, create: { companyId, productId, priceListId: list.id, price: next.toFixed(4), validFrom: date, createdBy: this.prisma.userId },
+        });
+        changed++;
+      }
+      await this.audit.log('price_list', list.id, 'RECALC_DERIVED', { base: base.code, markupPercent: list.markupPercent!.toString(), rate: rate.toString(), date: date.toISOString().slice(0, 10), changed });
+      out.push({ listId: list.id, code: list.code, baseCode: base.code, rate: rate.toString(), total: basePrices.size, changed });
+    }
+    return out;
+  }
+
   async priceHistory(productId: string) {
     await this.get(productId);
     return this.prisma.tx.productPrice.findMany({ where: { productId }, orderBy: [{ validFrom: 'desc' }, { createdAt: 'desc' }] });

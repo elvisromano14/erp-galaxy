@@ -85,5 +85,6 @@ export const debitNoteSchema = z.object({
   notes: z.string().max(1000).nullable().optional(),
   fiscalPrinter: fiscalPrinterSchema.optional(),
 });
+export const receiptQuery = z.object({ format: z.enum(['escpos', 'text', 'html']).default('html') });
 export const pdfQuery = z.object({ format: z.enum(['a4', 'ticket']).default('a4') });
 export type InvoicePaymentInput = z.infer<typeof invoicePaymentSchema>;

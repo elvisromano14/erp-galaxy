@@ -51,8 +51,16 @@ describe('Facturación: factura, notas de crédito y PDF', () => {
     const tk = await pdf(`/sales/invoices/${id}/pdf?format=ticket`);
     expect(tk.status).toBe(200); expect(tk.headers['content-disposition']).toContain('-ticket.pdf'); expect(tk.body.subarray(0, 4).toString()).toBe('%PDF');
     expect((await api.get(`/sales/invoices/${d.body.data.id}/pdf`)).status).toBe(200);
+    // recibo 58 mm (impresora térmica MP58-04): html, texto de 32 columnas y bytes ESC/POS
+    const rc = await pdf(`/sales/invoices/${id}/receipt?format=escpos`);
+    expect(rc.status).toBe(200); expect([...rc.body.subarray(0, 2)]).toEqual([0x1b, 0x40]); expect(rc.headers['content-disposition']).toContain('.bin');
+    const rt = await ctx.http.get(`/api/v1/sales/invoices/${id}/receipt?format=text`).set(auth(token));
+    expect(rt.status).toBe(200); expect(rt.text).toContain('TOTAL'); expect(rt.text.split('\n').every((l: string) => l.length <= 32)).toBe(true);
+    const rh = await ctx.http.get(`/api/v1/sales/invoices/${id}/receipt`).set(auth(token));
+    expect(rh.headers['content-type']).toContain('text/html'); expect(rh.text).toContain('size:58mm');
     const draft = (await invoice([{ productId: p, quantity: '1', unitPrice: '1' }])).body.data.id;
     expect((await api.get(`/sales/invoices/${draft}/pdf`)).body.error).toBe('DRAFT_NO_PDF');
+    expect((await api.get(`/sales/invoices/${draft}/receipt`)).body.error).toBe('DRAFT_NO_PDF');
   });
 
   it('sin existencia no se factura (todo o nada) y la factura de contado no admite cuenta de otra moneda', async () => {
