@@ -183,12 +183,12 @@ export class InvoicingService {
   async invoiceFromOrder(orderId: string, v: Viewer) {
     const tx = this.prisma.tx;
     const order = await this.sales.find('ORDER', orderId, v, true);
-    if (!['CONFIRMED', 'PARTIALLY_INVOICED'].includes(order.status)) throw new BusinessRuleException(`Solo se factura un pedido confirmado (estado ${order.status})`, 'INVALID_STATE');
-    if (!order.warehouseId) throw new BusinessRuleException('El pedido no tiene depósito: indíquelo para facturar', 'WAREHOUSE_REQUIRED');
+    if (!['CONFIRMED', 'PARTIALLY_INVOICED'].includes(order.status)) throw new BusinessRuleException(`Solo se factura una nota de entrega confirmado (estado ${order.status})`, 'INVALID_STATE');
+    if (!order.warehouseId) throw new BusinessRuleException('La nota de entrega no tiene depósito: indíquelo para facturar', 'WAREHOUSE_REQUIRED');
     const lines = await tx.salesDocumentLine.findMany({ where: { documentId: orderId }, orderBy: { lineNo: 'asc' } });
     const used = await this.sales.consumed(lines.map(l => l.id), ['INVOICE'], ['DRAFT', 'CONFIRMED']);
     const pending = lines.map(l => ({ l, q: D(l.quantity.toString()).minus(used.get(l.id) ?? ZERO) })).filter(x => x.q.gt(0));
-    if (!pending.length) throw new BusinessRuleException('El pedido no tiene cantidades pendientes de facturar', 'NOTHING_TO_INVOICE');
+    if (!pending.length) throw new BusinessRuleException('La nota de entrega no tiene cantidades pendientes de facturar', 'NOTHING_TO_INVOICE');
     return this.sales.create('INVOICE', {
       customerId: order.customerId, sellerId: order.sellerId, warehouseId: order.warehouseId, priceListId: order.priceListId, currencyId: order.currencyId, exchangeRate: order.exchangeRate.toString(),
       paymentCondition: order.paymentCondition as 'CASH' | 'CREDIT', creditDays: order.creditDays, reservesStock: false, notes: order.notes, parentId: orderId,
@@ -428,7 +428,7 @@ export class InvoicingService {
       company: snap.company, customer: snap.customer,
       lines: doc.lines.map(l => {
         const t = l.taxId ? taxes.get(l.taxId) : undefined;
-        return { sku: l.product?.sku ?? '', name: l.product?.name ?? '', description: l.description, quantity: l.quantity.toString(), unitPrice: l.unitPrice.toString(), discountPct: l.discountPct.toString(), taxRate: l.taxRate.toString(), net: l.net.toString(), exempt: !t || t.kind === 'EXEMPT' || t.kind === 'EXONERATED', serials: l.serials };
+        return { sku: l.product?.sku ?? '', name: l.product?.name ?? '', brand: l.product?.brand ?? null, description: l.description, quantity: l.quantity.toString(), unitPrice: l.unitPrice.toString(), discountPct: l.discountPct.toString(), taxRate: l.taxRate.toString(), net: l.net.toString(), exempt: !t || t.kind === 'EXEMPT' || t.kind === 'EXONERATED', serials: l.serials };
       }),
       subtotal: doc.subtotal.toString(), exemptBase: doc.exemptBase.toString(), taxTotal: doc.taxTotal.toString(), total: doc.total.toString(), totalBase: doc.totalBase.toString(),
       igtfPct: doc.igtfPct.toString(), igtfAmount: doc.igtfAmount.toString(),

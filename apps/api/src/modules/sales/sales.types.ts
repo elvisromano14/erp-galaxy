@@ -40,7 +40,8 @@ export const salesDocSchema = z.object({
   validUntil: date.nullable().optional(),
   paymentCondition: z.enum(['CASH', 'CREDIT']).default('CASH'),
   creditDays: z.number().int().min(0).max(365).default(0),
-  reservesStock: z.boolean().default(false),
+  /** Sin indicar: la nota de entrega (ORDER) con depósito compromete las existencias; el resto de documentos no. */
+  reservesStock: z.boolean().optional(),
   notes: z.string().max(1000).nullable().optional(),
   parentId: uuid.nullable().optional(),
   lines: z.array(salesLineSchema).min(1, 'Se requiere al menos una línea'),

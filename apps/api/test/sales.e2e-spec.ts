@@ -187,7 +187,8 @@ describe('Ventas: cotización → presupuesto → pedido', () => {
     const byP = rows(await a2.get('/reports/sales/by-product'));
     expect(byP).toHaveLength(1); expect(Number(byP[0].qty)).toBe(35); expect(Number(byP[0].net_base)).toBe(350);
     const rs = rows(await a2.get('/reports/sales/reserved-stock'));
-    expect(rs).toHaveLength(1); expect(Number(rs[0].reserved)).toBe(10); expect(Number(rs[0].available)).toBe(40);
+    // la nota de entrega (con depósito) compromete por defecto: 10 + 5 + 20
+    expect(rs).toHaveLength(1); expect(Number(rs[0].reserved)).toBe(35); expect(Number(rs[0].available)).toBe(15);
     const eff = rows(await a2.get('/reports/sales/quotes-conversion'))[0];
     expect(eff).toMatchObject({ quotes: 1, accepted: 1, converted: 1 }); expect(Number(eff.conversion_pct)).toBe(100);
     const perf = rows(await a2.get('/reports/sellers/performance')).find(r => r.code === 'V1')!;
@@ -195,7 +196,7 @@ describe('Ventas: cotización → presupuesto → pedido', () => {
     const docs = rows(await a2.get('/reports/sales/documents?docType=QUOTE'));
     expect(docs).toHaveLength(1); expect(docs[0].doc_type).toBe('Cotización');
     expect((await a2.get('/reports/sales/by-customer?format=xlsx')).status).toBe(200);
-    // el vendedor (sin permiso de reportes de ventas) no accede
+    // un usuario con rol vendedor pero sin vendedor ligado no obtiene reportes de ventas (403)
     const email = `r-${Math.random().toString(36).slice(2, 7)}@test.local`;
     await a2.post('/users', { email, fullName: 'Vendedor R', password: PASSWORD, roleCodes: ['VENDEDOR'] });
     const tok = (await ctx.http.post('/api/v1/auth/login').send({ email, password: PASSWORD })).body.data.accessToken;

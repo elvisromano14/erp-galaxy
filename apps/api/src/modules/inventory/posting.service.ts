@@ -156,7 +156,7 @@ export class PostingService {
       const assertAvailable = (resulting: Decimal) => {
         const reserved = reservedQty.get(key) ?? ZERO;
         if (!wh.allowNegativeStock && reserved.gt(0) && resulting.lt(reserved) && !resulting.isNegative()) {
-          throw fail('STOCK_RESERVED', `La existencia de ${product.sku} en ${wh.code} está reservada por pedidos o presupuestos (reservado ${reserved.toString()})`);
+          throw fail('STOCK_RESERVED', `La existencia de ${product.sku} en ${wh.code} está reservada por notas de entrega o presupuestos (reservado ${reserved.toString()})`);
         }
       };
       const assertStock = (resulting: Decimal) => {

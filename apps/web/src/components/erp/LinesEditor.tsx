@@ -29,6 +29,8 @@ export const parseSerials = (text?: string | null): string[] => (text ?? "").spl
 export const isSerialLine = (l: Line) => l.product?.trackingMode === "SERIAL";
 
 export const productLabel: LabelFn = (r) => `${r.sku} — ${r.name}`;
+/** Segunda línea del selector de productos: marca y unidad. */
+export const productDetail: LabelFn = (r) => [r.brand ? `Marca: ${r.brand}` : "", r.unit?.code ?? ""].filter(Boolean).join(" · ");
 let counter = 0;
 export const newKey = () => `l${++counter}-${Date.now()}`;
 
@@ -88,6 +90,7 @@ export default function LinesEditor({ columns, lines, onChange, readOnly, onProd
                           resource="/products"
                           value={l.productLabel ?? ""}
                           labelFn={productLabel}
+                          detailFn={productDetail}
                           placeholder={c.placeholder}
                           extraQuery={{ isActive: "true", ...productQuery }}
                           inputClassName="h-10"

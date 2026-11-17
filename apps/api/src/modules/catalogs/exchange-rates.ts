@@ -67,6 +67,42 @@ export class ExchangeRatesService {
     return Paged.of(rows.map(r => ({ ...r, isGlobal: r.companyId === null })), total, q.page, q.limit);
   }
 
+  /**
+   * Resumen para el módulo «Tasas»: por cada moneda con tasa cargada, la tasa vigente hoy (la que usa el sistema), su origen,
+   * la variación frente a la anterior, la última carga automática del BCV y la serie diaria de los últimos 30 días.
+   */
+  async summary() {
+    const db = this.prisma.db;
+    const today = new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' }));
+    const since = new Date(today.getTime() - 45 * 86_400_000);
+    const currencies = await db.currency.findMany({ where: { code: { not: 'VES' } }, orderBy: { code: 'asc' } });
+    const out = [];
+    for (const c of currencies) {
+      const rows = await db.exchangeRate.findMany({ where: { currencyId: c.id, date: { gte: since } }, orderBy: [{ date: 'asc' }, { createdAt: 'asc' }] });
+      // Tasa efectiva de cada día: la manual de la empresa prevalece sobre la BCV; entre iguales, la última cargada.
+      const byDay = new Map<string, (typeof rows)[number]>();
+      for (const r of rows) {
+        const k = r.date.toISOString().slice(0, 10); const cur = byDay.get(k);
+        if (!cur || (r.companyId !== null) > (cur.companyId !== null) || ((r.companyId !== null) === (cur.companyId !== null) && r.createdAt >= cur.createdAt)) byDay.set(k, r);
+      }
+      const series = [...byDay.values()].slice(-30).map(r => ({ date: r.date.toISOString().slice(0, 10), rate: new Decimal(r.rate.toString()).toString(), source: r.source }));
+      const eff = await this.rateFor(c.id, today);
+      if (!eff && !series.length) continue;
+      const lastBcv = await db.exchangeRate.findFirst({ where: { currencyId: c.id, source: 'BCV', companyId: null }, orderBy: [{ date: 'desc' }, { createdAt: 'desc' }] });
+      const effDate = eff ? eff.date.toISOString().slice(0, 10) : null;
+      const prev = [...series].reverse().find(x => x.date !== effDate);
+      const changePct = eff && prev && Number(prev.rate) > 0 ? ((Number(eff.rate) - Number(prev.rate)) / Number(prev.rate)) * 100 : null;
+      out.push({
+        currencyId: c.id, code: c.code, name: c.name, symbol: c.symbol,
+        rate: eff?.rate ?? null, date: effDate, source: eff?.source ?? null,
+        previousRate: prev?.rate ?? null, previousDate: prev?.date ?? null, changePct,
+        lastBcv: lastBcv ? { rate: new Decimal(lastBcv.rate.toString()).toString(), date: lastBcv.date.toISOString().slice(0, 10), loadedAt: lastBcv.createdAt } : null,
+        series,
+      });
+    }
+    return { today: today.toISOString().slice(0, 10), autoSync: env.FX_SYNC_ENABLED, intervalMinutes: env.FX_SYNC_INTERVAL_MINUTES, currencies: out };
+  }
+
   async latest(q: z.infer<typeof latestSchema>) {
     let currencyId = q.currencyId;
     if (!currencyId && q.currencyCode) {
@@ -130,6 +166,9 @@ export class ExchangeRatesController {
   constructor(private readonly svc: ExchangeRatesService, private readonly sync: BcvSyncService, private readonly audit: AuditService) {}
   @Get() @RequirePermissions('admin:exchange-rates:read')
   list(@ZQuery(listSchema) q: z.infer<typeof listSchema>) { return this.svc.list(q); }
+  /** Resumen del módulo Tasas: vigente, origen, variación, última carga BCV y serie de 30 días. */
+  @Get('summary') @RequirePermissions('admin:exchange-rates:read')
+  summary() { return this.svc.summary(); }
   @Get('latest') @RequirePermissions('admin:exchange-rates:read')
   latest(@ZQuery(latestSchema) q: z.infer<typeof latestSchema>) { return this.svc.latest(q); }
   /** Tasa manual de la empresa activa (prevalece sobre la del BCV de la misma fecha). */

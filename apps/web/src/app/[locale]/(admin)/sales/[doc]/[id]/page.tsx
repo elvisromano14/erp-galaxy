@@ -47,7 +47,7 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
 
   const { h, setH, lines, setLines, errorOf, lineIssues, check } = useDocForm<{ [k: string]: any }>({
     customerId: "", customerDisplay: "", customerPriceListId: "", sellerId: "", warehouseId: "", priceListId: "", currencyId: "", exchangeRate: "",
-    docDate: todayCaracas(), validUntil: "", paymentCondition: "CASH", creditDays: "0", reservesStock: false, notes: "", parentId: "",
+    docDate: todayCaracas(), validUntil: "", paymentCondition: "CASH", creditDays: "0", reservesStock: meta.type === "ORDER", notes: "", parentId: "",
   }, salesDocSchema(meta.type));
   const [version, setVersion] = useState<number | undefined>();
   const [error, setError] = useState<ApiError | null>(null);
@@ -140,6 +140,7 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
 
   const columns: LineCol[] = [
     { key: "product", header: t("fields.product"), kind: "product", className: "min-w-72", placeholder: t("inventory.searchProduct"), editable: () => !hasParent },
+    { key: "brand", header: t("fields.brand"), kind: "readonly", className: "min-w-28", format: (l) => l.product?.brand || "—" },
     { key: "quantity", header: t("fields.quantity"), kind: "decimal", align: "end", className: "w-28", editable: (l) => !isInvoice || !isSerialLine(l) },
     { key: "unitPrice", header: t("fields.unitPrice"), kind: "decimal", align: "end", className: "w-32", placeholder: t("sales.priceFromList"), editable: () => !hasParent },
     { key: "discountPct", header: t("fields.discountPct"), kind: "decimal", align: "end", className: "w-24", editable: () => !hasParent },
@@ -155,7 +156,7 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
     return {
       customerId: h.customerId, sellerId: h.sellerId || null, warehouseId: h.warehouseId || null, priceListId: h.priceListId || null, currencyId: h.currencyId,
       exchangeRate: v(h.exchangeRate), docDate: h.docDate, validUntil: h.validUntil || null, paymentCondition: h.paymentCondition, creditDays: Number(h.creditDays || 0),
-      reservesStock: meta.type === "QUOTE" || isInvoice ? false : h.reservesStock, notes: h.notes.trim() || null, parentId: h.parentId || null, ...(version !== undefined ? { version } : {}),
+      reservesStock: meta.type === "QUOTE" || isInvoice ? false : meta.type === "ORDER" ? true : h.reservesStock, notes: h.notes.trim() || null, parentId: h.parentId || null, ...(version !== undefined ? { version } : {}),
       lines: lines.filter((l) => l.productId).map((l) => ({
         productId: l.productId, quantity: l.quantity, ...(v(l.unitPrice) ? { unitPrice: l.unitPrice } : {}), discountPct: v(l.discountPct) ?? "0", taxId: l.taxId || null, parentLineId: l.parentLineId ?? null,
         ...(isInvoice && isSerialLine(l) && parseSerials(l.serialsText).length ? { serials: parseSerials(l.serialsText) } : {}),
@@ -244,7 +245,7 @@ function Editor({ meta, id }: { meta: SalesDocMeta; id: string }) {
           <DecimalField label={t("fields.exchangeRate")} value={h.exchangeRate} onChange={(v) => set({ exchangeRate: v })} disabled={readOnly || isBs || hasParent} hint={readOnly ? undefined : isBs ? t("purchases.baseCurrency") : t("purchases.rateHint")} error={fe("exchangeRate")} align="end" />
           <SelectField label={t("fields.paymentCondition")} value={h.paymentCondition} onChange={(v) => set({ paymentCondition: v })} disabled={readOnly} options={["CASH", "CREDIT"].map((o) => ({ value: o, label: t(`enums.paymentCondition.${o}`) }))} />
           {h.paymentCondition === "CREDIT" && <IntField label={t("fields.creditDays")} value={h.creditDays} onChange={(v) => set({ creditDays: v })} disabled={readOnly} />}
-          {reservable && <CheckField className="self-end pb-3" label={t("sales.reservesStock")} hint={t("sales.reservesHint")} checked={h.reservesStock} onChange={(v) => set({ reservesStock: v })} disabled={readOnly} />}
+          {reservable && <CheckField className="self-end pb-3" label={t("sales.reservesStock")} hint={t("sales.reservesHint")} checked={h.reservesStock} onChange={(v) => set({ reservesStock: v })} disabled={readOnly || meta.type === "ORDER"} />}
           <TextAreaField className="sm:col-span-2 xl:col-span-4" label={t("fields.notes")} rows={2} value={h.notes} onChange={(v) => set({ notes: v })} disabled={readOnly} />
         </div>
       </Card>

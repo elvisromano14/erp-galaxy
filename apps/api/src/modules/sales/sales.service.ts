@@ -59,7 +59,7 @@ export class SalesService {
     const lineLinks = await tx.documentLinkLine.findMany({ where: { childLineId: { in: lines.map(l => l.id) } } });
     const parentLineOf = new Map(lineLinks.map(x => [x.childLineId, x.parentLineId]));
     const [products, customer, seller, parents, children] = await Promise.all([
-      tx.product.findMany({ where: { id: { in: lines.map(l => l.productId) } }, select: { id: true, sku: true, name: true } }),
+      tx.product.findMany({ where: { id: { in: lines.map(l => l.productId) } }, select: { id: true, sku: true, name: true, brand: true } }),
       tx.customer.findFirst({ where: { id: doc.customerId }, select: { id: true, rif: true, legalName: true } }),
       doc.sellerId ? tx.seller.findFirst({ where: { id: doc.sellerId }, select: { id: true, code: true, name: true } }) : null,
       tx.documentLink.findMany({ where: { childId: id } }),
@@ -279,6 +279,8 @@ export class SalesService {
 
   async create(docType: SalesDocType, input: SalesDocInput, v: Viewer) {
     const tx = this.prisma.tx;
+    // Nota de entrega (ORDER): compromete (reserva) las existencias por defecto cuando hay depósito.
+    if (input.reservesStock === undefined) input.reservesStock = docType === 'ORDER' && !!input.warehouseId;
     const customer = await this.validateHeader(docType, input);
     const docDate = new Date(input.docDate ?? caracasToday());
     await this.validateParent(docType, input);
@@ -419,7 +421,7 @@ export class SalesService {
     const out = await this.create(to, {
       customerId: src.customerId, sellerId: src.sellerId, warehouseId: src.warehouseId, priceListId: src.priceListId, currencyId: src.currencyId,
       exchangeRate: src.exchangeRate.toString(), paymentCondition: src.paymentCondition as 'CASH' | 'CREDIT', creditDays: src.creditDays,
-      reservesStock: to === 'QUOTE' ? false : src.reservesStock, notes: src.notes, parentId: id,
+      reservesStock: to === 'QUOTE' ? false : to === 'ORDER' && src.warehouseId ? true : src.reservesStock, notes: src.notes, parentId: id,
       lines: lines.map(l => ({
         productId: l.productId, description: l.description, quantity: l.quantity.toString(), unitPrice: l.unitPrice.toString(),
         discountPct: l.discountPct.toString(), taxId: l.taxId, parentLineId: l.id,

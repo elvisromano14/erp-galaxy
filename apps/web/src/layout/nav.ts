@@ -25,8 +25,9 @@ export const NAV: NavSection[] = [
     items: [
       admin("products"), admin("categories"), admin("units"), admin("warehouses"), admin("locations"),
       admin("suppliers"), admin("customers"), admin("zones"), admin("sellers"),
-      admin("price-lists"), admin("taxes"), admin("currencies"), admin("exchange-rates"),
+      admin("price-lists"), admin("taxes"), admin("currencies"), admin("exchange-rates"), { key: "rates", path: "/rates", perm: "admin:exchange-rates:read" },
       { key: "price-update", path: "/admin/price-update", perm: "admin:products:update" },
+      { key: "labels", path: "/admin/labels", perm: "admin:products:read" },
       admin("payment-methods"), admin("bank-accounts"), admin("banks"), admin("movement-reasons"), admin("operation-types"),
     ],
   },

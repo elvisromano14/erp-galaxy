@@ -51,7 +51,7 @@ describe('Reportes: consulta, exportación y bitácora', () => {
       return client(ctx, lg.body.data.accessToken);
     };
     const v = await mk('VENDEDOR'); const c = await mk('COMPRAS');
-    expect((await v.get('/reports')).body.data).toEqual([]);
+    expect([...new Set((await v.get('/reports')).body.data.map((r: any) => r.category))]).toEqual(['sales']); // solo los de ventas (y limitados a lo suyo)
     expect((await v.get('/reports/inventory/products')).status).toBe(403);
     const cids = (await c.get('/reports')).body.data.map((r: any) => r.category);
     expect(cids).toEqual(expect.arrayContaining(['suppliers', 'purchases'])); expect(cids).not.toContain('customers');

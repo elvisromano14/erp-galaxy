@@ -8,6 +8,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { BusinessRuleException, NotFoundError, ValidationError } from '../../common/errors/errors';
 import { Paged } from '../../common/http/paged';
 import { ExchangeRatesService } from '../catalogs/exchange-rates';
+import { labelsPdf } from './labels';
 import { ExternalRefsService, IntegrationEventsService } from '../integration/integration-events.service';
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -57,6 +58,16 @@ export const bulkPriceSchema = z.object({
   .refine(v => v.mode === 'SET' || Number(v.value) > -100, { message: 'La variación debe ser mayor que -100 %', path: ['value'] });
 
 export const addPriceSchema = price;
+
+/** Etiquetas QR: por ids, instancia, marca o búsqueda; tamaño del rollo en mm y copias por producto. */
+export const labelsQuerySchema = z.object({
+  ids: z.string().optional().transform(v => (v ? v.split(',').map(x => x.trim()).filter(Boolean) : undefined)).pipe(z.array(uuid).max(500).optional()),
+  categoryId: uuid.optional(), brand: z.string().trim().max(80).optional(), search: z.string().trim().max(100).optional(),
+  copies: z.coerce.number().int().min(1).max(100).default(1),
+  width: z.coerce.number().min(20).max(120).default(50),
+  height: z.coerce.number().min(15).max(100).default(30),
+});
+export const MAX_LABELS = 2000;
 
 @Injectable()
 export class ProductsService {
@@ -315,6 +326,20 @@ export class ProductsService {
       out.push({ listId: list.id, code: list.code, baseCode: base.code, rate: rate.toString(), total: basePrices.size, changed });
     }
     return out;
+  }
+
+  /** PDF de etiquetas con QR de los productos que cumplen el filtro (activos y que no son servicios). */
+  async labels(q: z.infer<typeof labelsQuerySchema>) {
+    const where: Record<string, unknown> = { deletedAt: null, isActive: true, isService: false };
+    if (q.ids?.length) where.id = { in: q.ids };
+    if (q.categoryId) where.categoryId = q.categoryId;
+    if (q.brand) where.brand = { equals: q.brand, mode: 'insensitive' };
+    if (q.search) where.OR = [{ sku: { contains: q.search, mode: 'insensitive' } }, { name: { contains: q.search, mode: 'insensitive' } }, { brand: { contains: q.search, mode: 'insensitive' } }];
+    const products = await this.prisma.tx.product.findMany({ where, orderBy: { sku: 'asc' }, take: MAX_LABELS + 1, select: { sku: true, name: true, brand: true } });
+    if (!products.length) throw new BusinessRuleException('Ningún producto coincide con el filtro', 'NO_PRODUCTS');
+    if (products.length * q.copies > MAX_LABELS) throw new BusinessRuleException(`Son demasiadas etiquetas (máximo ${MAX_LABELS} por archivo); filtre por instancia o marca`, 'TOO_MANY_LABELS');
+    await this.audit.log('product', undefined, 'PRINT_LABELS', { count: products.length, copies: q.copies, width: q.width, height: q.height });
+    return { buffer: await labelsPdf(products, { widthMm: q.width, heightMm: q.height, copies: q.copies }), count: products.length * q.copies };
   }
 
   async priceHistory(productId: string) {

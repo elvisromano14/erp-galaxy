@@ -71,6 +71,20 @@ export class ReportsService {
     return out;
   }
 
+  /**
+   * Alcance por vendedor: quien no puede ver todos los documentos de venta (`sales:documents:read-all`) solo ve los suyos en los
+   * reportes de ventas. Devuelve el id del vendedor a forzar, o null si ve todo. Sin vendedor ligado no hay reporte de ventas.
+   */
+  async sellerScope(userId: string | null | undefined, companyId: string): Promise<string | null> {
+    if (!userId) return null;
+    const u = await this.prisma.db.user.findUnique({ where: { id: userId }, select: { isSuperAdmin: true } });
+    if (!u || u.isSuperAdmin) return null;
+    if ((await this.perms.forUser(userId, companyId)).includes('sales:documents:read-all')) return null;
+    const seller = await this.prisma.db.seller.findFirst({ where: { userId, deletedAt: null, isActive: true }, select: { id: true } });
+    if (!seller) throw new ForbiddenException({ error: 'SELLER_REQUIRED', message: 'Su usuario no está ligado a un vendedor: pida a administración que lo asigne' });
+    return seller.id;
+  }
+
   /** Valida permiso, existencia, funciones activas y filtros obligatorios; devuelve la definición y los filtros ya tipados. */
   async validate(user: AuthUser, category: string, id: string, rawFilters: unknown) {
     const def = findReport(category, id);
@@ -86,14 +100,15 @@ export class ReportsService {
 
   async run(user: AuthUser, category: string, id: string, rawFilters: unknown, format: 'json' | 'csv' | 'xlsx' | 'pdf', delimiter: ';' | ',') {
     const { def, f, feat } = await this.validate(user, category, id, rawFilters);
-    return this.generate(def, f, feat, format, delimiter);
+    const sellerId = def.category === 'sales' ? await this.sellerScope(user.userId, this.prisma.companyId) : null;
+    return this.generate(def, f, feat, format, delimiter, undefined, sellerId);
   }
 
   /** Ejecuta y da formato al reporte. Requiere el contexto de empresa (transacción de la petición o del worker). `rowCap` sube el tope de exportación (segundo plano). */
-  async generate(def: ReportDef, f: Filters, feat: Record<string, boolean>, format: 'json' | 'csv' | 'xlsx' | 'pdf', delimiter: ';' | ',', rowCap?: number) {
+  async generate(def: ReportDef, f: Filters, feat: Record<string, boolean>, format: 'json' | 'csv' | 'xlsx' | 'pdf', delimiter: ';' | ',', rowCap?: number, sellerId: string | null = null) {
     const category = def.category, id = def.id;
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
-    const result = await def.run({ tx: this.prisma.tx, companyId: this.prisma.companyId, f, features: feat, today });
+    const result = await def.run({ tx: this.prisma.tx, companyId: this.prisma.companyId, f, features: feat, today, sellerId });
     const company = await this.prisma.db.company.findUniqueOrThrow({ where: { id: this.prisma.companyId } });
     const cap = format === 'json' ? JSON_ROW_CAP : (rowCap ?? EXPORT_ROW_CAP);
     const truncated = result.rows.length > cap;
@@ -188,7 +203,9 @@ export class ReportJobsService implements OnModuleInit {
       const user = { userId: job.userId ?? '', companyId, jti: '', exp: 0, isSuperAdmin: true } as AuthUser; // el permiso ya se validó al crear el trabajo
       const out = await this.prisma.runWithTenant(companyId, async () => {
         const { def, f, feat } = await this.reports.validate(user, job!.category, job!.report, job!.filters);
-        const r = await this.reports.generate(def, f, feat, job!.format as 'csv' | 'xlsx' | 'pdf', job!.delimiter as ';' | ',', env.REPORT_ASYNC_ROW_CAP);
+        // El filtro por vendedor se calcula con el usuario real que pidió el reporte (no con el usuario técnico del trabajo).
+        const sellerId = def.category === 'sales' ? await this.reports.sellerScope(job!.userId, companyId) : null;
+        const r = await this.reports.generate(def, f, feat, job!.format as 'csv' | 'xlsx' | 'pdf', job!.delimiter as ';' | ',', env.REPORT_ASYNC_ROW_CAP, sellerId);
         if (r.kind !== 'file') throw new Error('formato inválido');
         return r;
       }, { userId: job.userId ?? undefined }, 15 * 60_000);

@@ -60,7 +60,7 @@ export const ROLE_TEMPLATES: Record<string, { name: string; permissions: string[
   VENDEDOR: {
     name: 'Vendedor',
     // Ve y gestiona solo SUS documentos (sin 'sales:documents:read-all').
-    permissions: [...readCatalogs, 'inventory:stock:read', ...SALES_DOCS.flatMap(r => build('sales', r, DOC)), 'admin:customers:create', 'admin:customers:update', 'mobile:sync:use', 'mobile:app:download'],
+    permissions: [...readCatalogs, 'inventory:stock:read', ...SALES_DOCS.flatMap(r => build('sales', r, DOC)), 'admin:customers:create', 'admin:customers:update', 'reports:sales:read', 'mobile:sync:use', 'mobile:app:download'],
   },
   ALMACENISTA: {
     name: 'Almacenista',

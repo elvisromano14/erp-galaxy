@@ -6,7 +6,7 @@ const data: InvoicePdfData = {
   company: { rif: 'J-12345678-9', legalName: 'Eléctricos del Sur, C.A.', fiscalAddress: 'Av. Principal, local 5, Maracaibo, Estado Zulia' },
   customer: { rif: 'V-1234567', legalName: 'José Ñandú' },
   lines: [
-    { sku: 'A-1', name: 'AMORTIGUADOR DELANTERO IZQUIERDO FIESTA POWER', quantity: '2', unitPrice: '12.5', discountPct: '0', taxRate: '16', net: '25', exempt: false, serials: [] },
+    { sku: 'A-1', name: 'AMORTIGUADOR DELANTERO IZQUIERDO FIESTA POWER', brand: 'KMD', quantity: '2', unitPrice: '12.5', discountPct: '0', taxRate: '16', net: '25', exempt: false, serials: [] },
     { sku: 'A-2', name: 'Cinta aislante', quantity: '1.5', unitPrice: '1', discountPct: '10', taxRate: '0', net: '1.35', exempt: true, serials: [] },
   ],
   subtotal: '26.35', exemptBase: '1.35', taxTotal: '4', total: '30.35', totalBase: '1517.5', igtfPct: '3', igtfAmount: '0.91',
@@ -20,6 +20,7 @@ describe('recibo térmico 58 mm', () => {
     expect(txt).toMatch(/^[\x0a\x20-\x7e]*$/);
     expect(txt).toContain('Electricos del Sur, C.A.');
     expect(txt).toContain('Jose Nandu');
+    expect(txt).toContain('Marca: KMD');
   });
   it('alinea etiqueta y valor a exactamente 32 columnas y recorta etiquetas largas', () => {
     expect(pair('TOTAL USD', '30,35')).toHaveLength(COLS);

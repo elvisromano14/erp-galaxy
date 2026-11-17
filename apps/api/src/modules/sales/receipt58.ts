@@ -60,6 +60,7 @@ export function receiptLines(d: InvoicePdfData): ReceiptLine[] {
 
   for (const l of d.lines) {
     wrapAdd(`${l.name}${l.exempt ? ' (E)' : ''}`, { bold: true });
+    if (l.brand) wrapAdd(`Marca: ${l.brand}`);
     add(pair(`${num(l.quantity, Number(l.quantity) % 1 ? 3 : 0)} x ${num(l.unitPrice)}${Number(l.discountPct) ? ` -${num(l.discountPct, 0)}%` : ''}`, num(l.net)));
   }
   rule();

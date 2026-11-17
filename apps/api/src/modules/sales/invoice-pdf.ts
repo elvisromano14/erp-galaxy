@@ -6,7 +6,7 @@ export interface InvoicePdfData {
   currency: string; exchangeRate: string; paymentCondition: string; creditDays: number; seller?: string | null; notes?: string | null; origin?: string | null;
   company: { rif: string; legalName: string; tradeName?: string | null; fiscalAddress?: string | null; isSpecialTaxpayer?: boolean };
   customer: { rif: string; legalName: string; address?: string | null; phone?: string | null };
-  lines: { sku: string; name: string; description?: string | null; quantity: string; unitPrice: string; discountPct: string; taxRate: string; net: string; exempt: boolean; serials: string[] }[];
+  lines: { sku: string; name: string; brand?: string | null; description?: string | null; quantity: string; unitPrice: string; discountPct: string; taxRate: string; net: string; exempt: boolean; serials: string[] }[];
   subtotal: string; exemptBase: string; taxTotal: string; total: string; totalBase: string; igtfPct: string; igtfAmount: string;
   payments: { method: string; currency: string; amount: string; reference?: string | null }[];
   legend: string;
@@ -48,10 +48,10 @@ export function invoicePdf(d: InvoicePdfData, format: 'a4' | 'ticket'): Promise<
   ];
 
   const lineRows = d.lines.map(l => ticket
-    ? [{ stack: [{ text: `${l.name}${l.exempt ? ' (E)' : ''}` }, { text: `${n(l.quantity, 2)} x ${n(l.unitPrice)}${Number(l.discountPct) ? ` -${n(l.discountPct)}%` : ''}`, color: grey }], colSpan: 1 }, { text: n(Number(l.net) * (1 + (l.exempt ? 0 : Number(l.taxRate) / 100))), alignment: 'right' }]
+    ? [{ stack: [{ text: `${l.name}${l.exempt ? ' (E)' : ''}` }, ...(l.brand ? [{ text: `Marca: ${l.brand}`, color: grey }] : []), { text: `${n(l.quantity, 2)} x ${n(l.unitPrice)}${Number(l.discountPct) ? ` -${n(l.discountPct)}%` : ''}`, color: grey }], colSpan: 1 }, { text: n(Number(l.net) * (1 + (l.exempt ? 0 : Number(l.taxRate) / 100))), alignment: 'right' }]
     : [
       { stack: [{ text: l.sku, bold: true }, ...(l.serials.length ? [{ text: `Seriales: ${l.serials.join(', ')}`, fontSize: 6.5, color: grey }] : [])] },
-      { text: l.description || l.name }, { text: n(l.quantity, 2), alignment: 'right' }, { text: n(l.unitPrice), alignment: 'right' },
+      { stack: [{ text: l.description || l.name }, ...(l.brand ? [{ text: `Marca: ${l.brand}`, fontSize: 7, color: grey }] : [])] }, { text: n(l.quantity, 2), alignment: 'right' }, { text: n(l.unitPrice), alignment: 'right' },
       { text: Number(l.discountPct) ? `${n(l.discountPct)}%` : '', alignment: 'right' }, { text: l.exempt ? 'Exento' : `${n(l.taxRate)}%`, alignment: 'right' }, { text: n(l.net), alignment: 'right' },
     ]);
   const linesTable = ticket

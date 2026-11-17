@@ -79,6 +79,8 @@
       "taxes": "Impuestos",
       "currencies": "Monedas",
       "exchange-rates": "Factor cambiario",
+      "rates": "Tasas",
+      "labels": "Etiquetas QR",
       "payment-methods": "Instrumentos de pago",
       "bank-accounts": "Cuentas bancarias",
       "banks": "Bancos",
@@ -118,7 +120,7 @@
       "import": "Importar datos",
       "sales-quotes": "Cotizaciones de venta",
       "sales-budgets": "Presupuestos",
-      "sales-orders": "Pedidos",
+      "sales-orders": "Notas de entrega",
       "payments": "Pagos a proveedores",
       "accounts": "Bancos y cajas",
       "price-update": "Actualizar precios",
@@ -179,7 +181,7 @@
     "openOrders": "Órdenes de compra abiertas",
     "belowMin": "Productos por debajo del mínimo",
     "noneBelowMin": "Ningún producto está por debajo del mínimo.",
-    "salesOrders": "Pedidos de venta confirmados",
+    "salesOrders": "Notas de entrega confirmadas",
     "alertsTitle": "Alertas",
     "alertAmount": "Monto en Bs",
     "alerts": {
@@ -428,6 +430,39 @@
     "priceHistory": "Historial de precios",
     "stock": "Existencias",
     "totalQty": "Existencia total"
+  },
+  "labels": {
+    "title": "Etiquetas QR de productos",
+    "subtitle": "Genera etiquetas con un código QR (código, nombre y marca) para pegar en cada producto.",
+    "which": "¿Qué productos?",
+    "all": "Sin filtros: se generan etiquetas de todos los productos activos.",
+    "filtered": "Se generan etiquetas de los productos activos que cumplan el filtro.",
+    "searchHint": "Código, nombre o marca",
+    "format": "Formato de la etiqueta",
+    "size": "Tamaño del rollo",
+    "custom": "Personalizado",
+    "width": "Ancho (mm)",
+    "height": "Alto (mm)",
+    "copies": "Copias por producto",
+    "copiesHint": "Cuántas etiquetas iguales de cada uno",
+    "printHelp": "Se abre un PDF con una etiqueta por página, del tamaño exacto del rollo. Imprímelo en la impresora de etiquetas con «Tamaño real» (100 %), sin márgenes ni ajustar a la página.",
+    "generate": "Generar etiquetas",
+    "generating": "Generando…"
+  },
+  "rates": {
+    "title": "Tasas de cambio",
+    "subtitleAuto": "El sistema consulta la tasa oficial del BCV automáticamente cada {hours} h; la manual de la empresa tiene prioridad en su fecha.",
+    "subtitleManual": "La consulta automática del BCV está desactivada: las tasas se cargan a mano.",
+    "manage": "Cargar tasa manual",
+    "empty": "Aún no hay tasas cargadas.",
+    "current": "Tasa vigente hoy (Bs por unidad)",
+    "validFor": "Fecha de la tasa: {date}",
+    "previous": "Anterior: {rate} ({date})",
+    "lastBcv": "Última carga del BCV: {rate} del {date}, recibida el {at}.",
+    "noBcv": "Todavía no se ha recibido una tasa del BCV.",
+    "chartLabel": "Evolución de la tasa de {code} en los últimos 30 días",
+    "history": "Historial de tasas",
+    "loadedAt": "Cargada"
   },
   "fx": {
     "subtitle": "Bs por unidad de moneda extranjera. Cada carga agrega una fila; el historial no se sobrescribe.",
@@ -751,18 +786,18 @@
     "reservedNotice": "Existencias reservadas en el depósito para este documento.",
     "convertToBudget": "Convertir en presupuesto",
     "confirmOverCredit": "Confirmar autorizando exceso de crédito",
-    "convertToOrder": "Convertir en pedido",
+    "convertToOrder": "Convertir en nota de entrega",
     "docTypes": {
       "QUOTE": "Cotización de venta",
       "BUDGET": "Presupuesto",
-      "ORDER": "Pedido",
+      "ORDER": "Nota de entrega",
       "INVOICE": "Factura",
       "CREDIT_NOTE": "Nota de crédito",
       "DEBIT_NOTE": "Nota de débito"
     },
     "confirmMessage": {
       "BUDGET": "Se asignará el número. Si reserva existencias, se aparta la cantidad en el depósito.",
-      "ORDER": "Se asignará el número. Si reserva existencias, se aparta la cantidad en el depósito.",
+      "ORDER": "Se asignará el número y se comprometerá (apartará) la cantidad de cada producto en el depósito.",
       "QUOTE": "",
       "INVOICE": "Se asignan número de factura y de control, sale la mercancía del inventario y, si es a crédito, nace la cuenta por cobrar.",
       "CREDIT_NOTE": ""
@@ -770,7 +805,7 @@
     "cancelMessage": {
       "QUOTE": "La cotización quedará anulada.",
       "BUDGET": "El presupuesto quedará anulado y se libera la reserva.",
-      "ORDER": "El pedido quedará anulado y se libera la reserva.",
+      "ORDER": "La nota de entrega quedará anulada y se libera la reserva.",
       "INVOICE": "Se revierte la salida de inventario, los pagos registrados y la cuenta por cobrar. Con cobros o notas de crédito aplicadas no se puede anular.",
       "CREDIT_NOTE": ""
     },
