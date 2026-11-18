@@ -9,7 +9,7 @@ import { useFetch } from "@/components/erp/useFetch";
 import Button from "@/components/ui/button/Button";
 import { ApiError, openPdf } from "@/lib/api";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 /** Tamaños comunes de rollo de etiquetas (ancho × alto en mm). */
 const PRESETS = ["50x30", "40x30", "60x40", "58x40", "100x50", "30x20"] as const;
@@ -49,11 +49,9 @@ export default function LabelsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
 
-  // La búsqueda se aplica al escribir con una pequeña espera (no consulta en cada tecla).
-  useEffect(() => {
-    const id = setTimeout(() => { setApplied({ search: search.trim(), brand: brand.trim(), categoryId }); setPage(1); }, 350);
-    return () => clearTimeout(id);
-  }, [search, brand, categoryId]);
+  // La consulta usa los filtros aplicados, que cambian al pulsar «Visualizar» (sin filtros trae todos los productos).
+  const view = () => { setApplied({ search: search.trim(), brand: brand.trim(), categoryId }); setPage(1); list.reload(); };
+  const clear = () => { setSearch(""); setBrand(""); setCategoryId(""); setApplied({ search: "", brand: "", categoryId: "" }); setPage(1); };
 
   const list = useFetch<Product[]>("/products", {
     page, limit: PAGE_SIZE, sort, isActive: true, isService: false,
@@ -151,11 +149,18 @@ export default function LabelsPage() {
       </Card>
 
       <Card title={t("labels.which")}>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <RefSelect label={t("fields.categoryId")} resource="/categories" labelKey={(r) => `${r.code} — ${r.name}`} value={categoryId} onChange={setCategoryId} placeholder={t("common.all")} />
-          <TextField label={t("fields.brand")} value={brand} onChange={setBrand} />
-          <TextField label={t("common.search")} value={search} onChange={setSearch} hint={t("labels.searchHint")} />
-        </div>
+        <form onSubmit={(e) => { e.preventDefault(); view(); }}>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <RefSelect label={t("fields.categoryId")} resource="/categories" labelKey={(r) => `${r.code} — ${r.name}`} value={categoryId} onChange={setCategoryId} placeholder={t("common.all")} />
+            <TextField label={t("fields.brand")} value={brand} onChange={setBrand} />
+            <TextField label={t("common.search")} value={search} onChange={setSearch} hint={t("labels.searchHint")} />
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Button size="sm" type="submit">{t("labels.view")}</Button>
+            <Button size="sm" variant="outline" onClick={clear}>{t("labels.clearFilters")}</Button>
+            <span className="text-sm text-gray-500 dark:text-gray-400">{t("labels.viewHint")}</span>
+          </div>
+        </form>
         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
           <label className="inline-flex items-center gap-2">
             <Checkbox checked={pageAllSelected} onChange={togglePage} /> {t("labels.selectPage")}
@@ -169,7 +174,7 @@ export default function LabelsPage() {
           )}
         </div>
         <div className="mt-4">
-          <DataTable columns={columns} rows={list.data} loading={list.loading} rowKey={(r) => r.id} meta={list.meta} onPage={setPage} sort={sort} onSort={setSort} />
+          <DataTable columns={columns} rows={list.data} loading={list.loading} rowKey={(r) => r.id} meta={list.meta} onPage={setPage} sort={sort} onSort={setSort} emptyText={t("labels.empty")} />
         </div>
       </Card>
     </div>

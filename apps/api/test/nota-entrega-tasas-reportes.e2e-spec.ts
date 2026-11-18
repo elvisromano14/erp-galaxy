@@ -100,6 +100,8 @@ describe('Nota de entrega (compromete), módulo Tasas y reportes de ventas del v
     expect(r.status).toBe(200); expect(r.headers['content-type']).toContain('application/pdf'); expect(r.body.subarray(0, 4).toString()).toBe('%PDF');
     expect(r.headers['x-label-count']).toBe('4');                 // 2 productos × 2 copias
     expect((await ctx.http.get('/api/v1/products/labels?search=NO-EXISTE-XYZ').set(auth(token))).body.error).toBe('NO_PRODUCTS');
+    const noServices = await ctx.http.get('/api/v1/products').set(auth(token)).query({ isService: 'false', isActive: 'true', search: 'ET-' });
+    expect(noServices.body.data.length).toBe(2);                    // "false" ya no se lee como verdadero
     const pl = (await ctx.http.get('/api/v1/price-lists').set(auth(token))).body.data[0].id;
     const withFields = await get(`?search=ET-&fields=name,brand,category,unit,barcode,location,description,price:${pl}`);
     expect(withFields.status).toBe(200); expect(withFields.headers['x-label-count']).toBe('2');

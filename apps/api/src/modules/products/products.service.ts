@@ -39,9 +39,11 @@ export const createProductSchema = z.object({
   prices: z.array(price).optional(),
 });
 export const updateProductSchema = createProductSchema.partial().extend({ version: z.number().int().optional() });
+/** Booleano de query string: z.coerce.boolean() leería "false" como verdadero (cualquier texto no vacío). */
+const queryBool = z.preprocess(v => (v === 'false' || v === '0' ? false : v === 'true' || v === '1' ? true : v), z.boolean().optional());
 export const listProductsSchema = paginationQuery.extend({
   trackingMode: z.enum(['NONE', 'LOT', 'SERIAL']).optional(),
-  categoryId: uuid.optional(), locationId: uuid.optional(), brand: z.string().trim().max(80).optional(), isActive: z.coerce.boolean().optional(), isService: z.coerce.boolean().optional(), includeDeleted: z.coerce.boolean().optional(),
+  categoryId: uuid.optional(), locationId: uuid.optional(), brand: z.string().trim().max(80).optional(), isActive: queryBool, isService: queryBool, includeDeleted: queryBool,
 });
 export const bulkPriceSchema = z.object({
   priceListId: uuid,

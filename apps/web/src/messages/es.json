@@ -467,7 +467,11 @@
     "selectPage": "Marcar los de esta página",
     "selectedCount": "{count} marcados",
     "clearSelection": "Quitar marcas",
-    "tooManySelected": "Máximo {max} marcados por impresión"
+    "tooManySelected": "Máximo {max} marcados por impresión",
+    "view": "Visualizar",
+    "clearFilters": "Limpiar filtros",
+    "viewHint": "Sin filtros se muestran todos los productos activos.",
+    "empty": "No hay productos con ese filtro. Si aún no los cargó, use Configuración → Importar → «Inventario (sincronización)»."
   },
   "rates": {
     "title": "Tasas de cambio",
