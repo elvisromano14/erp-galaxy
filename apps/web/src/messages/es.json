@@ -433,10 +433,8 @@
   },
   "labels": {
     "title": "Etiquetas QR de productos",
-    "subtitle": "Genera etiquetas con un código QR (código, nombre y marca) para pegar en cada producto.",
-    "which": "¿Qué productos?",
-    "all": "Sin filtros: se generan etiquetas de todos los productos activos.",
-    "filtered": "Se generan etiquetas de los productos activos que cumplan el filtro.",
+    "subtitle": "Elige qué datos lleva el código QR de cada producto e imprime su etiqueta, una por una, las marcadas o todas a la vez.",
+    "which": "Productos",
     "searchHint": "Código, nombre o marca",
     "format": "Formato de la etiqueta",
     "size": "Tamaño del rollo",
@@ -447,7 +445,29 @@
     "copiesHint": "Cuántas etiquetas iguales de cada uno",
     "printHelp": "Se abre un PDF con una etiqueta por página, del tamaño exacto del rollo. Imprímelo en la impresora de etiquetas con «Tamaño real» (100 %), sin márgenes ni ajustar a la página.",
     "generate": "Generar etiquetas",
-    "generating": "Generando…"
+    "generating": "Generando…",
+    "contentTitle": "Información que lleva el QR",
+    "contentHelp": "Marca los datos del producto que irán dentro del QR y en el texto de la etiqueta. Se aplican a todas las impresiones de esta pantalla.",
+    "skuHint": "Siempre va primero: lo lee el escáner de la app",
+    "f": {
+      "sku": "Código",
+      "name": "Nombre",
+      "description": "Descripción",
+      "brand": "Marca",
+      "category": "Categoría",
+      "unit": "Unidad",
+      "barcode": "Código de barras",
+      "location": "Ubicación",
+      "price": "Precio · {list}"
+    },
+    "actions": "Acciones",
+    "printOne": "Imprimir etiqueta QR",
+    "printSelected": "Imprimir marcados ({count})",
+    "printAll": "Imprimir todos ({count})",
+    "selectPage": "Marcar los de esta página",
+    "selectedCount": "{count} marcados",
+    "clearSelection": "Quitar marcas",
+    "tooManySelected": "Máximo {max} marcados por impresión"
   },
   "rates": {
     "title": "Tasas de cambio",

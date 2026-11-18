@@ -11,3 +11,14 @@ describe('etiquetas QR', () => {
     expect((buf.toString('latin1').match(/\/Type\s*\/Page\b/g) ?? []).length).toBe(4);
   });
 });
+
+describe('etiquetas QR con datos elegidos', () => {
+  it('el QR lleva el código primero y luego solo los datos elegidos', () => {
+    const p = { sku: 'A-1', name: 'Cinta', brand: 'KMD', lines: [{ label: 'Marca', value: 'KMD' }, { label: 'Precio · Lista 1', value: '$ 2.50' }] };
+    expect(labelPayload(p).split('\n')).toEqual(['A-1', 'Marca: KMD', 'Precio · Lista 1: $ 2.50']);
+  });
+  it('genera el PDF con los datos elegidos', async () => {
+    const buf = await labelsPdf([{ sku: 'A-1', name: 'Cinta', lines: [{ label: 'Descripción', value: 'Cinta aislante' }, { label: 'Ubicación', value: 'Pasillo 3' }] }], { widthMm: 50, heightMm: 30, copies: 1 });
+    expect(buf.subarray(0, 4).toString()).toBe('%PDF');
+  });
+});

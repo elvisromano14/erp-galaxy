@@ -8,7 +8,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { BusinessRuleException, NotFoundError, ValidationError } from '../../common/errors/errors';
 import { Paged } from '../../common/http/paged';
 import { ExchangeRatesService } from '../catalogs/exchange-rates';
-import { labelsPdf } from './labels';
+import { labelsPdf, type LabelLine } from './labels';
 import { ExternalRefsService, IntegrationEventsService } from '../integration/integration-events.service';
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -63,11 +63,14 @@ export const addPriceSchema = price;
 export const labelsQuerySchema = z.object({
   ids: z.string().optional().transform(v => (v ? v.split(',').map(x => x.trim()).filter(Boolean) : undefined)).pipe(z.array(uuid).max(500).optional()),
   categoryId: uuid.optional(), brand: z.string().trim().max(80).optional(), search: z.string().trim().max(100).optional(),
+  /** Datos del producto dentro del QR (además del código, que siempre va primero): name,description,brand,category,unit,barcode,location,price:<idLista>. Vacío = nombre y marca. */
+  fields: z.string().optional().transform(v => (v ? v.split(',').map(x => x.trim()).filter(Boolean) : undefined))
+    .pipe(z.array(z.string().regex(/^(name|description|brand|category|unit|barcode|location|price:[0-9a-f-]{36})$/)).max(20).optional()),
   copies: z.coerce.number().int().min(1).max(100).default(1),
   width: z.coerce.number().min(20).max(120).default(50),
   height: z.coerce.number().min(15).max(100).default(30),
 });
-export const MAX_LABELS = 2000;
+export const MAX_LABELS = 5000;
 
 @Injectable()
 export class ProductsService {
@@ -335,11 +338,61 @@ export class ProductsService {
     if (q.categoryId) where.categoryId = q.categoryId;
     if (q.brand) where.brand = { equals: q.brand, mode: 'insensitive' };
     if (q.search) where.OR = [{ sku: { contains: q.search, mode: 'insensitive' } }, { name: { contains: q.search, mode: 'insensitive' } }, { brand: { contains: q.search, mode: 'insensitive' } }];
-    const products = await this.prisma.tx.product.findMany({ where, orderBy: { sku: 'asc' }, take: MAX_LABELS + 1, select: { sku: true, name: true, brand: true } });
-    if (!products.length) throw new BusinessRuleException('Ningún producto coincide con el filtro', 'NO_PRODUCTS');
-    if (products.length * q.copies > MAX_LABELS) throw new BusinessRuleException(`Son demasiadas etiquetas (máximo ${MAX_LABELS} por archivo); filtre por instancia o marca`, 'TOO_MANY_LABELS');
+    const rows = await this.prisma.tx.product.findMany({ where, orderBy: { sku: 'asc' }, take: MAX_LABELS + 1 });
+    if (!rows.length) throw new BusinessRuleException('Ningún producto coincide con el filtro', 'NO_PRODUCTS');
+    if (rows.length * q.copies > MAX_LABELS) throw new BusinessRuleException(`Son demasiadas etiquetas (máximo ${MAX_LABELS} por archivo); filtre por categoría o marca`, 'TOO_MANY_LABELS');
+    const products = await this.labelLines(rows, q.fields);
     await this.audit.log('product', undefined, 'PRINT_LABELS', { count: products.length, copies: q.copies, width: q.width, height: q.height });
     return { buffer: await labelsPdf(products, { widthMm: q.width, heightMm: q.height, copies: q.copies }), count: products.length * q.copies };
+  }
+
+  /** Arma, por producto, los datos elegidos para el QR (en el orden en que se eligieron). */
+  private async labelLines(rows: Array<{ id: string; sku: string; name: string; brand: string | null; description: string | null; categoryId: string | null; unitId: string; locationId: string | null }>, fields?: string[]) {
+    if (!fields?.length) return rows.map(r => ({ sku: r.sku, name: r.name, brand: r.brand }));
+    const tx = this.prisma.tx;
+    const ids = rows.map(r => r.id);
+    const need = (f: string) => fields.includes(f);
+    const [cats, units, locs, barcodes] = await Promise.all([
+      need('category') ? tx.category.findMany({ select: { id: true, name: true } }) : [],
+      need('unit') ? tx.unit.findMany({ select: { id: true, code: true } }) : [],
+      need('location') ? tx.location.findMany({ select: { id: true, name: true } }) : [],
+      need('barcode') ? tx.productBarcode.findMany({ where: { productId: { in: ids } }, orderBy: { barcode: 'asc' }, select: { productId: true, barcode: true } }) : [],
+    ]);
+    const catName = new Map(cats.map(c => [c.id, c.name])), unitCode = new Map(units.map(u => [u.id, u.code])), locName = new Map(locs.map(l => [l.id, l.name]));
+    const bcOf = new Map<string, string>();
+    for (const b of barcodes) if (!bcOf.has(b.productId)) bcOf.set(b.productId, b.barcode);
+    // precios vigentes hoy por lista
+    const listIds = fields.filter(f => f.startsWith('price:')).map(f => f.slice(6));
+    const priceOf = new Map<string, string>();             // `${listId}|${productId}` → texto
+    const listName = new Map<string, string>();
+    if (listIds.length) {
+      const lists = await tx.priceList.findMany({ where: { id: { in: listIds }, deletedAt: null } });
+      const cur = new Map((await tx.currency.findMany({ where: { id: { in: lists.map(l => l.currencyId) } } })).map(c => [c.id, c]));
+      for (const l of lists) listName.set(l.id, l.name);
+      const today = new Date(caracasToday());
+      const latest = new Map<string, Decimal>();
+      for (const r of await tx.productPrice.findMany({ where: { priceListId: { in: lists.map(l => l.id) }, productId: { in: ids }, validFrom: { lte: today } }, orderBy: [{ validFrom: 'asc' }, { createdAt: 'asc' }] })) latest.set(`${r.priceListId}|${r.productId}`, D(r.price.toString()));
+      for (const l of lists) {
+        const c = cur.get(l.currencyId);
+        for (const r of rows) { const v = latest.get(`${l.id}|${r.id}`); if (v) priceOf.set(`${l.id}|${r.id}`, `${c?.symbol ?? ''} ${v.toFixed(c?.decimals ?? 2)}`.trim()); }
+      }
+    }
+    return rows.map(r => {
+      const lines: LabelLine[] = [];
+      for (const f of fields) {
+        let line: LabelLine | null = null;
+        if (f === 'name') line = { label: 'Nombre', value: r.name };
+        else if (f === 'description') line = r.description ? { label: 'Descripción', value: r.description } : null;
+        else if (f === 'brand') line = r.brand ? { label: 'Marca', value: r.brand } : null;
+        else if (f === 'category') line = r.categoryId && catName.get(r.categoryId) ? { label: 'Categoría', value: catName.get(r.categoryId)! } : null;
+        else if (f === 'unit') line = unitCode.get(r.unitId) ? { label: 'Unidad', value: unitCode.get(r.unitId)! } : null;
+        else if (f === 'barcode') line = bcOf.get(r.id) ? { label: 'Barras', value: bcOf.get(r.id)! } : null;
+        else if (f === 'location') line = r.locationId && locName.get(r.locationId) ? { label: 'Ubicación', value: locName.get(r.locationId)! } : null;
+        else if (f.startsWith('price:')) { const id = f.slice(6); const v = priceOf.get(`${id}|${r.id}`); line = v ? { label: listName.get(id) ?? 'Precio', value: v } : null; }
+        if (line) lines.push(line);
+      }
+      return { sku: r.sku, name: r.name, brand: r.brand, lines };
+    });
   }
 
   async priceHistory(productId: string) {

@@ -100,6 +100,12 @@ describe('Nota de entrega (compromete), módulo Tasas y reportes de ventas del v
     expect(r.status).toBe(200); expect(r.headers['content-type']).toContain('application/pdf'); expect(r.body.subarray(0, 4).toString()).toBe('%PDF');
     expect(r.headers['x-label-count']).toBe('4');                 // 2 productos × 2 copias
     expect((await ctx.http.get('/api/v1/products/labels?search=NO-EXISTE-XYZ').set(auth(token))).body.error).toBe('NO_PRODUCTS');
+    const pl = (await ctx.http.get('/api/v1/price-lists').set(auth(token))).body.data[0].id;
+    const withFields = await get(`?search=ET-&fields=name,brand,category,unit,barcode,location,description,price:${pl}`);
+    expect(withFields.status).toBe(200); expect(withFields.headers['x-label-count']).toBe('2');
+    const one = await ctx.http.get('/api/v1/products').set(auth(token)).query({ search: 'ET-1' });
+    expect((await get(`?ids=${one.body.data[0].id}&fields=name`)).headers['x-label-count']).toBe('1');
+    expect((await ctx.http.get('/api/v1/products/labels?fields=hack').set(auth(token))).status).toBe(400);
     expect((await ctx.http.get('/api/v1/products/labels?width=500').set(auth(token))).status).toBe(400);
   });
 });
