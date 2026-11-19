@@ -79,8 +79,11 @@ export class MobileController {
     };
   }
 
-  /** APK vigente con la sesión del dispositivo: `Content-Length` y `Range` (reanudación) los resuelve `res.download`. */
-  @Get('mobile/app/latest/file') @RequirePermissions('mobile:sync:use')
+  /**
+   * APK vigente con la sesión del dispositivo: `Content-Length` y `Range` (reanudación) los resuelve `res.download`.
+   * La segunda ruta es un alias para las apps 0.2.0–0.2.2, que anteponen `/api/v1` a un `downloadPath` que ya lo trae.
+   */
+  @Get(['mobile/app/latest/file', 'api/v1/mobile/app/latest/file']) @RequirePermissions('mobile:sync:use')
   async latestFile(@CurrentUser() u: AuthUser, @Headers('range') range: string | undefined, @Res() res: Response) {
     const f = this.app.file();
     if (!range || /^bytes=0-/.test(range)) await this.audit.log('mobile_app', undefined, 'UPDATE_DOWNLOAD', { version: f.info.version, userId: u.userId });
