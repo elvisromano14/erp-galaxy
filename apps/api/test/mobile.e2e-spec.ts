@@ -77,6 +77,15 @@ describe('Móvil: dispositivos, sync/pull y sync/push', () => {
     const customers = (await pull('customers')).body.data.items;
     expect(customers.map((c: any) => c.legalName)).toEqual(['Cliente Propio']); // el de otro vendedor no baja
     expect(customers[0]).toMatchObject({ validationStatus: 'VALIDATED', balanceSnapshot: '0' });
+    // Opción de la empresa: con «ALL» el vendedor baja todos los clientes; al volver a «OWN», solo su cartera
+    expect((await admin.patch('/companies/current', { customerVisibility: 'ALL' })).status).toBe(200);
+    expect((await pull('app_settings')).body.data.items[0].customerScope).toBe('ALL');
+    expect((await pull('customers')).body.data.items.map((c: any) => c.legalName).sort()).toEqual(['Cliente Propio', 'Cliente de otro vendedor']);
+    // un teléfono ya sincronizado (cursor al día) recibe los clientes ampliados en su siguiente pull incremental
+    const upToDate = (await pull('customers')).body.data.nextCursor;
+    expect((await pull('customers', { cursor: upToDate })).body.data.items).toHaveLength(0);
+    expect((await admin.patch('/companies/current', { customerVisibility: 'OWN' })).status).toBe(200);
+    expect((await pull('customers')).body.data.items.map((c: any) => c.legalName)).toEqual(['Cliente Propio']);
     const prods = (await pull('products')).body.data.items;
     expect(prods.map((p: any) => p.sku).sort()).toEqual(['M-001', 'M-002']);
     expect(prods.find((p: any) => p.sku === 'M-001').barcodes).toEqual(['750001']);

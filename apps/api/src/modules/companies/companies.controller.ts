@@ -21,6 +21,7 @@ const updateCompany = z.object({
   isSpecialTaxpayer: z.boolean().optional(), isVatWithholdingAgent: z.boolean().optional(), isIgtfCollector: z.boolean().optional(),
   features: features.optional(),
   invoicePrintMode: z.enum(['NORMAL', 'FISCAL_PRINTER']).optional(), fiscalPrinterModel: z.string().trim().max(120).nullable().optional(),
+  customerVisibility: z.enum(['OWN', 'ALL']).optional(),
 }).strict();
 const createUser = z.object({ email: z.string().email(), fullName: z.string().min(2), password: z.string().min(10).optional(), roleCodes: z.array(z.string()).min(1) });
 const updateCompanyById = z.object({

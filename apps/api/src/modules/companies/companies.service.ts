@@ -196,6 +196,7 @@ export class CompaniesService implements OnApplicationBootstrap {
     isSpecialTaxpayer?: boolean; isVatWithholdingAgent?: boolean; isIgtfCollector?: boolean;
     features?: { lots?: boolean; serials?: boolean; expiry?: boolean };
     invoicePrintMode?: 'NORMAL' | 'FISCAL_PRINTER'; fiscalPrinterModel?: string | null;
+    customerVisibility?: 'OWN' | 'ALL';
   }) {
     const current = await this.current();
     let features = current.features as Record<string, boolean>;
@@ -205,6 +206,10 @@ export class CompaniesService implements OnApplicationBootstrap {
     }
     const { features: _f, ...rest } = data;
     const updated = await this.prisma.db.company.update({ where: { id: current.id }, data: { ...rest, features } });
+    // Al ampliar el alcance de clientes, los teléfonos ya sincronizados no releerían los viejos (su cursor avanzó): se marcan como modificados.
+    if (data.customerVisibility && data.customerVisibility !== current.customerVisibility) {
+      await this.prisma.db.$executeRaw`UPDATE customers SET updated_at = now() WHERE company_id = ${current.id}::uuid`;
+    }
     await this.audit.log('company', current.id, 'UPDATE', data);
     return updated;
   }

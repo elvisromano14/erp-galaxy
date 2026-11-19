@@ -686,7 +686,12 @@
     "clientAdminHint": "Verá todas las empresas de este cliente y podrá crear nuevas.",
     "editCompany": "Editar empresa",
     "companyDeactivated": "Empresa dada de baja",
-    "companyActivated": "Empresa reactivada"
+    "companyActivated": "Empresa reactivada",
+    "mobileSales": "Ventas desde la app",
+    "customerVisibility": "Clientes que ve cada vendedor en la app",
+    "customersOwn": "Solo su cartera (clientes asignados a él o a su zona)",
+    "customersAll": "Todos los clientes de la empresa",
+    "customerVisibilityHint": "Para un mayorista con cartera por vendedor use «Solo su cartera»; para una venta al detal use «Todos». Aplica en la próxima sincronización de cada teléfono."
   },
   "sequences": {
     "subtitle": "Prefijo, relleno y próximo número de cada documento. El correlativo se asigna al confirmar y solo puede subir.",

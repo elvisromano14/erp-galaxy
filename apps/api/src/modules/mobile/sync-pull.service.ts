@@ -79,6 +79,7 @@ export class SyncPullService {
       company: { id: company.id, rif: company.rif, legalName: company.legalName, tradeName: company.tradeName, baseCurrencyId: company.baseCurrencyId, valuationCurrencyId: company.valuationCurrencyId },
       seller: seller ? { id: seller.id, code: seller.code, name: seller.name } : null,
       sellerScope: all ? 'ALL' : 'OWN',
+      customerScope: company.customerVisibility === 'ALL' || all ? 'ALL' : 'OWN',
       defaultWarehouseId: warehouse?.id ?? null,
       allowPriceEdit: seller?.allowPriceEdit ?? false,
       maxDiscountPct: seller?.maxDiscountPct ?? 0,
@@ -116,7 +117,9 @@ export class SyncPullService {
 
   private async customers(user: AuthUser, q: { cursor?: string; limit: number; overlapSeconds: number }): Promise<PullPage> {
     const tx = this.prisma.db;
-    const [seller, all] = await Promise.all([this.devices.sellerOf(user.userId), this.devices.canSeeAll(user)]);
+    const [seller, canAll, company] = await Promise.all([this.devices.sellerOf(user.userId), this.devices.canSeeAll(user), tx.company.findUniqueOrThrow({ where: { id: this.prisma.companyId }, select: { customerVisibility: true } })]);
+    // La empresa decide si cada vendedor ve solo su cartera (OWN) o todos los clientes (ALL).
+    const all = canAll || company.customerVisibility === 'ALL';
     if (!seller && !all) throw new BusinessRuleException('Su usuario no está ligado a un vendedor', 'SELLER_REQUIRED');
     const scope = all ? Prisma.sql`TRUE` : Prisma.sql`(seller_id = ${seller!.id}::uuid OR (${seller!.zoneId}::uuid IS NOT NULL AND zone_id = ${seller!.zoneId}::uuid))`;
     const cur = this.parseCursor(q.cursor);

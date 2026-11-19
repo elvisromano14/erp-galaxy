@@ -21,6 +21,7 @@ const schema = z.object({
   isSpecialTaxpayer: z.boolean(), isVatWithholdingAgent: z.boolean(), isIgtfCollector: z.boolean(),
   lots: z.boolean(), expiry: z.boolean(), serials: z.boolean(),
   invoicePrintMode: z.enum(["NORMAL", "FISCAL_PRINTER"]), fiscalPrinterModel: optText(120),
+  customerVisibility: z.enum(["OWN", "ALL"]),
 });
 type Values = z.infer<typeof schema>;
 
@@ -31,7 +32,7 @@ export default function CompanySettings() {
   const company = useFetch<Row>("/companies/current");
   const form = useForm<Values>({
     resolver: zodResolver(schema) as never,
-    defaultValues: { rif: "", legalName: "", tradeName: "", fiscalAddress: "", isSpecialTaxpayer: false, isVatWithholdingAgent: false, isIgtfCollector: false, lots: false, expiry: false, serials: false, invoicePrintMode: "NORMAL", fiscalPrinterModel: "" },
+    defaultValues: { rif: "", legalName: "", tradeName: "", fiscalAddress: "", isSpecialTaxpayer: false, isVatWithholdingAgent: false, isIgtfCollector: false, lots: false, expiry: false, serials: false, invoicePrintMode: "NORMAL", fiscalPrinterModel: "", customerVisibility: "OWN" },
   });
   const [error, setError] = useState<ApiError | null>(null);
   const canEdit = can("security:companies:update");
@@ -45,7 +46,7 @@ export default function CompanySettings() {
     form.reset({
       rif: x.rif, legalName: x.legalName, tradeName: x.tradeName ?? "", fiscalAddress: x.fiscalAddress ?? "", isSpecialTaxpayer: x.isSpecialTaxpayer,
       isVatWithholdingAgent: x.isVatWithholdingAgent, isIgtfCollector: x.isIgtfCollector, lots: !!x.features?.lots, expiry: !!x.features?.expiry, serials: !!x.features?.serials,
-      invoicePrintMode: x.invoicePrintMode === "FISCAL_PRINTER" ? "FISCAL_PRINTER" : "NORMAL", fiscalPrinterModel: x.fiscalPrinterModel ?? "",
+      invoicePrintMode: x.invoicePrintMode === "FISCAL_PRINTER" ? "FISCAL_PRINTER" : "NORMAL", fiscalPrinterModel: x.fiscalPrinterModel ?? "", customerVisibility: x.customerVisibility === "ALL" ? "ALL" : "OWN",
     });
   }, [company.data, form]);
 
@@ -57,6 +58,7 @@ export default function CompanySettings() {
         isSpecialTaxpayer: v.isSpecialTaxpayer, isVatWithholdingAgent: v.isVatWithholdingAgent, isIgtfCollector: v.isIgtfCollector,
         features: { lots: v.lots, expiry: v.lots && v.expiry, serials: v.serials },
         invoicePrintMode: v.invoicePrintMode, fiscalPrinterModel: v.invoicePrintMode === "FISCAL_PRINTER" ? v.fiscalPrinterModel || null : null,
+        customerVisibility: v.customerVisibility,
       });
       notice.success(t("common.saved"));
       company.reload();
@@ -98,6 +100,13 @@ export default function CompanySettings() {
               options={[{ value: "NORMAL", label: t("settings.printNormal") }, { value: "FISCAL_PRINTER", label: t("settings.printFiscal") }]} />
             <p className="text-xs text-gray-500">{t("settings.printModeHint")}</p>
             {printMode === "FISCAL_PRINTER" && <RText control={c} name="fiscalPrinterModel" label={t("settings.fiscalPrinterModel")} disabled={!canEdit} placeholder="Marca y modelo" />}
+          </div>
+        </Card>
+        <Card title={t("settings.mobileSales")}>
+          <div className="grid grid-cols-1 gap-4">
+            <RSelect control={c} name="customerVisibility" label={t("settings.customerVisibility")} disabled={!canEdit}
+              options={[{ value: "OWN", label: t("settings.customersOwn") }, { value: "ALL", label: t("settings.customersAll") }]} />
+            <p className="text-xs text-gray-500">{t("settings.customerVisibilityHint")}</p>
           </div>
         </Card>
         {canEdit && <div className="flex justify-end xl:col-span-2"><Button type="submit" size="sm" disabled={form.formState.isSubmitting}>{form.formState.isSubmitting ? t("common.saving") : t("common.save")}</Button></div>}

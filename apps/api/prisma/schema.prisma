@@ -52,6 +52,8 @@ model Company {
   adminName             String?  @map("admin_name")
   invoicePrintMode      String   @default("NORMAL") @map("invoice_print_mode")
   fiscalPrinterModel    String?  @map("fiscal_printer_model")
+  /// Clientes que baja la app a cada vendedor: OWN = solo su cartera (vendedor o zona) · ALL = todos los de la empresa.
+  customerVisibility    String   @default("OWN") @map("customer_visibility")
   baseCurrencyId        String   @map("base_currency_id") @db.Uuid
   valuationCurrencyId   String   @map("valuation_currency_id") @db.Uuid
   isSpecialTaxpayer     Boolean  @default(false) @map("is_special_taxpayer")
